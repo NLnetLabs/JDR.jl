@@ -13,15 +13,18 @@ LONGFORM=hex2bytes(b"3f55")
     @test isequal(tag.constructed, true)
     @test isequal(tag.number, 0x10)
     @test isequal(tag.len, 19)
+    DER.print_tag(tag)
 
     tag2 = DER.next(b1)
     @test isequal(tag2.number, 0x02)
     @test isequal(tag2.len, 1)
     @test isequal(Int(tag2.value[1]), 5) #ugly
+    DER.print_tag(tag2)
 
     tag3 = DER.next(b1)
     @test isequal(tag3.number, 0x16)
     @test isequal(tag3.len, 14 )
+    DER.print_tag(tag3)
 
     # long form error
     b2 = DER.Buf(LONGFORM)

@@ -1,0 +1,8 @@
+name = "JuliASN"
+uuid = "7f919ed6-b539-45f1-92dc-d064935876c8"
+authors = ["Luuk Hendriks <mail@luukhendriks.eu>"]
+version = "0.1.0"
+
+[deps]
+Jive = "ba5e3d4b-8524-549f-bc71-e76ad9e9deed"
+Revise = "295af30f-e4ad-537b-8983-00126c2a3abe"

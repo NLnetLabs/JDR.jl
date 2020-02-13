@@ -1,5 +1,5 @@
 module DER
-
+using ..ASN
 # Possible/common mistakes or violations:
 # - a primitive BITSTRING actually containing other tags (thus being constructed)
 # - encapsulating OCTETSTRINGS?
@@ -112,10 +112,10 @@ function Base.show(io::IO, t::Tag{BITSTRING})
 end
 value(t::Tag{T}) where {T} = "**RAW**: $(t.value)"
 
-value(t::Tag{SEQUENCE}) = nothing
-value(t::Tag{SET}) = nothing
-value(t::Tag{BOOLEAN}) = t.value[1] != 0
-value(t::Tag{PRINTABLESTRING}) = String(t.value)
+value(t::Tag{SEQUENCE}) = ""
+value(t::Tag{SET}) = ""
+value(t::Tag{BOOLEAN}) = t.value[1] != 0 # FIXME DER is stricter than this
+value(t::Tag{PRINTABLESTRING}) = String(copy(t.value))
 value(t::Tag{INTEGER}) = reinterpret(Int64, resize!(reverse(t.value), 8)) #FIXME this fails for e.g. the 2048bit key material
 
 function value(t::Tag{BITSTRING}) where {T} 
@@ -240,7 +240,6 @@ function next(buf::Buf) :: Union{Tag, Nothing}
     tagnumber   = first_byte & 0x1f # bit 5-0
     if tagnumber == 31
         longtag = 0
-        #throw(NotImplementedYetError("long form tag numbers"))
         byte = read(buf.iob, 1)[1]
         while byte & 0x80 == 0x80 # first bit is 1
             longtag = (longtag << 7) | (byte & 0x7f) # take the last 7 bits
@@ -268,8 +267,6 @@ function next(buf::Buf) :: Union{Tag, Nothing}
         len = res # TODO can this break the stuff below? or trigger it incorrectly?
     end
 
-    #TODO decide whether we always consume the value (so also in case of
-    #SEQUENCE and SET), at the cost of losing stream-based parsing..
     value = if len == 0x80
         # Indefinite form
         # this is not allowed in DER!
@@ -294,7 +291,8 @@ function next(buf::Buf) :: Union{Tag, Nothing}
     elseif !constructed  #|| tagnumber == 0x23
         read(buf.iob, len)
     else
-        Array{UInt8}([]) 
+        read(buf.iob, len)
+        #Array{UInt8}([]) 
     end
     #if length(value) > 2 @debug value[end-1:end] end
     return Tag(tagclass, constructed, tagnumber, len, value)
@@ -310,6 +308,57 @@ function parse_file(fn::String, maxtags=0)
         println(tag)
     end
     println("done!")
+end
+
+function parse_file_tree(fn::String, maxtags=0) :: ASN.Node
+    buf = DER.Buf(open(fn))
+    println("parsing file ", fn)
+    tag = DER.next(buf)
+    root = Node(nothing, [], tag)
+    current_parent = Node(root)
+    @debug root
+    @debug current_parent
+    tagcount = 1
+    while !isnothing(tag) && (maxtags==0 || tagcount < maxtags)
+        tag = DER.next(buf)
+        tagcount += 1
+        if isa(tag, Tag{SEQUENCE}) # here we should recurse
+            @debug "non leaf"
+            ASN.append!(current_parent, Node(tag))
+            @debug "root: ", root
+            @debug "current_parent: ", current_parent
+            @debug "children: ", current_parent.children
+            current_parent = Node(tag)
+        else
+            @debug "leaf, current_parent ", current_parent
+            ASN.append!(current_parent, Leaf(tag))
+        end
+    end
+    println("done!")
+    @debug "end of (): ", root.children
+    root
+end
+
+function _parse(tag) :: Node
+    me = Node(tag)
+    if isa(tag, Tag{SEQUENCE}) || isa(tag, Tag{SET})
+        subbuf = DER.Buf(tag.value)
+        while !eof(subbuf.iob)
+            subtag = DER.next(subbuf)
+            ASN.append!(me, _parse(subtag))
+        end
+        return me
+    else
+        return me
+    end
+end
+
+function parse_file_recursive(fn::String) 
+    buf = DER.Buf(open(fn))
+    println("parsing file ", fn)
+    tag = DER.next(buf)
+    tree = _parse(tag)
+    tree
 end
 
 

@@ -1,5 +1,7 @@
 println("testing $(@__FILE__)")
 
+#using JuliASN
+using JuliASN.ASN
 using JuliASN.DER
 
 # example from wikipedia
@@ -7,7 +9,7 @@ BLOB=hex2bytes(b"3013020105160e416e79626f64792074686572653f")
 LONGFORM=hex2bytes(b"3f5501")
 LONGLENGTH=hex2bytes(b"3082040A")
 
-@testset "DER" begin
+@skip @testset "DER" begin
     b1 = DER.Buf(BLOB)
     tag =  DER.next(b1)
     @test isequal(tag.class, 0x00)
@@ -41,9 +43,19 @@ end
 
 @skip @testset "TA RIPE NCC" begin
     fn = joinpath(dirname(pathof(JuliASN)), "..", "test", "ripe-ncc-ta.cer")
-    DER.parse_file(fn)
+    #DER.parse_file(fn)
+    tree = DER.parse_file_tree(fn, 4)
+    ASN.print_node(tree, traverse=true)
 end
-@testset "TA ARIN" begin
+@testset "recursive TA RIPE NCC" begin
+    fn = joinpath(dirname(pathof(JuliASN)), "..", "test", "ripe-ncc-ta.cer")
+    tree = DER.parse_file_recursive(fn)
+    ASN.print_node(tree, traverse=true)
+    #@debug tree
+    #@debug tree.children
+end
+
+@skip @testset "TA ARIN" begin
     fn = joinpath(dirname(pathof(JuliASN)), "..", "test", "arin-rpki-ta.cer")
     DER.parse_file(fn)
 end

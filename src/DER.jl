@@ -11,8 +11,12 @@ module DER
 #    index::UInt64
 #    Buf(b) = new(b, 1)
 #end
+#
+#
+# TODO
+# - try OwnTime.jl for profiling
 
-const STRICT = false
+const STRICT = true
 
 struct Buf
     iob::IOBuffer
@@ -149,17 +153,34 @@ function value(t::Tag{OCTETSTRING}) where {T}
     # if we 'ignore' the constructed bit, and we simply 
     # 
 
+    #@debug "tag: ", t.number
+    #@debug "len: ", t.len
+    #@debug "constructed?: ", t.constructed
     if t.constructed
+        @debug "constructed OCTETSTRING, not allowed in DER"
         return nothing
     end
 
-    if STRICT
-        return t.value[1:end]
-    end
+    # So, in DER the encoding of an octetstring MUST be primitive
+    # but there will be actual leafs inside of it
+    # 
+    #if STRICT
+    #    @debug "STRICT octetstring"
+    #    return t.value[1:end]
+    #else
+    #    @debug "non STRICT octetstring"
+    #end
 
     if t.len <= 4 #TODO this is... horrible?
+        # all octetstrings must be primitive (in DER), so how do we know whether we should look for
+        # another (leaf) tag inside of this octetstring? for now, check the length..
+        @debug "horrible return"
         return t.value
     end
+
+    # TODO for now, we simply return the value
+    # in order to do more complex stuff, we need to actually build up a tree
+    return t.value
 
     buf = DER.Buf(t.value[1:end])
 
@@ -168,8 +189,10 @@ function value(t::Tag{OCTETSTRING}) where {T}
     
     subtag = next(buf)
     if isa(subtag, Tag{Unimplemented})
+        @debug "subtag Unimplemented"
         return t.value
     else
+        @debug "found subtag number ", subtag.number
         return subtag
     end
 end
@@ -249,6 +272,8 @@ function next(buf::Buf) :: Union{Tag, Nothing}
     #SEQUENCE and SET), at the cost of losing stream-based parsing..
     value = if len == 0x80
         # Indefinite form
+        # this is not allowed in DER!
+        @debug "indefinite form tag $(tagnumber) (decimal), not allowed in DER"
         _v = []
         b1 = read(buf.iob, 1)[1]
         done = false
@@ -277,7 +302,7 @@ end
 
 function parse_file(fn::String, maxtags=0)
     buf = DER.Buf(open(fn))
-    println("parsing  file")
+    println("parsing file ", fn)
     tag = DER.next(buf)
     println(tag)
     while !isnothing(tag) && (maxtags==0 || tagcount < maxtags)

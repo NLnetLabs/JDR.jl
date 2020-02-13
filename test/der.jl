@@ -39,11 +39,11 @@ LONGLENGTH=hex2bytes(b"3082040A")
     @test isequal(tag5.len, 1034)
 end
 
-@testset "TA RIPE NCC" begin
+@skip @testset "TA RIPE NCC" begin
     fn = joinpath(dirname(pathof(JuliASN)), "..", "test", "ripe-ncc-ta.cer")
     DER.parse_file(fn)
 end
-@skip @testset "TA ARIN" begin
+@testset "TA ARIN" begin
     fn = joinpath(dirname(pathof(JuliASN)), "..", "test", "arin-rpki-ta.cer")
     DER.parse_file(fn)
 end

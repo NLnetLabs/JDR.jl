@@ -62,6 +62,7 @@ struct	SEQUENCE       	<:	AbstractTag	end
 struct	SET            	<:	AbstractTag	end
 #struct  CHAR            <:  AbstractTag end
 struct  PRINTABLESTRING <:  AbstractTag end
+struct  IA5STRING       <:  AbstractTag end
 
 struct  UTCTIME         <:  AbstractTag end
 struct  GENTIME         <:  AbstractTag end
@@ -77,6 +78,7 @@ Tag(class, constructed, number, len, value) :: Tag{<: AbstractTag} = begin
     elseif number   == 6    Tag{OID}
     elseif number   == 16   Tag{SEQUENCE}
     elseif number   == 17   Tag{SET}
+    elseif number   == 22   Tag{IA5STRING}
     elseif number   == 23   Tag{UTCTIME}
     elseif number   == 24   Tag{GENTIME}
     #elseif number   in (18:22)   Tag{CHAR}
@@ -119,6 +121,7 @@ value(t::Tag{BOOLEAN}) = t.value[1] != 0 # FIXME DER is stricter than this
 value(t::Tag{PRINTABLESTRING}) = String(copy(t.value))
 value(t::Tag{UTCTIME}) = String(copy(t.value))
 value(t::Tag{GENTIME}) = String(copy(t.value))
+value(t::Tag{IA5STRING}) = String(copy(t.value))
 value(t::Tag{INTEGER}) = reinterpret(Int64, resize!(reverse(t.value), 8)) #FIXME this fails for e.g. the 2048bit key material
 
 function value(t::Tag{BITSTRING}) where {T} 

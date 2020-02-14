@@ -112,13 +112,15 @@ function Base.show(io::IO, t::Tag{BITSTRING})
 end
 value(t::Tag{T}) where {T} = "**RAW**: $(t.value)"
 
+value(t::Tag{RESERVED_ENC}) = ""
 value(t::Tag{SEQUENCE}) = ""
 value(t::Tag{SET}) = ""
 value(t::Tag{BOOLEAN}) = t.value[1] != 0 # FIXME DER is stricter than this
 value(t::Tag{PRINTABLESTRING}) = String(copy(t.value))
 value(t::Tag{INTEGER}) = reinterpret(Int64, resize!(reverse(t.value), 8)) #FIXME this fails for e.g. the 2048bit key material
 
-function value(t::Tag{BITSTRING}) where {T} 
+value(t::Tag{BITSTRING}) = ""
+function _value(t::Tag{BITSTRING}) where {T} 
     # TODO ask martin:
     # in the ripe TA .cer, there seems to be a SEQUENCE inside a _primitive_
     # BITSTRING. Shouldn't that be a _constructed_ BITSTRING then?
@@ -148,57 +150,28 @@ function value(t::Tag{BITSTRING}) where {T}
 end
 
 function value(t::Tag{OCTETSTRING}) where {T} 
-    # TODO
-    # if we want to be lenient here, we shoot ourselves in the foot:
-    # if we 'ignore' the constructed bit, and we simply 
-    # 
-
-    #@debug "tag: ", t.number
-    #@debug "len: ", t.len
-    #@debug "constructed?: ", t.constructed
     if t.constructed
         @debug "constructed OCTETSTRING, not allowed in DER"
+        error("constructed OCTETSTRING, not allowed in DER")
         return nothing
     end
-
-    # So, in DER the encoding of an octetstring MUST be primitive
-    # but there will be actual leafs inside of it
-    # 
-    #if STRICT
-    #    @debug "STRICT octetstring"
-    #    return t.value[1:end]
-    #else
-    #    @debug "non STRICT octetstring"
-    #end
 
     if t.len <= 4 #TODO this is... horrible?
         # all octetstrings must be primitive (in DER), so how do we know whether we should look for
         # another (leaf) tag inside of this octetstring? for now, check the length..
-        @debug "horrible return"
+        #@debug "horrible return"
         return t.value
     end
 
-    # TODO for now, we simply return the value
-    # in order to do more complex stuff, we need to actually build up a tree
-    return t.value
-
-    buf = DER.Buf(t.value[1:end])
-
-    # we should actually only return the t.value, because this is a primitive..
-    # but for now, let's be lenient
-    
-    subtag = next(buf)
-    if isa(subtag, Tag{Unimplemented})
-        @debug "subtag Unimplemented"
-        return t.value
-    else
-        @debug "found subtag number ", subtag.number
-        return subtag
-    end
+    return ""
 end
 
 
 function value(t::Tag{OID}) 
+    if t.class == 0x02 # context specific TODO find documentation for this
+        return String(copy(t.value))
+    end
+
     buf = IOBuffer(t.value) 
     subids = Array{Int32,1}([0]) # 
     while !eof(buf)
@@ -247,6 +220,9 @@ function next(buf::Buf) :: Union{Tag, Nothing}
         end
         tagnumber = (longtag << 7) | (byte & 0x7f) # take the last 7 bits
     end
+    #if tagclass > 0 # TODO what should we do on a context-specific (0x02) class?
+    #    @debug "tagclass", tagclass
+    #end
 
     len = Int32(read(buf.iob, 1)[1])
     if len & 0x80 == 0x80 && len != 0x80
@@ -263,9 +239,9 @@ function next(buf::Buf) :: Union{Tag, Nothing}
         for o in octets
             res = (res << 8) | o
         end
-
         len = res # TODO can this break the stuff below? or trigger it incorrectly?
     end
+    @assert(len >= 0)
 
     value = if len == 0x80
         # Indefinite form
@@ -288,74 +264,62 @@ function next(buf::Buf) :: Union{Tag, Nothing}
             b1 = read(buf.iob, 1)[1]
         end
         _v
-    elseif !constructed  #|| tagnumber == 0x23
+    elseif !constructed
         read(buf.iob, len)
     else
+        #error("should we get here?") TODO look into this
         read(buf.iob, len)
-        #Array{UInt8}([]) 
     end
-    #if length(value) > 2 @debug value[end-1:end] end
     return Tag(tagclass, constructed, tagnumber, len, value)
 end
 
 function parse_file(fn::String, maxtags=0)
     buf = DER.Buf(open(fn))
-    println("parsing file ", fn)
+    @debug "parsing file ", fn
     tag = DER.next(buf)
     println(tag)
     while !isnothing(tag) && (maxtags==0 || tagcount < maxtags)
         tag = DER.next(buf)
         println(tag)
     end
-    println("done!")
-end
-
-function parse_file_tree(fn::String, maxtags=0) :: ASN.Node
-    buf = DER.Buf(open(fn))
-    println("parsing file ", fn)
-    tag = DER.next(buf)
-    root = Node(nothing, [], tag)
-    current_parent = Node(root)
-    @debug root
-    @debug current_parent
-    tagcount = 1
-    while !isnothing(tag) && (maxtags==0 || tagcount < maxtags)
-        tag = DER.next(buf)
-        tagcount += 1
-        if isa(tag, Tag{SEQUENCE}) # here we should recurse
-            @debug "non leaf"
-            ASN.append!(current_parent, Node(tag))
-            @debug "root: ", root
-            @debug "current_parent: ", current_parent
-            @debug "children: ", current_parent.children
-            current_parent = Node(tag)
-        else
-            @debug "leaf, current_parent ", current_parent
-            ASN.append!(current_parent, Leaf(tag))
-        end
-    end
-    println("done!")
-    @debug "end of (): ", root.children
-    root
 end
 
 function _parse(tag) :: Node
     me = Node(tag)
-    if isa(tag, Tag{SEQUENCE}) || isa(tag, Tag{SET})
+
+    if isa(tag, Tag{SEQUENCE}) || isa(tag, Tag{SET}) || isa(tag, Tag{RESERVED_ENC})
         subbuf = DER.Buf(tag.value)
         while !eof(subbuf.iob)
             subtag = DER.next(subbuf)
             ASN.append!(me, _parse(subtag))
         end
-        return me
-    else
-        return me
+    elseif isa(tag, Tag{BITSTRING})
+        skip_unused_octet = 0
+        if tag.class != 0x02
+            skip_unused_octet = 1
+        end
+        if tag.len > 2 && tag.value[1 + skip_unused_octet] == 0x30 
+            # nested SEQUENCE in this BITSTRING
+            subbuf = DER.Buf(tag.value[1 + skip_unused_octet:end])
+            subtag = DER.next(subbuf)
+            ASN.append!(me, _parse(subtag))
+        end
+    elseif isa(tag, Tag{OCTETSTRING})
+        subbuf = DER.Buf(tag.value[1:end])
+        done = false
+        subtag = DER.next(subbuf)
+        if isa(subtag, Tag{OCTETSTRING})
+            ASN.append!(me, Node(subtag))
+        elseif tag.len > 4 # TODO same horrible stuff as above
+            ASN.append!(me, _parse(subtag))
+        end
     end
+    return me
 end
 
 function parse_file_recursive(fn::String) 
     buf = DER.Buf(open(fn))
-    println("parsing file ", fn)
+    @debug "parsing file ", fn
     tag = DER.next(buf)
     tree = _parse(tag)
     tree

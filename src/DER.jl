@@ -117,36 +117,18 @@ value(t::Tag{SEQUENCE}) = ""
 value(t::Tag{SET}) = ""
 value(t::Tag{BOOLEAN}) = t.value[1] != 0 # FIXME DER is stricter than this
 value(t::Tag{PRINTABLESTRING}) = String(copy(t.value))
+value(t::Tag{UTCTIME}) = String(copy(t.value))
+value(t::Tag{GENTIME}) = String(copy(t.value))
 value(t::Tag{INTEGER}) = reinterpret(Int64, resize!(reverse(t.value), 8)) #FIXME this fails for e.g. the 2048bit key material
 
-value(t::Tag{BITSTRING}) = ""
-function _value(t::Tag{BITSTRING}) where {T} 
-    # TODO ask martin:
-    # in the ripe TA .cer, there seems to be a SEQUENCE inside a _primitive_
-    # BITSTRING. Shouldn't that be a _constructed_ BITSTRING then?
-
-    if t.constructed
-        return nothing
+function value(t::Tag{BITSTRING}) where {T} 
+    if t.len > 10
+        "*blob*"
+    elseif t.len >= 2
+        bitstring(t.value[2] >> t.value[1])
+    else
+        "*empty*"
     end
-
-    unused = t.value[1]
-
-    if STRICT
-        return t.value[2:end]
-    end
-
-    buf = DER.Buf(t.value[2:end])
-
-    # we should actually only return the t.value, because this is a primitive..
-    # but for now, let's be lenient
-    
-    subtags = Array{Tag{<:AbstractTag},1}()
-    while !eof(buf.iob)
-        subtag = next(buf)
-        push!(subtags, subtag)
-    end
-    #display(subtags)
-    return subtags
 end
 
 function value(t::Tag{OCTETSTRING}) where {T} 
@@ -310,7 +292,7 @@ function _parse(tag) :: Node
         subtag = DER.next(subbuf)
         if isa(subtag, Tag{OCTETSTRING})
             ASN.append!(me, Node(subtag))
-        elseif tag.len > 4 # TODO same horrible stuff as above
+        elseif tag.len >= 4 # TODO same horrible stuff as above
             ASN.append!(me, _parse(subtag))
         end
     end

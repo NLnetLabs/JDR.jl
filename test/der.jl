@@ -41,32 +41,18 @@ LONGLENGTH=hex2bytes(b"3082040A")
     @test isequal(tag5.len, 1034)
 end
 
-@skip @testset "TA RIPE NCC" begin
-    fn = joinpath(dirname(pathof(JuliASN)), "..", "test", "ripe-ncc-ta.cer")
-    #DER.parse_file(fn)
-    tree = DER.parse_file_tree(fn, 4)
-    ASN.print_node(tree, traverse=true)
-end
-@testset "recursive TA RIPE NCC" begin
-    fn = joinpath(dirname(pathof(JuliASN)), "..", "test", "ripe-ncc-ta.cer")
-    tree = DER.parse_file_recursive(fn)
-    ASN.print_node(tree, traverse=true)
-    #@debug tree
-    #@debug tree.children
-end
+fn(filename::String) = joinpath(dirname(pathof(JuliASN)), "..", "test", filename)
 
-@skip @testset "TA ARIN" begin
-    fn = joinpath(dirname(pathof(JuliASN)), "..", "test", "arin-rpki-ta.cer")
-    DER.parse_file(fn)
-end
-@skip @testset "ROA RIPE NCC" begin
-    fn = joinpath(dirname(pathof(JuliASN)), "..", "test", "some.roa")
-    DER.parse_file(fn)
-end
-
-
-
-@testset "Buf" begin
-    buf = DER.Buf(hex2bytes("0011223344"))
-    #@test isequal(buf.index, 1)
+@testset "RIR TAs" begin
+    @debug "RIPE NCC"
+    tree = DER.parse_file_recursive(fn("ripe-ncc-ta.cer"))
+    @debug "ARIN"
+    tree = DER.parse_file_recursive(fn("arin-rpki-ta.cer"))
+    @debug "LACNIC"
+    tree = DER.parse_file_recursive(fn("rta-lacnic-rpki.cer"))
+    @debug "APNIC"
+    tree = DER.parse_file_recursive(fn("apnic-rpki-root-iana-origin.cer"))
+    @debug "AFRINIC"
+    tree = DER.parse_file_recursive(fn("AfriNIC.cer"))
+    #ASN.print_node(tree, traverse=true)
 end

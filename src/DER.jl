@@ -117,7 +117,9 @@ value(t::Tag{T}) where {T} = "**RAW**: $(t.value)"
 value(t::Tag{RESERVED_ENC}) = ""
 value(t::Tag{SEQUENCE}) = ""
 value(t::Tag{SET}) = ""
-value(t::Tag{BOOLEAN}) = t.value[1] != 0 # FIXME DER is stricter than this
+# FIXME DER is stricter for BOOLEANs than this
+# all bits should be 1 for true
+value(t::Tag{BOOLEAN}) = t.value[1] != 0 
 value(t::Tag{PRINTABLESTRING}) = String(copy(t.value))
 value(t::Tag{UTCTIME}) = String(copy(t.value))
 value(t::Tag{GENTIME}) = String(copy(t.value))
@@ -226,6 +228,9 @@ function next(buf::Buf) :: Union{Tag, Nothing}
         end
         len = res # TODO can this break the stuff below? or trigger it incorrectly?
     end
+    if len < 0
+        @debug tagnumber
+    end
     @assert(len >= 0)
 
     value = if len == 0x80
@@ -260,7 +265,6 @@ end
 
 function parse_file(fn::String, maxtags=0)
     buf = DER.Buf(open(fn))
-    @debug "parsing file ", fn
     tag = DER.next(buf)
     println(tag)
     while !isnothing(tag) && (maxtags==0 || tagcount < maxtags)
@@ -271,12 +275,19 @@ end
 
 function _parse(tag) :: Node
     me = Node(tag)
+    #@debug tag
 
-    if isa(tag, Tag{SEQUENCE}) || isa(tag, Tag{SET}) || isa(tag, Tag{RESERVED_ENC})
+    # TODO check whether the && constructed is described somewhere
+    if isa(tag, Tag{SEQUENCE}) || isa(tag, Tag{SET}) || (isa(tag, Tag{RESERVED_ENC}) && tag.constructed)
         subbuf = DER.Buf(tag.value)
         while !eof(subbuf.iob)
             subtag = DER.next(subbuf)
-            ASN.append!(me, _parse(subtag))
+            if !isa(subtag, Tag{Unimplemented})
+                ASN.append!(me, _parse(subtag))
+            else
+                @debug "trying to parse subtag of", tag
+                @debug "got Unimplemented"
+            end
         end
     elseif isa(tag, Tag{BITSTRING})
         skip_unused_octet = 0
@@ -304,7 +315,6 @@ end
 
 function parse_file_recursive(fn::String) 
     buf = DER.Buf(open(fn))
-    @debug "parsing file ", fn
     tag = DER.next(buf)
     tree = _parse(tag)
     tree

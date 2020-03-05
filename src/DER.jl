@@ -309,22 +309,23 @@ function next!(buf::Buf) :: Union{Tag, Nothing}
     #    @debug "tagclass", tagclass
     #end
 
-    len = Int32(read(buf.iob, 1)[1])
+    lenbyte = Int32(read(buf.iob, 1)[1])
     #if len  == 0x80
     #    @debug "jup"
     #    @warn "indefinite form, BER?"
     #end
-    if len & 0x80 == 0x80 && len != 0x80
+    len = lenbyte
+    if lenbyte & 0x80 == 0x80 && lenbyte != 0x80
         # first bit set, but not 0x80 (Indefinite form) so we are dealing with either a
         # Definite long
         # Reserved
         
         # Reserved:
-        if len == 0xff error("Reserved Length in tag?") end
+        if lenbyte == 0xff error("Reserved Length in tag?") end
         #@debug "definite long form"
 
         # Definite long
-        octets::Array{UInt8,1} = read(buf.iob, len & 0x7f)
+        octets::Array{UInt8,1} = read(buf.iob, lenbyte & 0x7f)
         res::Int64 = 0
         for o in octets
             res = (res << 8) | o
@@ -336,7 +337,7 @@ function next!(buf::Buf) :: Union{Tag, Nothing}
     end
     @assert(len >= 0)
 
-    value = if len == 0x80
+    value = if lenbyte == 0x80
         #@warn "indef len, not reading value"
         []
     elseif tagnumber == 16

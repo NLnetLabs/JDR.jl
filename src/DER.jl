@@ -359,13 +359,15 @@ function next!(buf::Buf) :: Union{Tag, Nothing}
 end
 
 function parse_file(fn::String, maxtags=0)
-    buf = DER.Buf(open(fn))
+    fd = open(fn)
+    buf = DER.Buf(fd)
     tag = DER.next(buf)
     println(tag)
     while !isnothing(tag) && (maxtags==0 || tagcount < maxtags)
         tag = DER.next(buf)
         println(tag)
     end
+    close(fd)
 end
 
 function _parse(tag, nested_indefs::Integer = 0) :: Node
@@ -522,7 +524,9 @@ function _parse!(tag, buf, indef_len = 0, max_read = 0) :: Node
 end
 
 function parse_file_recursive(fn::String) 
-    buf = DER.Buf(open(fn))
+    fd = open(fn)
+    buf = DER.Buf(fd)
+    close(fd)
     #tag = DER.next(buf)
     #tree = _parse(tag)
     #tree

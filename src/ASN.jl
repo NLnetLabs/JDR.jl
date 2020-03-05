@@ -34,7 +34,8 @@ function Base.show(io::IO, n::Node)
 end
 
 
-function print_node(n::Node; traverse::Bool=false, level::Integer=1)
+function print_node(n::Node; traverse::Bool=false, level::Integer=0)
+    #println(level, n)
     println(n)
     if traverse && !isnothing(n.children)
         level += 1
@@ -45,10 +46,9 @@ function print_node(n::Node; traverse::Bool=false, level::Integer=1)
         end
         level -= 1
     end
-
-    if level == 1 
-        println()
-    end
+    #if level == 1 
+    #    #println()
+    #end
 end
 
 

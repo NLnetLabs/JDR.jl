@@ -41,18 +41,45 @@ LONGLENGTH=hex2bytes(b"3082040A")
     @test isequal(tag5.len, 1034)
 end
 
-fn(filename::String) = joinpath(dirname(pathof(JuliASN)), "..", "test", filename)
+fn(filename::String) = joinpath(dirname(pathof(JuliASN)), "..", "test", "testdata", filename)
 
 @testset "RIR TAs" begin
     @debug "RIPE NCC"
     tree = DER.parse_file_recursive(fn("ripe-ncc-ta.cer"))
+    ASN.print_node(tree, traverse=true)
+    
     @debug "ARIN"
     tree = DER.parse_file_recursive(fn("arin-rpki-ta.cer"))
+    ASN.print_node(tree, traverse=true)
     @debug "LACNIC"
     tree = DER.parse_file_recursive(fn("rta-lacnic-rpki.cer"))
+    ASN.print_node(tree, traverse=true)
     @debug "APNIC"
     tree = DER.parse_file_recursive(fn("apnic-rpki-root-iana-origin.cer"))
+    ASN.print_node(tree, traverse=true)
     @debug "AFRINIC"
     tree = DER.parse_file_recursive(fn("AfriNIC.cer"))
-    #ASN.print_node(tree, traverse=true)
+    ASN.print_node(tree, traverse=true)
+end
+
+@testset "others" begin
+    @debug "RIPE NCC manifest"
+    @time tree = DER.parse_file_recursive(fn("ripe-ncc-ta.mft"))
+    ASN.print_node(tree, traverse=true)
+
+    @debug "ARIN manifest"
+    @time tree = DER.parse_file_recursive(fn("arin.mft"))
+    ASN.print_node(tree, traverse=true)
+
+    @debug "LACNIC manifest"
+    @time tree = DER.parse_file_recursive(fn("lacnic.mft"))
+    ASN.print_node(tree, traverse=true)
+
+    @debug "APNIC manifest"
+    @time tree = DER.parse_file_recursive(fn("apnic.mft"))
+    ASN.print_node(tree, traverse=true)
+
+    @debug "AFRINIC manifest"
+    @time tree = DER.parse_file_recursive(fn("afrinic.mft"))
+    ASN.print_node(tree, traverse=true)
 end

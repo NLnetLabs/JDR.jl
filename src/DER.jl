@@ -76,6 +76,7 @@ Tag(class, constructed, number, len, value) :: Tag{<: AbstractTag} = begin
     elseif number   == 4    Tag{OCTETSTRING}
     elseif number   == 5    Tag{NULL}
     elseif number   == 6    Tag{OID}
+    elseif number   == 12   Tag{UTF8STRING}
     elseif number   == 16   Tag{SEQUENCE}
     elseif number   == 17   Tag{SET}
     elseif number   == 22   Tag{IA5STRING}
@@ -128,6 +129,7 @@ value(t::Tag{BOOLEAN}) = t.value[1] != 0
 value(t::Tag{PRINTABLESTRING}) = String(copy(t.value))
 value(t::Tag{UTCTIME}) = String(copy(t.value))
 value(t::Tag{GENTIME}) = String(copy(t.value))
+value(t::Tag{UTF8STRING}) = String(copy(t.value))
 value(t::Tag{IA5STRING}) = String(copy(t.value))
 function value(t::Tag{INTEGER}) where {T}
     if t.len > 5

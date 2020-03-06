@@ -3,11 +3,15 @@ println("testing $(@__FILE__)")
 #using JuliASN
 using JuliASN.ASN
 using JuliASN.DER
+using Glob
 
 # example from wikipedia
 BLOB=hex2bytes(b"3013020105160e416e79626f64792074686572653f")
 LONGFORM=hex2bytes(b"3f5501")
 LONGLENGTH=hex2bytes(b"3082040A")
+
+
+TESTDATA = joinpath(dirname(pathof(JuliASN)), "..", "test", "testdata")
 
 @skip @testset "DER" begin
     b1 = DER.Buf(BLOB)
@@ -43,7 +47,7 @@ end
 
 fn(filename::String) = joinpath(dirname(pathof(JuliASN)), "..", "test", "testdata", filename)
 
-@testset "RIR TAs" begin
+@skip @testset "RIR TAs" begin
     @debug "RIPE NCC"
     tree = DER.parse_file_recursive(fn("ripe-ncc-ta.cer"))
     ASN.print_node(tree, traverse=true)
@@ -62,7 +66,7 @@ fn(filename::String) = joinpath(dirname(pathof(JuliASN)), "..", "test", "testdat
     ASN.print_node(tree, traverse=true)
 end
 
-@testset "others" begin
+@skip @testset "RIR manifests" begin
     @debug "RIPE NCC manifest"
     @time tree = DER.parse_file_recursive(fn("ripe-ncc-ta.mft"))
     ASN.print_node(tree, traverse=true)
@@ -76,10 +80,60 @@ end
     ASN.print_node(tree, traverse=true)
 
     @debug "APNIC manifest"
-    @time tree = DER.parse_file_recursive(fn("apnic.mft"))
+    @time tree = DER.parse_file_recursive(fn("lacnic.mft"))
     ASN.print_node(tree, traverse=true)
 
     @debug "AFRINIC manifest"
     @time tree = DER.parse_file_recursive(fn("afrinic.mft"))
     ASN.print_node(tree, traverse=true)
+
 end
+
+
+function all_rpki_files(dir)
+    all_files = []
+    for d in walkdir(dir), ext in ["cer", "mft", "crl", "roa"]
+        Base.append!(all_files, glob("*.$(ext)", d[1]))
+    end
+    all_files
+end
+
+@testset "Full RPKI repo parse test" begin
+    ROUTINATOR_DIR = "/home/luuk/.rpki-cache/repository/rsync/"
+    @debug "globbing ..."
+    @time all_files = all_rpki_files(ROUTINATOR_DIR)
+    @debug "got  $(length(all_files)) files to check"
+    failed_files = []
+    @time begin
+        parsed = 0
+        for file in all_files
+            try
+                tree = Base.Threads.@spawn DER.parse_file_recursive(file)
+                #tree = DER.parse_file_recursive(file)
+                parsed += 1
+                print("\r$(parsed) parsed")
+            catch e
+                @warn "exception while parsing $(file)"
+                println(e)
+                stacktrace()
+                push!(failed_files, file)
+                #throw(e) # use this to debug
+                break
+            end
+        end
+    end
+    @test isempty(failed_files)
+    for failed_file in failed_files
+        cp(failed_file, joinpath(dirname(pathof(JuliASN)), "..", "test", "testdata", "failed_files", basename(failed_file)))
+    end
+end
+
+
+@testset "Individual file parsing" begin
+    file = fn("afrinic.mft")
+    file = fn("failed_files/9VjbDK9tRIMfvuISNaHQx4TeoqU.roa")
+    @debug "parsing $(file)"
+    @time tree = DER.parse_file_recursive(file)
+    #ASN.print_node(tree, traverse=true)
+end
+

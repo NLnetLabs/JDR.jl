@@ -38,6 +38,7 @@ mutable struct Tag{T}
     constructed::Bool # PC bit
     number::UInt8
     len::Int32
+    len_indef::Bool
     value::Array{UInt8, 1}
 end
 
@@ -69,7 +70,7 @@ struct  UTCTIME         <:  AbstractTag end
 struct  GENTIME         <:  AbstractTag end
 
 
-Tag(class, constructed, number, len, value) :: Tag{<: AbstractTag} = begin
+Tag(class, constructed, number, len, len_indef, value) :: Tag{<: AbstractTag} = begin
     t = if number   == 0    Tag{RESERVED_ENC}
     elseif number   == 1    Tag{BOOLEAN}
     elseif number   == 2    Tag{INTEGER}
@@ -88,7 +89,7 @@ Tag(class, constructed, number, len, value) :: Tag{<: AbstractTag} = begin
     elseif number   in (25:30)   Tag{CHAR}
     else                    Tag{Unimplemented}
     end
-    t(class, constructed, number, len, value)
+    t(class, constructed, number, len, len_indef, value)
 end
 
 #InvalidTag() = Tag{InvalidTag}(0, 0, 0, 0, [])
@@ -316,10 +317,7 @@ function next!(buf::Buf) :: Union{Tag, Nothing}
     #end
 
     lenbyte = Int32(read(buf.iob, 1)[1])
-    #if len  == 0x80
-    #    @debug "jup"
-    #    @warn "indefinite form, BER?"
-    #end
+    len_indef = lenbyte == 0x80
     len = lenbyte
     if lenbyte & 0x80 == 0x80 && lenbyte != 0x80
         # first bit set, but not 0x80 (Indefinite form) so we are dealing with either a
@@ -346,16 +344,16 @@ function next!(buf::Buf) :: Union{Tag, Nothing}
         #error("negative length")
         return Tag{InvalidTag}()
     end
-    if len > buf.iob.size - buf.iob.ptr
-        #@warn "length goes beyond end of buffer, returning InvalidTag"
+    if len > (buf.iob.size - buf.iob.ptr + 1)
+        #@warn "length $(len) goes beyond end of buffer $(buf.iob.size) - $(buf.iob.ptr), returning InvalidTag"
         return Tag{InvalidTag}()
     end
     @assert(len >= 0)
 
-    value = if lenbyte == 0x80
+    value = if len_indef  #lenbyte == 0x80
         #@warn "indef len, not reading value"
         []
-    elseif tagnumber == 16
+    elseif tagnumber == 16 # FIXME also include SET ?
         #@debug "next! for SEQUENCE, _not_ reading value"
         []
     #elseif tagnumber == 0x03 || tagnumber == 0x04
@@ -370,7 +368,7 @@ function next!(buf::Buf) :: Union{Tag, Nothing}
         #read(buf.iob, len)
         []
     end
-    return Tag(tagclass, constructed, tagnumber, len, value)
+    return Tag(tagclass, constructed, tagnumber, len, len_indef, value)
 end
 
 function parse_file(fn::String, maxtags=0)
@@ -437,8 +435,8 @@ function _parse!(tag, buf, indef_len = 0, max_read = 0) :: Node
     me = Node(tag)
     if isa(tag, Tag{SEQUENCE}) || isa(tag, Tag{SET}) ||
         ((isa(tag, Tag{RESERVED_ENC}) || isa(tag, Tag{OCTETSTRING}) || isa(tag, Tag{BITSTRING})) && tag.constructed)
-        if tag.len == 0x80
-            #@debug "indef len, level $(indef_len), whiling inside", tag
+        if tag.len_indef # == 0x80 #FIXME this can be an actual definite length of 0x80
+            @debug "indef len, level $(indef_len), whiling inside", tag
             my_indef_len_level = indef_len
             indef_len += 1
             #@debug "$(indef_len) > $(my_indef_len_level)?"

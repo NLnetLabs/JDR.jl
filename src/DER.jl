@@ -42,6 +42,7 @@ mutable struct Tag{T}
 end
 
 struct  Unimplemented   <:	AbstractTag	end
+struct  InvalidTag      <:	AbstractTag	end
 struct	RESERVED_ENC   	<:	AbstractTag	end
 struct	BOOLEAN        	<:	AbstractTag	end
 struct	INTEGER        	<:	AbstractTag	end
@@ -89,6 +90,9 @@ Tag(class, constructed, number, len, value) :: Tag{<: AbstractTag} = begin
     end
     t(class, constructed, number, len, value)
 end
+
+#InvalidTag() = Tag{InvalidTag}(0, 0, 0, 0, [])
+Tag{InvalidTag}() = Tag{InvalidTag}(0, 0, 0, 0, [])
 
 function Base.show(io::IO, t::Tag{T}) where {T<:AbstractTag}
     print(io, "[$(bitstring(t.class)[7:8])] ")
@@ -323,7 +327,10 @@ function next!(buf::Buf) :: Union{Tag, Nothing}
         # Reserved
         
         # Reserved:
-        if lenbyte == 0xff error("Reserved Length in tag?") end
+        if lenbyte == 0xff
+            @warn "Reserved Length in tag?"
+            return Tag{InvalidTag}()
+        end
         #@debug "definite long form"
 
         # Definite long
@@ -335,7 +342,13 @@ function next!(buf::Buf) :: Union{Tag, Nothing}
         len = res # TODO can this break the stuff below? or trigger it incorrectly?
     end
     if len < 0
-        @warn "negative length tag", tagnumber
+        #@warn "negative length tag $(len) == $(bitstring(len))", tagnumber
+        #error("negative length")
+        return Tag{InvalidTag}()
+    end
+    if len > buf.iob.size - buf.iob.ptr
+        #@warn "length goes beyond end of buffer, returning InvalidTag"
+        return Tag{InvalidTag}()
     end
     @assert(len >= 0)
 
@@ -456,11 +469,9 @@ function _parse!(tag, buf, indef_len = 0, max_read = 0) :: Node
                 subtag = DER.next!(buf)
                 #@debug "got subtag", subtag
                 if !isa(subtag, Tag{Unimplemented})
-                    #@debug "found a ", subtag
                     ASN.append!(me, _parse!(subtag, buf, indef_len))
                 else
-                    #@debug "(def len) trying to parse subtag of", tag
-                    @debug "got Unimplemented at $(buf.iob.ptr), tagnumber | tagclass:", subtag.number | subtag.class
+                    #@debug "got Unimplemented at $(buf.iob.ptr), tagnumber | tagclass:", subtag.number | subtag.class
                     #buf.iob.ptr -= 1
                     #dbg = read(buf.iob, max_read) 
                     #@debug "discarding", dbg
@@ -500,11 +511,20 @@ function _parse!(tag, buf, indef_len = 0, max_read = 0) :: Node
         # because it is primitive, the tag.value has been set
         # and the bytes have been read from buf already
 
+        # TODO perhaps we should only do this for specific files
+        # e.g. in .cer but not in .roa ?
+        # or, really make this a second pass thingy
         if tag.len > 0 && tag.value[1] == 0x30
             #@debug "tag.value for this OCTETSTRING contains SEQUENCE"
             subbuf = DER.Buf(tag.value)
             subtag = DER.next!(subbuf)
-            ASN.append!(me, _parse!(subtag, subbuf, indef_len))
+            if isa(tag, Tag{InvalidTag})
+                @warn "got an InvalidTag, so, NOT an nested SEQUENCE in this OCTETSTRING?"
+            elseif isa(tag, Tag{Unimplemented})
+                @warn "in nested OCTETSTRING, got Unimplemented"
+            else
+                ASN.append!(me, _parse!(subtag, subbuf, indef_len))
+            end
         end
 
 

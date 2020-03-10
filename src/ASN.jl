@@ -22,7 +22,7 @@ function append!(p::Node, c::Node) :: Node
 end
 
 Leaf(t::T) where {T <: Any } = Node(nothing, nothing, t)
-Node(t::T) where {T <: Any } = Node(nothing, [], t)
+Node(t::T) where {T <: Any } = Node(nothing, Vector(undef, 1), t)
 
 
 function Base.show(io::IO, n::Node)

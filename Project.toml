@@ -4,5 +4,9 @@ authors = ["Luuk Hendriks <mail@luukhendriks.eu>"]
 version = "0.1.0"
 
 [deps]
+Coverage = "a2441757-f6aa-5fb2-8edb-039e3f45d037"
+Glob = "c27321d9-0574-5035-807b-f59d2c89b15c"
 Jive = "ba5e3d4b-8524-549f-bc71-e76ad9e9deed"
+Mmap = "a63ad114-7e13-5084-954f-fe012c677804"
+OwnTime = "18732c20-e27e-497f-aa49-3bf01a8fc721"
 Revise = "295af30f-e4ad-537b-8983-00126c2a3abe"

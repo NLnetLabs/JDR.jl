@@ -255,16 +255,6 @@ lazy_iter(tree::Node) = Channel(ctype=Node) do c
             end
         end
 end
-lazy_iter(tree::Node, chan::Channel{Node}) = begin
-    put!(chan, tree)
-    if !isnothing(tree.children)
-        for child in tree.children
-            lazy_iter(child, chan)
-        end
-    end
-end
-
-
 function contains(tree::Node, tagtype::Type{T}, v::Any) where {T<:AbstractTag}
     found = false
     for node in iter(tree)
@@ -275,6 +265,42 @@ function contains(tree::Node, tagtype::Type{T}, v::Any) where {T<:AbstractTag}
     end
     found
 end
+
+# Set of Pairs (tagtype, value)
+function contains_set(tree::Node, tags::Set{Pair{Type{T} where {T<:AbstractTag}, Any}})
+    for node in iter(tree)
+        for (tagtype, v) in tags
+            if node.tag isa Tag{tagtype} && value(node.tag) == v
+                delete!(tags, tagtype => v)
+                break
+            end
+        end
+    end
+    isempty(tags)
+end
+
+function contains_in_order(tree::Node, tags::Vector{Pair{Type{T} where {T<:AbstractTag}, Any}})
+    for node in iter(tree)#,
+        (tagtype, v) = first(tags)
+        if node.tag isa Tag{tagtype} && value(node.tag) == v
+            popfirst!(tags)
+            if isempty(tags) break end
+        end
+    end
+    isempty(tags)
+end
+
+
+lazy_iter(tree::Node, chan::Channel{Node}) = begin
+    put!(chan, tree)
+    if !isnothing(tree.children)
+        for child in tree.children
+            lazy_iter(child, chan)
+        end
+    end
+end
+
+
 function lazy_contains(tree::Node, tagtype::Type{T}, v::Any) where {T<:AbstractTag}
     found = false
     for node in lazy_iter(tree)

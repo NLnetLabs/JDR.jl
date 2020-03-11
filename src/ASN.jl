@@ -6,7 +6,7 @@ abstract type AbstractNode end
 mutable struct Node <: AbstractNode
     parent::Union{Nothing, AbstractNode}
     children::Union{Nothing, Array{Node}}
-    tag::Any
+    tag::Any #FIXME make this a DER.AbstractTag and benchmark
 end
 
 
@@ -22,7 +22,9 @@ function append!(p::Node, c::Node) :: Node
 end
 
 Leaf(t::T) where {T <: Any } = Node(nothing, nothing, t)
-Node(t::T) where {T <: Any } = Node(nothing, Vector(undef, 1), t)
+#Node(t::T) where {T <: Any } = Node(nothing, Vector{Node}(undef, 1), t)
+#Node(t::T) where {T <: Any } = Node(nothing, [], t)
+Node(t::T) where {T <: Any } = Node(nothing, [], t)
 
 
 function Base.show(io::IO, n::Node)
@@ -35,9 +37,9 @@ end
 
 
 function print_node(n::Node; traverse::Bool=false, level::Integer=0)
-    #println(level, n)
-    println(n)
+    #println(n)
     if traverse && !isnothing(n.children)
+        println(level, n) #FIXME is there an extra node at the end at level 0?
         level += 1
         for (i, c) in enumerate(n.children)
             print(repeat("  ", level))
@@ -51,6 +53,19 @@ function print_node(n::Node; traverse::Bool=false, level::Integer=0)
     #end
 end
 
+
+####################
+# validation helpers
+####################
+# TODO move Tag{} to ASN.jl
+# that way, we can use the type here
+# and it is also more correct (the Tags are ASN, not DER)
+function contains(t::Node, s::String)
+    found = false
+    while !found
+        
+    end
+end
 
 
 end # module

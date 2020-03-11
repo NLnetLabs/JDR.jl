@@ -1,5 +1,8 @@
 module DER
 using ..ASN
+using Mmap
+
+export Tag, AbstractTag
 # Possible/common mistakes or violations:
 # - a primitive BITSTRING actually containing other tags (thus being constructed)
 # - encapsulating OCTETSTRINGS?
@@ -24,6 +27,12 @@ end
 
 Buf(b::Array{UInt8,1})  = Buf(IOBuffer(b))
 Buf(s::IOStream)        = Buf(IOBuffer(read(s)))
+#Buf(s::IOStream)        = Buf(IOBuffer(Mmap.mmap(s, Vector{UInt8})))
+#
+function lookahead(buf::Buf) :: UInt8
+    buf.iob.ptr += 1 
+    buf.iob.data[buf.iob.ptr - 1]
+end
 
 struct NotImplementedYetError <: Exception
     msg::String
@@ -33,13 +42,13 @@ Base.showerror(io::IO, e::NotImplementedYetError) = print(io, "Not Yet Implement
 
 
 abstract type AbstractTag end 
-mutable struct Tag{T}
+struct Tag{T}
     class::UInt8
     constructed::Bool # PC bit
     number::UInt8
     len::Int32
     len_indef::Bool
-    value::Array{UInt8, 1}
+    value::Union{Nothing, Array{UInt8, 1}}
 end
 
 struct  Unimplemented   <:	AbstractTag	end
@@ -71,7 +80,7 @@ struct  GENTIME         <:  AbstractTag end
 
 
 Tag(class, constructed, number, len, len_indef, value) :: Tag{<: AbstractTag} = begin
-    t = if number   == 0    Tag{RESERVED_ENC}
+    t = if number   == 0    Tag{RESERVED_ENC} 
     elseif number   == 1    Tag{BOOLEAN}
     elseif number   == 2    Tag{INTEGER}
     elseif number   == 3    Tag{BITSTRING}
@@ -209,19 +218,40 @@ function value(t::Tag{OID})
 end
 
 function next!(buf::Buf) :: Union{Tag{<:AbstractTag}, Nothing}
-    if eof(buf.iob)
-        return nothing
-    end
-    first_byte = read(buf.iob, 1)[1]
+    _tmp = Vector{UInt8}(undef, 1) 
+    #if eof(buf.iob) 
+    #    @warn "wat"
+    #    return nothing
+    #end
+    readbytes!(buf.iob, _tmp, 1) 
+    #first_byte = read(buf.iob, 1)[1] 
+    first_byte = _tmp[1] 
+    
+    #first_byte = buf.iob.data[buf.iob.ptr]  #FIXME make Buf.lookahead or something
+                                            # that also does the ptr++
+    #buf.iob.ptr += 1
+    #first_byte = lookahead(buf)
+
     tagclass    = first_byte  >> 6; # bit 8-7
     constructed = first_byte & 0x20 == 0x20 # bit 6
     tagnumber   = first_byte & 0x1f # bit 5-0
     if tagnumber == 31
         longtag = 0
-        byte = read(buf.iob, 1)[1]
+        #readbytes!(buf.iob, _tmp, 1)
+        #byte = read(buf.iob, 1)[1]
+        #byte =_tmp[1]
+        
+        #byte = buf.iob.data[buf.iob.ptr]
+        #buf.iob.ptr += 1
+
+        byte = lookahead(buf)
         while byte & 0x80 == 0x80 # first bit is 1
             longtag = (longtag << 7) | (byte & 0x7f) # take the last 7 bits
-            byte = read(buf.iob, 1)[1]
+            #byte = read(buf.iob, 1)[1]
+            #readbytes!(buf.iob, _tmp, 1)
+            #byte = _tmp[1]
+            byte = buf.iob.data[buf.iob.ptr]
+            buf.iob.ptr += 1
         end
         tagnumber = (longtag << 7) | (byte & 0x7f) # take the last 7 bits
     end
@@ -229,11 +259,15 @@ function next!(buf::Buf) :: Union{Tag{<:AbstractTag}, Nothing}
     #    @debug "tagclass", tagclass
     #end
 
-    lenbyte = Int32(read(buf.iob, 1)[1])
+    #readbytes!(buf.iob, _tmp, 1) 
+    #lenbyte = Int32(read(buf.iob, 1)[1]) 
+    #lenbyte = Int32(_tmp[1])
+    lenbyte = buf.iob.data[buf.iob.ptr]
+    buf.iob.ptr += 1
     len_indef = lenbyte == 0x80
     len = lenbyte
 
-    if lenbyte & 0x80 == 0x80 && lenbyte != 0x80
+    if lenbyte & 0x80 == 0x80 && lenbyte != 0x80 
         # first bit set, but not 0x80 (Indefinite form) so we are dealing with either a
         # Definite long
         # Reserved
@@ -257,7 +291,7 @@ function next!(buf::Buf) :: Union{Tag{<:AbstractTag}, Nothing}
         #@warn "negative length tag $(len) == $(bitstring(len))", tagnumber
         #error("negative length")
         return Tag{InvalidTag}()
-    elseif len > (buf.iob.size - buf.iob.ptr + 1)
+    elseif len > (buf.iob.size - buf.iob.ptr + 1) 
         #@warn "length $(len) goes beyond end of buffer $(buf.iob.size) - $(buf.iob.ptr), returning InvalidTag"
         return Tag{InvalidTag}()
     end
@@ -268,21 +302,23 @@ function next!(buf::Buf) :: Union{Tag{<:AbstractTag}, Nothing}
         []
     elseif tagnumber == 16 # FIXME also include SET ?
         #@debug "next! for SEQUENCE, _not_ reading value"
-        []
+        #[] 
+        nothing
     elseif !constructed
         #@debug "primitive $(tagnumber), reading value of len $(len)"
-        read(buf.iob, len)
+        read(buf.iob, len) 
     else
         #@warn "constructed, def len, NOT reading value, but should we get here?"
         #read(buf.iob, len)
-        []
+        #[]
+        nothing
     end
     return Tag(tagclass, constructed, tagnumber, len, len_indef, value)
 end
 
 function _parse!(tag, buf, indef_stack = 0, recurse_into_octetstring = false) :: Node
     #@debug tag
-    me = Node(tag)
+    me = Node(tag) 
     if isa(tag, Tag{SEQUENCE}) || isa(tag, Tag{SET}) ||
         ((isa(tag, Tag{RESERVED_ENC}) || isa(tag, Tag{OCTETSTRING}) || isa(tag, Tag{BITSTRING})) && tag.constructed)
         if tag.len_indef # == 0x80 #FIXME this can be an actual definite length of 0x80
@@ -310,7 +346,7 @@ function _parse!(tag, buf, indef_stack = 0, recurse_into_octetstring = false) ::
             #@debug "def len, whiling inside", tag
             offset = buf.iob.ptr
             tmp_protect = 0
-            while buf.iob.ptr < offset+tag.len && tmp_protect < 99999  #&& !eof(buf.iob) 
+            while buf.iob.ptr < offset+tag.len && tmp_protect < 99999  
                 #@debug "in while at $(buf.iob.ptr) / $(offset+tag.len)"
                 subtag = DER.next!(buf)
                 #@debug "got subtag", subtag
@@ -385,20 +421,22 @@ function _parse!(tag, buf, indef_stack = 0, recurse_into_octetstring = false) ::
 end
 
 function parse_file_recursive(fn::String) 
-    recurse_into_octetstring = splitext(fn)[2] == "cer"
+    recurse_into_octetstring = splitext(fn)[2] == "cer" #FIXME malloc
     fd = open(fn)
+    #mmapraw = Mmap.mmap(fd, Vector{UInt8})
+    #buf = DER.Buf(mmapraw)
     buf = DER.Buf(fd)
-    close(fd)
-    #tag = DER.next(buf)
-    #tree = _parse(tag)
-    #tree
     tag = DER.next!(buf)
+
     indef_stack = if tag.len == 0x80
         1
     else
         0
     end
 
+    close(fd)
+    
+    # this returns the actual tree, so it MUST be the last statement
     _parse!(tag, buf, indef_stack, recurse_into_octetstring)
 end
 

@@ -98,7 +98,7 @@ function all_rpki_files(dir)
     all_files
 end
 
-@testset "Full RPKI repo parse test" begin
+@skip @testset "Full RPKI repo parse test" begin
     ROUTINATOR_DIR = "/home/luuk/.rpki-cache/repository/rsync/"
     @debug "globbing ..."
     @time all_files = all_rpki_files(ROUTINATOR_DIR)

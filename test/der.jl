@@ -108,8 +108,9 @@ end
         parsed = 0
         for file in all_files
             try
-                tree = Base.Threads.@spawn DER.parse_file_recursive(file)
-                #tree = DER.parse_file_recursive(file)
+                #tree = Base.Threads.@spawn DER.parse_file_recursive(file)
+                ##FIXME we need a @sync to catch the exceptions..
+                tree = DER.parse_file_recursive(file)
                 parsed += 1
                 print("\r$(parsed) parsed")
             catch e
@@ -117,23 +118,26 @@ end
                 println(e)
                 stacktrace()
                 push!(failed_files, file)
-                #throw(e) # use this to debug
-                break
+                throw(e) # use this to debug
+                #break
             end
         end
-    end
-    @test isempty(failed_files)
-    for failed_file in failed_files
-        cp(failed_file, joinpath(dirname(pathof(JuliASN)), "..", "test", "testdata", "failed_files", basename(failed_file)))
-    end
+    end # @time
+    GC.gc() # FIXME this is to clean up file descriptors when using Mmap,
+            # is this a bug?
+            
+    #@test isempty(failed_files)
+    #for failed_file in failed_files
+    #    cp(failed_file, joinpath(dirname(pathof(JuliASN)), "..", "test", "testdata", "failed_files", basename(failed_file)))
+    #end
 end
 
 
 @testset "Individual file parsing" begin
     file = fn("afrinic.mft")
-    file = fn("failed_files/9VjbDK9tRIMfvuISNaHQx4TeoqU.roa")
+    #file = fn("failed_files/9VjbDK9tRIMfvuISNaHQx4TeoqU.roa")
     @debug "parsing $(file)"
     @time tree = DER.parse_file_recursive(file)
-    #ASN.print_node(tree, traverse=true)
+    ASN.print_node(tree, traverse=true)
 end
 

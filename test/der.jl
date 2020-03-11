@@ -126,14 +126,14 @@ end
     GC.gc() # FIXME this is to clean up file descriptors when using Mmap,
             # is this a bug?
             
-    #@test isempty(failed_files)
+    @test isempty(failed_files)
     #for failed_file in failed_files
     #    cp(failed_file, joinpath(dirname(pathof(JuliASN)), "..", "test", "testdata", "failed_files", basename(failed_file)))
     #end
 end
 
 
-@testset "Individual file parsing" begin
+@skip @testset "Individual file parsing" begin
     file = fn("afrinic.mft")
     #file = fn("failed_files/9VjbDK9tRIMfvuISNaHQx4TeoqU.roa")
     @debug "parsing $(file)"
@@ -141,3 +141,11 @@ end
     ASN.print_node(tree, traverse=true)
 end
 
+@testset "Content validation" begin
+    #PrintableString ripe-ncc-ta
+    file = fn("ripe-ncc-ta.cer")
+    @debug "parsing $(file)"
+    @time tree = DER.parse_file_recursive(file)
+    #ASN.print_node(tree, traverse=true)
+    @test isequal(ASN.contains(tree, ASN.PRINTABLESTRING, "ripe-ncc-ta"), true)
+end

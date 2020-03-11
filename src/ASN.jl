@@ -1,6 +1,6 @@
 module ASN
 
-export Tag, AbstractTag, Node, Leaf, print_node, append!, isleaf, parent
+export Tag, AbstractTag, Node, Leaf, print_node, append!, isleaf, parent, iter, lazy_iter
 export Unimplemented, InvalidTag, SEQUENCE, SET, RESERVED_ENC, OCTETSTRING, BITSTRING
 
 abstract type AbstractTag end 
@@ -235,36 +235,52 @@ end
 ####################
 # validation helpers
 ####################
-# TODO move Tag{} to ASN.jl
-# that way, we can use the type here
-# and it is also more correct (the Tags are ASN, not DER)
-#
 
 function iter(tree::Node) 
-        result = [tree]
+    result = [tree]
+    if !isnothing(tree.children)
+        for (i, c) in enumerate(tree.children)
+            Base.append!(result, iter(c))
+        end
+    end
+    #@debug "result of size $(length(result))"
+    result
+end
+
+lazy_iter(tree::Node) = Channel(ctype=Node) do c
+    put!(c, tree)
         if !isnothing(tree.children)
-            for (i, c) in enumerate(tree.children)
-                Base.append!(result, iter(c))
+            for child in tree.children
+                lazy_iter(child, c)
             end
         end
-        #@debug "result of size $(length(result))"
-        result
 end
+lazy_iter(tree::Node, chan::Channel{Node}) = begin
+    put!(chan, tree)
+    if !isnothing(tree.children)
+        for child in tree.children
+            lazy_iter(child, chan)
+        end
+    end
+end
+
 
 function contains(tree::Node, tagtype::Type{T}, v::Any) where {T<:AbstractTag}
     found = false
     for node in iter(tree)
-        if node.tag isa Tag{tagtype}
-            @debug "found a $(tagtype)"
-            if value(node.tag) == v
-                @debug "value is indeed $(v) !"
-                found = true
-                break
-            else
-                @debug "but value is $(node.tag.value)"
-            end
-        else
-            #@debug "not a $(Tag{tagtype}) but a $(typeof(node.tag))"
+        if node.tag isa Tag{tagtype} && value(node.tag) == v
+            found = true
+            break
+        end
+    end
+    found
+end
+function lazy_contains(tree::Node, tagtype::Type{T}, v::Any) where {T<:AbstractTag}
+    found = false
+    for node in lazy_iter(tree)
+        if node.tag isa Tag{tagtype} && value(node.tag) == v
+            found = true
+            break
         end
     end
     found

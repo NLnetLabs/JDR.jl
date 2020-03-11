@@ -142,10 +142,22 @@ end
 end
 
 @testset "Content validation" begin
-    #PrintableString ripe-ncc-ta
     file = fn("ripe-ncc-ta.cer")
     @debug "parsing $(file)"
     @time tree = DER.parse_file_recursive(file)
-    #ASN.print_node(tree, traverse=true)
-    @test isequal(ASN.contains(tree, ASN.PRINTABLESTRING, "ripe-ncc-ta"), true)
+    @test @time isequal(ASN.contains(tree, ASN.PRINTABLESTRING, "ripe-ncc-ta"), true)
+end
+using BenchmarkTools
+@testset "lazy Content validation" begin
+    file = fn("ripe-ncc-ta.cer")
+    @debug "parsing $(file)"
+    @time tree = DER.parse_file_recursive(file)
+    @test @time isequal(ASN.lazy_contains(tree, ASN.PRINTABLESTRING, "ripe-ncc-ta"), true)
+
+    @test isequal(length(collect(ASN.lazy_iter(tree))), length(collect(ASN.iter(tree))))
+    @debug "btime for iter:"
+    @btime ASN.iter(tree)
+    @debug "btime for lazy_iter:"
+    @btime ASN.lazy_iter(tree)
+
 end

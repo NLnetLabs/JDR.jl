@@ -73,19 +73,4 @@ function check(::RPKIObject{T}) where {T}
     @warn "unknown RPKIObject type"
 end
 
-#function check(::MFT, tree::AbstractNode) :: RPKIObject
-#    @debug "check MFT"
-#    o
-#end
-
-
-#function check(filename::String) :: RPKIObject
-#    tree = DER.parse_file_recursive(filename)
-#    filetype = lowercase(splitext(filename)[2])
-#    obj = RPKIObject(tree, filetype) 
-#    @debug obj, typeof(tree)
-#    check(obj)
-#    #check(RPKIObject(tree, filetype))
-#end
-
 end # module

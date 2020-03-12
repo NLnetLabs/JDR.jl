@@ -248,14 +248,6 @@ function print_node(n::Node; traverse::Bool=false, level::Integer=0)
 end
 
 
-######################
-# RPKI Objects / files
-######################
-
-
-# moved to src/RPKI.jl
-
-
 ####################
 # validation helpers
 ####################

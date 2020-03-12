@@ -117,8 +117,9 @@ end
                 print("\r$(parsed) parsed")
             catch e
                 @warn "exception while parsing $(file)"
-                println(e)
-                stacktrace()
+                #println(e)
+                #stacktrace()
+                showerror(stderr, e, catch_backtrace())
                 push!(failed_files, file)
                 throw(e) # use this to debug
                 #break

@@ -1,6 +1,8 @@
 module ASN
 
-export Tag, AbstractTag, Node, Leaf, print_node, append!, isleaf, parent, iter, lazy_iter
+export Tag, AbstractTag, Node, AbstractNode, Leaf
+export print_node, append!, isleaf, parent, iter, lazy_iter
+
 export Unimplemented, InvalidTag, SEQUENCE, SET, RESERVED_ENC, OCTETSTRING, BITSTRING
 
 abstract type AbstractTag end 
@@ -185,6 +187,7 @@ mutable struct Node <: AbstractNode
     parent::Union{Nothing, AbstractNode}
     children::Union{Nothing, Array{Node}}
     tag::Any #FIXME make this a DER.AbstractTag and benchmark
+    remarks::Union{Nothing, Vector{String}}
 end
 
 
@@ -199,17 +202,21 @@ function append!(p::Node, c::Node) :: Node
     p
 end
 
-Leaf(t::T) where {T <: Any } = Node(nothing, nothing, t)
+#Leaf(t::T) where {T <: Any } = Node(nothing, nothing, t, nothing)
 #Node(t::T) where {T <: Any } = Node(nothing, Vector{Node}(undef, 1), t)
 #Node(t::T) where {T <: Any } = Node(nothing, [], t)
-Node(t::T) where {T <: Any } = Node(nothing, [], t)
+Node(t::T) where {T <: Any } = Node(nothing, [], t, nothing)
 
 
 function Base.show(io::IO, n::Node)
     if !isnothing(n.tag)
         print(io, n.tag)
+        if !isnothing(n.remarks) && !isempty(n.remarks)
+            printstyled(io, " [$(length(n.remarks))] "; color=:red)
+            printstyled(io, n.remarks[1]; color=:yellow)
+        end
     else
-        print(io, "__")
+        print(io, "__EMPTY NODE__")
     end
 end
 
@@ -230,6 +237,14 @@ function print_node(n::Node; traverse::Bool=false, level::Integer=0)
     #    #println()
     #end
 end
+
+
+######################
+# RPKI Objects / files
+######################
+
+
+# moved to src/RPKI.jl
 
 
 ####################

@@ -3,6 +3,8 @@ println("testing $(@__FILE__)")
 #using JuliASN
 using JuliASN.ASN
 using JuliASN.DER
+using JuliASN.RPKI
+
 using Glob
 
 # example from wikipedia
@@ -173,5 +175,11 @@ using BenchmarkTools
     @btime ASN.iter(tree)
     @debug "btime for lazy_iter:"
     @btime ASN.lazy_iter(tree)
+end
 
+
+@testset "Object checks" begin
+    file = fn("ripe-ncc-ta.cer")
+    r = RPKI.RPKIObject(file)
+    RPKI.check(r)
 end

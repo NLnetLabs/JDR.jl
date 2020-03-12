@@ -2,6 +2,7 @@ module ASN
 
 export Tag, AbstractTag, Node, AbstractNode, Leaf
 export print_node, append!, isleaf, parent, iter, lazy_iter
+export remark!
 
 export Unimplemented, InvalidTag, SEQUENCE, SET, RESERVED_ENC, OCTETSTRING, BITSTRING
 
@@ -202,6 +203,14 @@ function append!(p::Node, c::Node) :: Node
     p
 end
 
+function remark!(n::Node, remark::String)
+    if isnothing(n.remarks)
+        n.remarks = [remark]
+    else
+        push!(n.remarks, remark)
+    end
+end
+
 #Leaf(t::T) where {T <: Any } = Node(nothing, nothing, t, nothing)
 #Node(t::T) where {T <: Any } = Node(nothing, Vector{Node}(undef, 1), t)
 #Node(t::T) where {T <: Any } = Node(nothing, [], t)
@@ -213,7 +222,7 @@ function Base.show(io::IO, n::Node)
         print(io, n.tag)
         if !isnothing(n.remarks) && !isempty(n.remarks)
             printstyled(io, " [$(length(n.remarks))] "; color=:red)
-            printstyled(io, n.remarks[1]; color=:yellow)
+            printstyled(io, n.remarks[end]; color=:yellow)
         end
     else
         print(io, "__EMPTY NODE__")

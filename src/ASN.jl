@@ -114,7 +114,7 @@ function value(t::Tag{INTEGER}) where {T}
     if t.len > 5
         "$(t.len * 8)bit integer" #FIXME not accurate, perhaps the lenbytes itself cause that
     else
-        reinterpret(Int64, resize!(reverse(t.value), 8))
+        reinterpret(Int64, resize!(reverse(t.value), 8))[1]
     end
 end
 

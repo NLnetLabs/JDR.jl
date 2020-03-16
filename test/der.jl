@@ -183,4 +183,5 @@ end
     file = fn("ripe-ncc-ta.cer")
     r = RPKI.RPKIObject(file)
     RPKI.check(r)
+    ASN.print_node(r.tree, traverse=true)
 end

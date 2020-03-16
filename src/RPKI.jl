@@ -183,6 +183,71 @@ function checkTbsCertificate(tree::Node)
     tagvalue(encaps_exponent, ASN.INTEGER, 65_537)
 
 
+    # issuerUniqueID [1]
+    # TODO
+
+    # subjectUniqueID [2]
+    # TODO
+
+    # extensions [3]
+    # MUST be present
+    extensions = chd[8]
+    tagis_contextspecific(extensions, 0x3)
+    DER.parse_value!(extensions)
+
+    # RFC 6487 4.8.1 unclear:
+    #   'The issuer determines whether the "cA" boolean is set.'
+    # if this extension is here, the value is always true?
+    # so the boolean is actually sort of redundant?
+    # because when the subject is not a CA, this extension MUST NOT be here
+    
+    # Subject Key Identifier, MUST appear
+    check_extension(extensions, "2.5.29.14") # non-critical, 160bit SHA-1
+
+    # Authority Key Identifier
+	# RFC 6487:
+	#  This extension MUST appear in all resource certificates, with the
+	#  exception of a CA who issues a "self-signed" certificate.  In a self-
+	#  signed certificate, a CA MAY include this extension, and set it equal
+	#  to the Subject Key Identifier.
+	#  check_extension(extensions, 
+
+	# Key Usage, MUST appear
+	# RFC 6487:
+	#  In certificates issued to certification authorities only, the
+	#  keyCertSign and CRLSign bits are set to TRUE, and these MUST be the
+	#  only bits set to TRUE.
+	#
+	#  In EE certificates, the digitalSignature bit MUST be set to TRUE and
+	#  MUST be the only bit set to TRUE.
+	check_extension(extensions, "2.5.29.15") # critical, 1byte BITSTRING
+
+	# Extended Key Usage
+	# may only appear in specific certs
+	# TODO should we check for this NOT being here then?
+
+    # CRL Distribution Points
+    # MUST be present, except in self-signed
+    # TODO so are the RIR TA .cers all self-signed?
+
+    # Authority Information Access
+    # non critical
+
+    # Subject Information Access, MUST be present
+    ## SIA for CA Certificates MUST be present, MUST be non-critical
+    ### MUST have an caRepository (OID 1.3.6.1.5.5.7.48.5)
+    ### MUST have a rpkiManifest (OID 1.3.6.1.5.5.7.48.10) pointing to an rsync uri
+    # TODO rrdp stuff is in another RFC
+    
+    ## SIA for EE Certificates MUST be present, MUST be non-critical
+    #TODO set up test with EE cert 
+
+    # Certificate Policies MUST present+critical
+    # MUST contain one policy, RFC6484
+
+    # IP + AS resources
+    # one or both MUST be present+critical
+    # RFC 3779
 
 end
 

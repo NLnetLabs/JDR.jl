@@ -129,6 +129,9 @@ function next!(buf::Buf) :: Union{Tag{<:AbstractTag}, Nothing}
         #@debug "next! for SEQUENCE, _not_ reading value"
         #[] 
         nothing
+    elseif constructed && tagclass == 0x02
+        #@debug "here with len $(len)"
+        read(buf.iob, len) 
     elseif !constructed
         #@debug "primitive $(tagnumber), reading value of len $(len)"
         read(buf.iob, len) 
@@ -145,7 +148,8 @@ function _parse!(tag, buf, indef_stack = 0, recurse_into_octetstring = false) ::
     #@debug tag
     me = Node(tag) 
     if isa(tag, Tag{SEQUENCE}) || isa(tag, Tag{SET}) ||
-        ((isa(tag, Tag{RESERVED_ENC}) || isa(tag, Tag{OCTETSTRING}) || isa(tag, Tag{BITSTRING})) && tag.constructed)
+        ((#isa(tag, Tag{RESERVED_ENC}) ||
+          isa(tag, Tag{OCTETSTRING}) || isa(tag, Tag{BITSTRING})) && tag.constructed && !(tag.class == 0x02))
         if tag.len_indef # == 0x80 #FIXME this can be an actual definite length of 0x80
             #@debug "indef len, level $(indef_stack), whiling inside", tag
             my_indef_stack_level = indef_stack
@@ -274,6 +278,11 @@ function parse_append!(buf::Buf, parent::Node)
     end
     result = _parse!(tag, buf, indef_stack)
     ASN.append!(parent, result)
+end
+function parse_value!(node::Node)
+    #@debug node.tag.value
+    buf = DER.Buf(node.tag.value)
+    parse_append!(buf, node)
 end
 
 end #module

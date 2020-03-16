@@ -26,6 +26,11 @@ function tagisa(node::Node, t::Type)
         remark!(node, "expected this to be a $(nameof(t))")
     end
 end
+function tagis_contextspecific(node::Node, tagnum::UInt8)
+    if !(node.tag isa Tag{ASN.CONTEXT_SPECIFIC} && node.tag.number == tagnum)
+        remark!(node, "expected this to be a Context-Specific tag number $(tagnum)")
+    end
+end
 function tagisa(node::Node, ts::Vector{DataType})
     for t in ts
         if node.tag isa Tag{t}
@@ -102,8 +107,12 @@ function checkTbsCertificate(tree::Node)
     chd = tree.children
 
     # Version == 0x02? (meaning version 3)
-    tagisa(chd[1], ASN.RESERVED_ENC)
+    #tagisa(chd[1], ASN.RESERVED_ENC)
+    tagis_contextspecific(chd[1], 0x0)
+    DER.parse_value!(chd[1])
     tagvalue(chd[1].children[1], ASN.INTEGER, 0x02)
+    #encaps_buf = DER.Buf(chd[7].children[2].tag.value[2:end])
+    #DER.parse_append!(encaps_buf, chd[7].children[2])
 
     # Serial number
     tagisa(chd[2], ASN.INTEGER)

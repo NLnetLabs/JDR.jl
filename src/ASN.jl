@@ -19,6 +19,9 @@ end
 
 struct  Unimplemented   <:	AbstractTag	end
 struct  InvalidTag      <:	AbstractTag	end
+
+struct CONTEXT_SPECIFIC <:  AbstractTag end
+
 struct	RESERVED_ENC   	<:	AbstractTag	end
 struct	BOOLEAN        	<:	AbstractTag	end
 struct	INTEGER        	<:	AbstractTag	end
@@ -64,7 +67,13 @@ Tag(class, constructed, number, len, len_indef, value) :: Tag{<: AbstractTag} = 
     elseif number   in (25:30)   Tag{CHAR}
     else                    Tag{Unimplemented}
     end
-    t(class, constructed, number, len, len_indef, value)
+    if class == 0x00 # Universal
+        t(class, constructed, number, len, len_indef, value)
+    elseif class == 0x02 # Context-specific
+        Tag{CONTEXT_SPECIFIC}(class, constructed, number, len, len_indef, value)
+    else
+        @error "implement me"
+    end
 end
 
 #InvalidTag() = Tag{InvalidTag}(0, 0, 0, 0, [])
@@ -88,8 +97,9 @@ function Base.show(io::IO, ::MIME"text/plain", ts::Array{Tag{T},1}) where {T<:Ab
         print(io, "\n")
     end
 end
-Base.show(io::IO, t::Tag{Unimplemented}) = print(io, "Unimplemented tag $(t.number) ($(t.len))")
-Base.show(io::IO, t::Tag{NULL}) where {T} = print(io, "NULL")
+Base.show(io::IO, t::Tag{CONTEXT_SPECIFIC})     = print(io, "CONTEXT-SPECIFIC [$(t.number)]")
+Base.show(io::IO, t::Tag{Unimplemented})    = print(io, "Unimplemented tag $(t.number) ($(t.len))")
+Base.show(io::IO, t::Tag{NULL}) where {T}   = print(io, "NULL")
 function Base.show(io::IO, t::Tag{BITSTRING})
     print(io, "BITSTRING: ")
     if t.constructed

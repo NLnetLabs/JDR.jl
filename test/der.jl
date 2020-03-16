@@ -184,4 +184,5 @@ end
     r = RPKI.RPKIObject(file)
     RPKI.check(r)
     ASN.print_node(r.tree, traverse=true)
+    #@test isequal(length( #TODO implement get_all_remarks, check length == 0
 end

@@ -153,6 +153,27 @@ function checkTbsCertificate(tree::Node)
     #  TODO can we check on this? not here, but in a later stage?
     containAttributeTypeAndValue(chd[6], "2.5.4.3", ASN.PRINTABLESTRING)
 
+    # SubjectPublicKeyInfo
+    # AlgorithmIdentifier + BITSTRING
+    tagisa(chd[7], ASN.SEQUENCE)
+    tagisa(chd[7].children[1], ASN.SEQUENCE)
+    # FIXME: RFC6485 is not quite clear on which OID we should expect here..
+    tagvalue(chd[7].children[1].children[1], ASN.OID, "1.2.840.113549.1.1.1")
+    tagisa(chd[7].children[1].children[2], ASN.NULL)
+    tagisa(chd[7].children[2], ASN.BITSTRING)
+    # here we go for a second pass:
+    # skip the first byte as it will be 0,
+    #   indicating the number if unused bits in the last byte
+    
+    encaps_buf = DER.Buf(chd[7].children[2].tag.value[2:end])
+    DER.parse_append!(encaps_buf, chd[7].children[2])
+   
+    encaps_modulus  = chd[7].children[2].children[1].children[1]
+    encaps_exponent = chd[7].children[2].children[1].children[2]
+    # RFC6485:the exponent MUST be 65537
+    tagvalue(encaps_exponent, ASN.INTEGER, 65_537)
+
+
 
 end
 

@@ -2,8 +2,6 @@ module DER
 using ..ASN
 using Mmap
 
-#export Tag, AbstractTag # moved to ASN.jl
-
 # Possible/common mistakes or violations:
 # - a primitive BITSTRING actually containing other tags (thus being constructed)
 # - encapsulating OCTETSTRINGS?
@@ -265,6 +263,17 @@ function parse_file_recursive(fn::String)
     
     # this returns the actual tree, so it MUST be the last statement
     _parse!(tag, buf, indef_stack, recurse_into_octetstring)
+end
+
+function parse_append!(buf::Buf, parent::Node)
+    tag = DER.next!(buf)
+    indef_stack = if tag.len == 0x80
+        1
+    else
+        0
+    end
+    result = _parse!(tag, buf, indef_stack)
+    ASN.append!(parent, result)
 end
 
 end #module

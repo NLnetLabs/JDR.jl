@@ -20,10 +20,20 @@ function RPKIObject(filename::String)::RPKIObject
     end
 end
 
+# TODO implement optional custom remark::String
 function tagisa(node::Node, t::Type)
     if !(node.tag isa Tag{t})
         remark!(node, "expected this to be a $(nameof(t))")
     end
+end
+function tagisa(node::Node, ts::Vector{DataType})
+    for t in ts
+        if node.tag isa Tag{t}
+            return
+        end
+    end
+    #remark!(node, "expected this to be a $(nameof(t))")
+    remark!(node, "unexpected type $(nameof(typeof(node.tag).parameters[1]))")
 end
 
 function tagvalue(node::Node, t::Type, v::Any)
@@ -85,37 +95,29 @@ function containAttributeTypeAndValue(node::Node, oid::String, t::Type)
     end
 end
 
+function checkTbsCertificate(tree::Node)
+    #TODO can we do some funky multilevel indexing
+    # like chd[1][2] to get the second grandchild of the first child?
 
-function check(o::RPKIObject{CER}) :: RPKIObject
-    @debug "check CER"
-    # The certificate should consist of three parts: (RFC5280)
-	# Certificate  ::=  SEQUENCE  {
-	#      tbsCertificate       TBSCertificate,
-	#      signatureAlgorithm   AlgorithmIdentifier,
-	#      signature            BIT STRING  }
-    
-    #checkchildren(o.tree, 3) # alternative to the popfirst! below
-    nodes = ASN.iter(o.tree)
-    checkchildren(popfirst!(nodes), 3)
+    chd = tree.children
 
-    # First of the three is the TBSCertificate
-    tagisa(popfirst!(nodes), ASN.SEQUENCE)
     # Version == 0x02? (meaning version 3)
-    tagisa(popfirst!(nodes), ASN.RESERVED_ENC)
-    tagvalue(popfirst!(nodes), ASN.INTEGER, 0x02) 
-    # Serial number
-    tagisa(popfirst!(nodes), ASN.INTEGER) #TODO must be positive and unique, RFC6487
-    # Signature AlgorithmIdentifier
-    tagisa(popfirst!(nodes), ASN.SEQUENCE)
-    # OID must be RSA with SHA256 (RFC6485)
-    tagvalue(popfirst!(nodes), ASN.OID, "1.2.840.113549.1.1.11")
-    # parameters MUST be present and MUST be NULL (RFC4055):
-    tagisa(popfirst!(nodes), ASN.NULL)
+    tagisa(chd[1], ASN.RESERVED_ENC)
+    tagvalue(chd[1].children[1], ASN.INTEGER, 0x02)
 
-    # issuer = Name = RDNSequence = SEQUENCE OF RelativeDistinguishedName
-    tagisa(popfirst!(nodes), ASN.SEQUENCE)
-	issuer = popfirst!(nodes)
-    tagisa(issuer, ASN.SET) 
+    # Serial number
+    tagisa(chd[2], ASN.INTEGER)
+
+    # Signature AlgorithmIdentifier
+    # SEQ / OID / NULL
+    tagisa(chd[3], ASN.SEQUENCE)
+    tagvalue(chd[3].children[1], ASN.OID, "1.2.840.113549.1.1.11")
+    tagisa(chd[3].children[2], ASN.NULL)
+
+    # Issuer = Name = RDNSequence = SEQUENCE OF RelativeDistinguishedName
+    tagisa(chd[4], ASN.SEQUENCE)
+    issuer_set = chd[4].children[1] 
+    tagisa(issuer_set, ASN.SET)
         # it's a SET of AttributeTypeAndValue 
         # which is a SEQUENCE of type (OID) + value (ANY)
         # from RFC6487:
@@ -126,29 +128,47 @@ function check(o::RPKIObject{CER}) :: RPKIObject
 		#   PrintableString [X.680].
 		# FIXME question: what would such a RECOMMENDED set look like?
 		# is it a SET of SEQUENCEs(==AttributeTypeValue) within the SET(==RelDisName) ?
-	# check SET is of size 1 or 2
-	checkchildren(issuer, 1:2)
-	if length(issuer.children) > 1
-		# if size > 1, is it a SET?
-	    # because it is DER,
-        # they must be ordered specifically TODO check x.690
-    	tagisa(popfirst!(nodes), ASN.SET)
-	else
-		popfirst!(nodes) # should we check this being a SEQUENCE?
 
-	end
-	# check whether it contains CommonName of PrintableString
-    #childrencontainvalue(issuer, ASN.OID, "2.5.4.3")
-    containAttributeTypeAndValue(issuer, "2.5.4.3", ASN.PRINTABLESTRING)
-	if length(issuer.children) > 1
+    checkchildren(issuer_set, 1:2)
+    # If the issuer contains the serialNumber as well,
+    # the set should contain 1 child, the RECOMMENDED set
+    # TODO check this interpretation
+    containAttributeTypeAndValue(issuer_set, "2.5.4.3", ASN.PRINTABLESTRING)
+	if length(issuer_set.children) > 1
 	    # if size == 2, the second thing must be a CertificateSerialNumber
-        childrencontain(issuer, ASN.INTEGER)
+        @error "TODO: serialNumber in Issuer"
     end
+    
+    # Validity
+    # SEQUENCE of 2x Time, which is a CHOICE of utcTime/generalTime
+    tagisa(chd[5], ASN.SEQUENCE)
+    tagisa(chd[5].children[1], [ASN.UTCTIME, ASN.GENTIME])
+    tagisa(chd[5].children[2], [ASN.UTCTIME, ASN.GENTIME])
+
+    # Subject
+    # RFC6487:
+    #  Each distinct subordinate CA and
+    #  EE certified by the issuer MUST be identified using a subject name
+    #  that is unique per issuer.
+    #  TODO can we check on this? not here, but in a later stage?
+    containAttributeTypeAndValue(chd[6], "2.5.4.3", ASN.PRINTABLESTRING)
 
 
+end
 
+function check(o::RPKIObject{CER}) :: RPKIObject
+    @debug "check CER"
+    # The certificate should consist of three parts: (RFC5280)
+	# Certificate  ::=  SEQUENCE  {
+	#      tbsCertificate       TBSCertificate,
+	#      signatureAlgorithm   AlgorithmIdentifier,
+	#      signature            BIT STRING  }
+    
+    #checkchildren(o.tree, 3) # alternative to the popfirst! below
+    checkchildren(o.tree, 3)
+    tbsCertificate = o.tree.children[1]
+    checkTbsCertificate(tbsCertificate)
 
-     
     
     o
 end

@@ -4,7 +4,8 @@ export Tag, AbstractTag, Node, AbstractNode, Leaf
 export print_node, append!, isleaf, parent, iter, lazy_iter
 export remark!
 
-export Unimplemented, InvalidTag, SEQUENCE, SET, RESERVED_ENC, OCTETSTRING, BITSTRING
+export  Unimplemented, InvalidTag, SEQUENCE, SET, RESERVED_ENC, OCTETSTRING,
+        BITSTRING, PRINTABLESTRING
 
 abstract type AbstractTag end 
 struct Tag{T}

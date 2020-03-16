@@ -69,6 +69,22 @@ function childrencontainvalue(node::Node, t::Type, v::Any)
     end
 end
 
+function containAttributeTypeAndValue(node::Node, oid::String, t::Type)
+    found_oid = false
+    for c in ASN.iter(node)
+        if found_oid
+            tagisa(c, t)
+            break
+        end
+        if c.tag isa Tag{ASN.OID} && ASN.value(c.tag) == oid
+            found_oid = true
+        end
+    end
+    if !found_oid
+        remark!(node, "expected child node OID $(oid)")
+    end
+end
+
 
 function check(o::RPKIObject{CER}) :: RPKIObject
     @debug "check CER"
@@ -122,7 +138,8 @@ function check(o::RPKIObject{CER}) :: RPKIObject
 
 	end
 	# check whether it contains CommonName of PrintableString
-    childrencontainvalue(issuer, ASN.OID, "2.5.4.3")
+    #childrencontainvalue(issuer, ASN.OID, "2.5.4.3")
+    containAttributeTypeAndValue(issuer, "2.5.4.3", ASN.PRINTABLESTRING)
 	if length(issuer.children) > 1
 	    # if size == 2, the second thing must be a CertificateSerialNumber
         childrencontain(issuer, ASN.INTEGER)

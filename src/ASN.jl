@@ -222,7 +222,7 @@ function remark!(n::Node, remark::String)
     end
 end
 
-#Leaf(t::T) where {T <: Any } = Node(nothing, nothing, t, nothing)
+Leaf(t::T) where {T <: Any } = Node(nothing, nothing, t, nothing)
 #Node(t::T) where {T <: Any } = Node(nothing, Vector{Node}(undef, 1), t)
 #Node(t::T) where {T <: Any } = Node(nothing, [], t)
 Node(t::T) where {T <: Any } = Node(nothing, [], t, nothing)

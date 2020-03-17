@@ -175,6 +175,8 @@ function _parse!(tag, buf, indef_stack = 0, recurse_into_octetstring = false) ::
             #@debug "def len, whiling inside", tag
             offset = buf.iob.ptr
             tmp_protect = 0
+            #@debug "here because?? tag: $(tag), constructed? $(tag.constructed)"
+            #@debug "buf.iob.ptr $(buf.iob.ptr) , offset+tag.len $(offset+tag.len)"
             while buf.iob.ptr < offset+tag.len && tmp_protect < 99999  
                 #@debug "in while at $(buf.iob.ptr) / $(offset+tag.len)"
                 subtag = DER.next!(buf)

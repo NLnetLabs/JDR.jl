@@ -1,13 +1,25 @@
 module RPKI
 using ..ASN
 using ..DER
+using IPNets
 
 #abstract type RPKIObject <: AbstractNode end
 struct RPKIObject{T}
     filename::String
     tree::Node
+    object::T
 end
-struct CER end # <: RPKIObject end 
+
+mutable struct CER 
+    prefixes::Vector{IPNet}
+    ASNs::Vector{UInt32}
+end # <: RPKIObject end 
+CER() = CER([], [])
+
+function RPKIObject{T}(filename::String, tree::Node) where T 
+    RPKIObject{T}(filename, tree, T())
+end
+
 struct MFT end # <: RPKIObject end 
 struct CRL end # <: RPKIObject end 
 struct ROA end # <: RPKIObject end 
@@ -100,7 +112,49 @@ function containAttributeTypeAndValue(node::Node, oid::String, t::Type)
     end
 end
 
-function checkTbsCertificate(tree::Node)
+function check_extensions(tree::Node, oids::Vector{String}) 
+    oids_found = get_extension_oids(tree)
+    for o in oids
+        if !(o in oids_found)
+            remark!(tree, "expected Extension with OID $(o)")
+        end
+    end
+end
+
+function get_extension_oids(tree::Node) :: Vector{String}
+    tagisa(tree.children[1], ASN.SEQUENCE)
+
+    oids_found = Vector{String}([])
+    for c in tree.children[1].children
+        tagisa(c, ASN.SEQUENCE)
+        tagisa(c.children[1], ASN.OID)
+        push!(oids_found, ASN.value(c.children[1].tag))
+    end
+    oids_found
+end
+function get_extensions(tree::Node) :: Dict{String,Node}
+    tagisa(tree.children[1], ASN.SEQUENCE)
+
+    extensions = Dict{String,Node}()
+    for c in tree.children[1].children
+        tagisa(c, ASN.SEQUENCE)
+        tagisa(c.children[1], ASN.OID)
+        critical = false
+        extension_octetstring = nothing
+        if length(c.children) == 3
+            tagvalue(c.children[2], ASN.BOOLEAN, true)
+            critical = true
+            extension_octetstring = c.children[3]
+        else
+            extension_octetstring = c.children[2]
+        end
+                                           
+        extensions[ASN.value(c.children[1].tag)] = extension_octetstring
+    end
+    extensions
+end
+
+function checkTbsCertificate(o::RPKIObject, tree::Node)
     #TODO can we do some funky multilevel indexing
     # like chd[1][2] to get the second grandchild of the first child?
 
@@ -195,6 +249,8 @@ function checkTbsCertificate(tree::Node)
     tagis_contextspecific(extensions, 0x3)
     DER.parse_value!(extensions)
 
+    mandatory_extensions = Vector{String}()
+
     # RFC 6487 4.8.1 unclear:
     #   'The issuer determines whether the "cA" boolean is set.'
     # if this extension is here, the value is always true?
@@ -202,7 +258,8 @@ function checkTbsCertificate(tree::Node)
     # because when the subject is not a CA, this extension MUST NOT be here
     
     # Subject Key Identifier, MUST appear
-    check_extension(extensions, "2.5.29.14") # non-critical, 160bit SHA-1
+    #check_extension(extensions, "2.5.29.14") # non-critical, 160bit SHA-1
+    push!(mandatory_extensions, "2.5.29.14")
 
     # Authority Key Identifier
 	# RFC 6487:
@@ -220,7 +277,8 @@ function checkTbsCertificate(tree::Node)
 	#
 	#  In EE certificates, the digitalSignature bit MUST be set to TRUE and
 	#  MUST be the only bit set to TRUE.
-	check_extension(extensions, "2.5.29.15") # critical, 1byte BITSTRING
+	#check_extension(extensions, "2.5.29.15") # critical, 1byte BITSTRING
+    push!(mandatory_extensions, "2.5.29.15")
 
 	# Extended Key Usage
 	# may only appear in specific certs
@@ -248,10 +306,95 @@ function checkTbsCertificate(tree::Node)
     # IP + AS resources
     # one or both MUST be present+critical
     # RFC 3779
+    #
+    # ipAddrBlocks
+    # SEQUENCE OF IPAddressFamily
+    # IPAddressFamily type is a SEQUENCE containing an addressFamily
+    #    and ipAddressChoice element.
+    #
+    # TODO: if v4+v6 in one extension, v4 must come first
+    #
 
+
+    #extension_oids = get_extension_oids(extensions)
+    check_extensions(extensions, mandatory_extensions)
+    all_extensions = get_extensions(extensions)
+    if "1.3.6.1.5.5.7.1.7" in keys(all_extensions)
+        @debug "got IP extension"
+        subtree = all_extensions["1.3.6.1.5.5.7.1.7"]
+        DER.parse_append!(DER.Buf(subtree.tag.value), subtree)
+        tagisa(subtree.children[1], ASN.SEQUENCE)
+        for ipaddrblock in subtree.children[1].children 
+            tagisa(ipaddrblock, ASN.SEQUENCE)
+            tagisa(ipaddrblock.children[1], ASN.OCTETSTRING)
+            afi = reinterpret(UInt16, reverse(ipaddrblock.children[1].tag.value))[1]
+            @assert afi in [1,2] # 1 == IPv4, 2 == IPv6
+            # now, or a NULL -> inherit
+            # or a SEQUENCE
+            if typeof(ipaddrblock.children[2].tag) == Tag{ASN.SEQUENCE}
+                if typeof(ipaddrblock.children[2].children[1].tag) == Tag{ASN.SEQUENCE}
+                    # if child is another SEQUENCE, we have an IPAddressRange
+                    @debug "IPAddressRange"
+                elseif typeof(ipaddrblock.children[2].children[1].tag) == Tag{ASN.BITSTRING}
+                    # else if it is a BITSTRING, we have an IPAddress (prefix)
+                    @debug "IPAddress (prefix)"
+                    bitstring = ipaddrblock.children[2].children[1].tag.value
+                    if afi == 1
+                        push!(o.object.prefixes, bitstring_to_v4prefix(bitstring))
+                    else
+                        push!(o.object.prefixes, bitstring_to_v6prefix(bitstring))
+                    end
+                else
+                    @error "unexpected tag"
+                end
+            else
+                @error "implement inherit"
+            end
+        end
+        #IP
+    else
+        @assert ASN in extension_oids
+    end
+    if "1.3.6.1.5.5.7.1.8" in keys(all_extensions)
+        @debug "got ASN extension"
+    end
+
+    # or:
+    # get all extensions (so return the OIDs)
+    # and create a check_extension(OID{TypeBasedOnOIDString})
 end
 
-function check(o::RPKIObject{CER}) :: RPKIObject
+function bitstring_to_v4prefix(raw::Vector{UInt8}) :: IPv4Net
+    # first byte of raw is the unused_bits byte
+    # an empty BITSTRING is indicated by the unused_bits == 0x00
+    # and no subsequent bytes
+    if length(raw) == 1
+        @assert raw[1] == 0x00
+        return IPv4Net(0,0)
+    end
+    unused = raw[1]
+    numbytes = length(raw) - 1 - 1
+    bits = numbytes*8 + (8 - unused)
+    addr = (reinterpret(UInt32, resize!(reverse(raw[2:end]), 4)))[1] >> unused
+    return IPv4Net(addr << (32 - bits), bits)
+end
+
+function bitstring_to_v6prefix(raw::Vector{UInt8}) :: IPv6Net
+    # first byte of raw is the unused_bits byte
+    # an empty BITSTRING is indicated by the unused_bits == 0x00
+    # and no subsequent bytes
+    if length(raw) == 1
+        @assert raw[1] == 0x00
+        return IPv6Net(0,0)
+    end
+    unused = raw[1]
+    numbytes = length(raw) - 1 - 1
+    bits = numbytes*8 + (8 - unused)
+    addr = (reinterpret(UInt128, resize!(reverse(raw[2:end]), 16)))[1] >> unused
+    return IPv6Net(addr << (128 - bits), bits)
+end
+
+function check(o::RPKIObject{CER}) :: RPKIObject{CER}
     @debug "check CER"
     # The certificate should consist of three parts: (RFC5280)
 	# Certificate  ::=  SEQUENCE  {
@@ -262,7 +405,7 @@ function check(o::RPKIObject{CER}) :: RPKIObject
     #checkchildren(o.tree, 3) # alternative to the popfirst! below
     checkchildren(o.tree, 3)
     tbsCertificate = o.tree.children[1]
-    checkTbsCertificate(tbsCertificate)
+    checkTbsCertificate(o, tbsCertificate)
 
     
     o

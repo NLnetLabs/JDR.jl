@@ -144,7 +144,7 @@ end
     ASN.print_node(tree, traverse=true)
 end
 
-@testset "Content validation" begin
+@skip @testset "Content validation" begin
     file = fn("ripe-ncc-ta.cer")
     @debug "parsing $(file)"
     tree = DER.parse_file_recursive(file)
@@ -181,8 +181,34 @@ end
 
 @testset "Object checks" begin
     file = fn("ripe-ncc-ta.cer")
+    file = fn("nlnetlabs.cer")
     r = RPKI.RPKIObject(file)
-    RPKI.check(r)
+    o = RPKI.check(r)
+    @debug o
     ASN.print_node(r.tree, traverse=true)
     #@test isequal(length( #TODO implement get_all_remarks, check length == 0
+end
+
+#TODO move this and the above to test/rpki.jl
+using IPNets
+@testset "RFC 3779" begin
+    @debug "RFC 3779"
+
+    # IPv4:
+    buf = Vector{UInt8}([0x04, 0x80])
+    @test isequal(RPKI.bitstring_to_v4prefix(buf), IPv4Net("128.0.0.0/4"))
+
+    buf = Vector{UInt8}([0x02, 0xB9, 0x31, 0x8C])
+    @test isequal(RPKI.bitstring_to_v4prefix(buf), IPv4Net("185.49.140.0/22"))
+
+    buf = Vector{UInt8}([0x00])
+    @test isequal(RPKI.bitstring_to_v4prefix(buf), IPv4Net("0.0.0.0/0"))
+
+    # IPv6:
+    buf = Vector{UInt8}([0x03, 0x2A, 0x04, 0xB9, 0x00])
+    @test isequal(RPKI.bitstring_to_v6prefix(buf), IPv6Net("2a04:b900::/29"))
+
+    buf = Vector{UInt8}([0x00])
+    @test isequal(RPKI.bitstring_to_v6prefix(buf), IPv6Net("::/0"))
+
 end

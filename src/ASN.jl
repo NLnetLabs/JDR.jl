@@ -2,10 +2,11 @@ module ASN
 
 export Tag, AbstractTag, Node, AbstractNode, Leaf
 export print_node, append!, isleaf, parent, iter, lazy_iter
-export remark!
+export remark!, child, getindex
 
 export  Unimplemented, InvalidTag, SEQUENCE, SET, RESERVED_ENC, OCTETSTRING,
         BITSTRING, PRINTABLESTRING
+
 
 abstract type AbstractTag end 
 struct Tag{T}
@@ -227,6 +228,19 @@ Leaf(t::T) where {T <: Any } = Node(nothing, nothing, t, nothing)
 #Node(t::T) where {T <: Any } = Node(nothing, [], t)
 Node(t::T) where {T <: Any } = Node(nothing, [], t, nothing)
 
+function child(node::Node, indices...) :: Node
+    current = node
+    for i in indices
+        try
+        current = current.children[i]
+        catch BoundsError
+            @warn "invalid child $(i) in $(indices)"
+        end
+    end
+    current
+end
+
+Base.getindex(node::Node, indices...) = child(node, indices...)
 
 function Base.show(io::IO, n::Node)
     if !isnothing(n.tag)

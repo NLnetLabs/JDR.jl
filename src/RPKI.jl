@@ -122,64 +122,57 @@ function check_extensions(tree::Node, oids::Vector{String})
 end
 
 function get_extension_oids(tree::Node) :: Vector{String}
-    tagisa(tree.children[1], ASN.SEQUENCE)
+    tagisa(tree[1], ASN.SEQUENCE)
 
     oids_found = Vector{String}([])
-    for c in tree.children[1].children
+    for c in tree[1].children
         tagisa(c, ASN.SEQUENCE)
-        tagisa(c.children[1], ASN.OID)
-        push!(oids_found, ASN.value(c.children[1].tag))
+        tagisa(c[1], ASN.OID)
+        push!(oids_found, ASN.value(c[1].tag))
     end
     oids_found
 end
 function get_extensions(tree::Node) :: Dict{String,Node}
-    tagisa(tree.children[1], ASN.SEQUENCE)
+    tagisa(tree[1], ASN.SEQUENCE)
 
     extensions = Dict{String,Node}()
-    for c in tree.children[1].children
+    for c in tree[1].children
         tagisa(c, ASN.SEQUENCE)
-        tagisa(c.children[1], ASN.OID)
+        tagisa(c[1], ASN.OID)
         critical = false
         extension_octetstring = nothing
         if length(c.children) == 3
-            tagvalue(c.children[2], ASN.BOOLEAN, true)
+            tagvalue(c[2], ASN.BOOLEAN, true)
             critical = true
-            extension_octetstring = c.children[3]
+            extension_octetstring = c[3]
         else
-            extension_octetstring = c.children[2]
+            extension_octetstring = c[2]
         end
                                            
-        extensions[ASN.value(c.children[1].tag)] = extension_octetstring
+        extensions[ASN.value(c[1].tag)] = extension_octetstring
     end
     extensions
 end
 
-function checkTbsCertificate(o::RPKIObject, tree::Node)
-    #TODO can we do some funky multilevel indexing
-    # like chd[1][2] to get the second grandchild of the first child?
-
-    chd = tree.children
-
+function checkTbsCertificate(o::RPKIObject, tbscert::Node)
     # Version == 0x02? (meaning version 3)
-    #tagisa(chd[1], ASN.RESERVED_ENC)
-    tagis_contextspecific(chd[1], 0x0)
-    DER.parse_value!(chd[1])
-    tagvalue(chd[1].children[1], ASN.INTEGER, 0x02)
-    #encaps_buf = DER.Buf(chd[7].children[2].tag.value[2:end])
-    #DER.parse_append!(encaps_buf, chd[7].children[2])
+    tagis_contextspecific(tbscert[1], 0x0)
+    DER.parse_value!(tbscert[1])
+    tagvalue(tbscert[1, 1], ASN.INTEGER, 0x02)
 
     # Serial number
-    tagisa(chd[2], ASN.INTEGER)
+    tagisa(tbscert[2], ASN.INTEGER)
 
     # Signature AlgorithmIdentifier
     # SEQ / OID / NULL
-    tagisa(chd[3], ASN.SEQUENCE)
-    tagvalue(chd[3].children[1], ASN.OID, "1.2.840.113549.1.1.11")
-    tagisa(chd[3].children[2], ASN.NULL)
+    tagisa(tbscert[3], ASN.SEQUENCE)
+
+    tagvalue(tbscert[3, 1], ASN.OID, "1.2.840.113549.1.1.11")
+    tagisa(tbscert[3, 2], ASN.NULL)
 
     # Issuer = Name = RDNSequence = SEQUENCE OF RelativeDistinguishedName
-    tagisa(chd[4], ASN.SEQUENCE)
-    issuer_set = chd[4].children[1] 
+    tagisa(tbscert[4], ASN.SEQUENCE)
+    issuer_set = tbscert[4, 1]
     tagisa(issuer_set, ASN.SET)
         # it's a SET of AttributeTypeAndValue 
         # which is a SEQUENCE of type (OID) + value (ANY)
@@ -204,9 +197,10 @@ function checkTbsCertificate(o::RPKIObject, tree::Node)
     
     # Validity
     # SEQUENCE of 2x Time, which is a CHOICE of utcTime/generalTime
-    tagisa(chd[5], ASN.SEQUENCE)
-    tagisa(chd[5].children[1], [ASN.UTCTIME, ASN.GENTIME])
-    tagisa(chd[5].children[2], [ASN.UTCTIME, ASN.GENTIME])
+    tagisa(tbscert[5], ASN.SEQUENCE)
+    tagisa(tbscert[5, 1], [ASN.UTCTIME, ASN.GENTIME])
+    tagisa(tbscert[5, 2], [ASN.UTCTIME, ASN.GENTIME])
+
 
     # Subject
     # RFC6487:
@@ -214,25 +208,25 @@ function checkTbsCertificate(o::RPKIObject, tree::Node)
     #  EE certified by the issuer MUST be identified using a subject name
     #  that is unique per issuer.
     #  TODO can we check on this? not here, but in a later stage?
-    containAttributeTypeAndValue(chd[6], "2.5.4.3", ASN.PRINTABLESTRING)
+    containAttributeTypeAndValue(tbscert[6], "2.5.4.3", ASN.PRINTABLESTRING)
 
     # SubjectPublicKeyInfo
     # AlgorithmIdentifier + BITSTRING
-    tagisa(chd[7], ASN.SEQUENCE)
-    tagisa(chd[7].children[1], ASN.SEQUENCE)
+    tagisa(tbscert[7], ASN.SEQUENCE)
+    tagisa(tbscert[7, 1], ASN.SEQUENCE)
     # FIXME: RFC6485 is not quite clear on which OID we should expect here..
-    tagvalue(chd[7].children[1].children[1], ASN.OID, "1.2.840.113549.1.1.1")
-    tagisa(chd[7].children[1].children[2], ASN.NULL)
-    tagisa(chd[7].children[2], ASN.BITSTRING)
+    tagvalue(tbscert[7, 1, 1], ASN.OID, "1.2.840.113549.1.1.1")
+    tagisa(tbscert[7, 1, 2], ASN.NULL)
+    tagisa(tbscert[7, 2], ASN.BITSTRING)
     # here we go for a second pass:
     # skip the first byte as it will be 0,
     #   indicating the number if unused bits in the last byte
     
-    encaps_buf = DER.Buf(chd[7].children[2].tag.value[2:end])
-    DER.parse_append!(encaps_buf, chd[7].children[2])
+    encaps_buf = DER.Buf(tbscert[7, 2].tag.value[2:end])
+    DER.parse_append!(encaps_buf, tbscert[7, 2])
    
-    encaps_modulus  = chd[7].children[2].children[1].children[1]
-    encaps_exponent = chd[7].children[2].children[1].children[2]
+    encaps_modulus  = tbscert[7, 2, 1, 1]
+    encaps_exponent = tbscert[7, 2, 1, 2]
     # RFC6485:the exponent MUST be 65537
     tagvalue(encaps_exponent, ASN.INTEGER, 65_537)
 
@@ -245,7 +239,7 @@ function checkTbsCertificate(o::RPKIObject, tree::Node)
 
     # extensions [3]
     # MUST be present
-    extensions = chd[8]
+    extensions = tbscert[8]
     tagis_contextspecific(extensions, 0x3)
     DER.parse_value!(extensions)
 
@@ -323,22 +317,22 @@ function checkTbsCertificate(o::RPKIObject, tree::Node)
         @debug "got IP extension"
         subtree = all_extensions["1.3.6.1.5.5.7.1.7"]
         DER.parse_append!(DER.Buf(subtree.tag.value), subtree)
-        tagisa(subtree.children[1], ASN.SEQUENCE)
-        for ipaddrblock in subtree.children[1].children 
+        tagisa(subtree[1], ASN.SEQUENCE)
+        for ipaddrblock in subtree[1].children 
             tagisa(ipaddrblock, ASN.SEQUENCE)
-            tagisa(ipaddrblock.children[1], ASN.OCTETSTRING)
-            afi = reinterpret(UInt16, reverse(ipaddrblock.children[1].tag.value))[1]
+            tagisa(ipaddrblock[1], ASN.OCTETSTRING)
+            afi = reinterpret(UInt16, reverse(ipaddrblock[1].tag.value))[1]
             @assert afi in [1,2] # 1 == IPv4, 2 == IPv6
             # now, or a NULL -> inherit
             # or a SEQUENCE
-            if typeof(ipaddrblock.children[2].tag) == Tag{ASN.SEQUENCE}
-                if typeof(ipaddrblock.children[2].children[1].tag) == Tag{ASN.SEQUENCE}
+            if typeof(ipaddrblock[2].tag) == Tag{ASN.SEQUENCE}
+                if typeof(ipaddrblock[2, 1].tag) == Tag{ASN.SEQUENCE}
                     # if child is another SEQUENCE, we have an IPAddressRange
                     @debug "IPAddressRange"
-                elseif typeof(ipaddrblock.children[2].children[1].tag) == Tag{ASN.BITSTRING}
+                elseif typeof(ipaddrblock[2, 1].tag) == Tag{ASN.BITSTRING}
                     # else if it is a BITSTRING, we have an IPAddress (prefix)
                     @debug "IPAddress (prefix)"
-                    bitstring = ipaddrblock.children[2].children[1].tag.value
+                    bitstring = ipaddrblock[2, 1].tag.value
                     if afi == 1
                         push!(o.object.prefixes, bitstring_to_v4prefix(bitstring))
                     else

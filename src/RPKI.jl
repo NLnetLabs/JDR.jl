@@ -60,10 +60,13 @@ function tagvalue(node::Node, t::Type, v::Any)
     end
 end
 
-function checkchildren(node::Node, num::Integer) #TODO can we use "> 1" here? maybe with an Expr?
+function checkchildren(node::Node, num::Integer) :: Bool #TODO can we use "> 1" here? maybe with an Expr?
+    valid = true
     if !(length(node.children) == num)
         remark!(node, "expected $(num) children, found $(length(node.children))")
+        valid = false
     end
+    valid
 end
 function checkchildren(node::Node, range::UnitRange{Int}) #TODO can we use "> 1" here? maybe with an Expr?
     if !(length(node.children) in range)
@@ -168,7 +171,9 @@ function checkTbsCertificate(o::RPKIObject, tbscert::Node)
     tagisa(tbscert[3], ASN.SEQUENCE)
 
     tagvalue(tbscert[3, 1], ASN.OID, "1.2.840.113549.1.1.11")
-    tagisa(tbscert[3, 2], ASN.NULL)
+    if checkchildren(tbscert[3], 2)
+        tagisa(tbscert[3, 2], ASN.NULL) # TODO be more explicit in the remark
+    end
 
     # Issuer = Name = RDNSequence = SEQUENCE OF RelativeDistinguishedName
     tagisa(tbscert[4], ASN.SEQUENCE)

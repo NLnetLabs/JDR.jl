@@ -147,6 +147,15 @@ end
 function _parse!(tag, buf, indef_stack = 0, recurse_into_octetstring = false) :: Node
     #@debug tag
     me = Node(tag) 
+    if isa(tag, Tag{OCTETSTRING})
+        if tag.constructed
+            remark!(me, "constructed OCTETSTRING, not allowed in DER")
+        end
+        if tag.len_indef
+            remark!(me, "indefinite length, not allowed in DER")
+        end
+    end
+
     if isa(tag, Tag{SEQUENCE}) || isa(tag, Tag{SET}) ||
         ((#isa(tag, Tag{RESERVED_ENC}) ||
           isa(tag, Tag{OCTETSTRING}) || isa(tag, Tag{BITSTRING})) && tag.constructed && !(tag.class == 0x02))

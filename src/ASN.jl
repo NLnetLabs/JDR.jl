@@ -143,7 +143,7 @@ end
 
 function value(t::Tag{OCTETSTRING}) where {T} 
     if t.constructed
-        @warn "constructed OCTETSTRING, not allowed in DER"
+        #@warn "constructed OCTETSTRING, not allowed in DER"
         #error("constructed OCTETSTRING, not allowed in DER")
         return nothing
     end

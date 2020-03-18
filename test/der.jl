@@ -13,6 +13,7 @@ LONGFORM=hex2bytes(b"3f5501")
 LONGLENGTH=hex2bytes(b"3082040A")
 
 
+ROUTINATOR_DIR = "/home/luuk/.rpki-cache/repository/rsync/"
 TESTDATA = joinpath(dirname(pathof(JuliASN)), "..", "test", "testdata")
 
 @skip @testset "DER" begin
@@ -92,16 +93,15 @@ end
 end
 
 
-function all_rpki_files(dir)
+function all_rpki_files(dir, exts=["cer", "mft", "crl", "roa"])
     all_files = []
-    for d in walkdir(dir), ext in ["cer", "mft", "crl", "roa"]
+    for d in walkdir(dir), ext in exts
         Base.append!(all_files, glob("*.$(ext)", d[1]))
     end
     all_files
 end
 
 @skip @testset "Full RPKI repo parse test" begin
-    ROUTINATOR_DIR = "/home/luuk/.rpki-cache/repository/rsync/"
     @debug "globbing ..."
     @time all_files = all_rpki_files(ROUTINATOR_DIR)
     @debug "got  $(length(all_files)) files to check"
@@ -182,6 +182,10 @@ end
 @testset "Object checks" begin
     file = fn("ripe-ncc-ta.cer")
     file = fn("nlnetlabs.cer")
+    file = fn("arin-rpki-ta.cer")
+    file = fn("lacnic_ipaddressrange.cer")
+    file = fn("lacnic_ipaddressrange_v6.cer")
+    #file = fn("lacnic_broken.mft")
     r = RPKI.RPKIObject(file)
     o = RPKI.check(r)
     @debug o
@@ -189,10 +193,31 @@ end
     #@test isequal(length( #TODO implement get_all_remarks, check length == 0
 end
 
+@skip @testset "Object checks: *.cer" begin
+    all_files = all_rpki_files(ROUTINATOR_DIR, ["cer"])
+    @debug "got $(length(all_files)) .cer files to check"
+    @time begin
+    for (i, file) in enumerate(all_files)
+        try
+            #@debug file
+            r = RPKI.RPKIObject(file)
+            #@debug typeof(r)
+            o = RPKI.check(r)
+            #print(o.object.prefixes)
+            print("\r$(i) parsed")
+        catch e
+            @error "error for $(file)"
+            showerror(stderr, e, catch_backtrace())
+            break
+        end
+    end
+    end #time
+end
+
 #TODO move this and the above to test/rpki.jl
 using IPNets
 @testset "RFC 3779" begin
-    @debug "RFC 3779"
+    #@debug "RFC 3779"
 
     # IPv4:
     buf = Vector{UInt8}([0x04, 0x80])

@@ -233,8 +233,9 @@ function child(node::Node, indices...) :: Node
     for i in indices
         try
         current = current.children[i]
-        catch BoundsError
+        catch e
             @warn "invalid child $(i) in $(indices)"
+            #showerror(stderr, e, catch_backtrace())
         end
     end
     current

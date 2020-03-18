@@ -211,4 +211,12 @@ using IPNets
     buf = Vector{UInt8}([0x00])
     @test isequal(RPKI.bitstring_to_v6prefix(buf), IPv6Net("::/0"))
 
+
+    # ipAddressRange
+    buf  = hex2bytes(b"068140")
+    buf2 = hex2bytes(b"0480")
+    (minaddr, maxaddr) = RPKI.bitstrings_to_v4range(buf, buf2)
+
+    @test isequal(minaddr, IPv4Net("129.64.0.0/32"))
+    @test isequal(maxaddr, IPv4Net("143.255.255.255/32"))
 end

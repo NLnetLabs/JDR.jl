@@ -11,7 +11,7 @@ struct RPKIObject{T}
 end
 
 mutable struct CER 
-    prefixes::Vector{IPNet}
+    prefixes::Vector{Union{IPNet, Tuple{IPNet, IPNet}}}
     ASNs::Vector{UInt32}
 end # <: RPKIObject end 
 CER() = CER([], [])
@@ -319,7 +319,7 @@ function checkTbsCertificate(o::RPKIObject, tbscert::Node)
     check_extensions(extensions, mandatory_extensions)
     all_extensions = get_extensions(extensions)
     if "1.3.6.1.5.5.7.1.7" in keys(all_extensions)
-        @debug "got IP extension"
+        #@debug "got IP extension"
         subtree = all_extensions["1.3.6.1.5.5.7.1.7"]
         DER.parse_append!(DER.Buf(subtree.tag.value), subtree)
         tagisa(subtree[1], ASN.SEQUENCE)
@@ -333,10 +333,33 @@ function checkTbsCertificate(o::RPKIObject, tbscert::Node)
             if typeof(ipaddrblock[2].tag) == Tag{ASN.SEQUENCE}
                 if typeof(ipaddrblock[2, 1].tag) == Tag{ASN.SEQUENCE}
                     # if child is another SEQUENCE, we have an IPAddressRange
-                    @debug "IPAddressRange"
+                    #throw("check me")
+
+                    # we expect two BITSTRINGs in this SEQUENCE
+                    tagisa(ipaddrblock[2, 1, 1], ASN.BITSTRING)
+                    tagisa(ipaddrblock[2, 1, 2], ASN.BITSTRING)
+                    if afi == 1
+                        #@debug bitstring_to_v4prefix(ipaddrblock[2, 1, 1].tag.value)
+                        #@debug bitstring_to_v4prefix(ipaddrblock[2, 1, 2].tag.value)
+                        (minaddr, maxaddr) = bitstrings_to_v4range(
+                                                ipaddrblock[2, 1, 1].tag.value,
+                                                ipaddrblock[2, 1, 2].tag.value
+                                              )
+                        #@debug "got ", minaddr, maxaddr
+                        push!(o.object.prefixes, (minaddr, maxaddr))
+                    else
+                        #throw(".cer with v6 range")
+                        (minaddr, maxaddr) = bitstrings_to_v6range(
+                                                ipaddrblock[2, 1, 1].tag.value,
+                                                ipaddrblock[2, 1, 2].tag.value
+                                              )
+                        #@debug "got ", minaddr, maxaddr
+                        push!(o.object.prefixes, (minaddr, maxaddr))
+
+                    end
                 elseif typeof(ipaddrblock[2, 1].tag) == Tag{ASN.BITSTRING}
                     # else if it is a BITSTRING, we have an IPAddress (prefix)
-                    @debug "IPAddress (prefix)"
+                    #@debug "IPAddress (prefix)"
                     bitstring = ipaddrblock[2, 1].tag.value
                     if afi == 1
                         push!(o.object.prefixes, bitstring_to_v4prefix(bitstring))
@@ -352,10 +375,10 @@ function checkTbsCertificate(o::RPKIObject, tbscert::Node)
         end
         #IP
     else
-        @assert ASN in extension_oids
+        @assert "1.3.6.1.5.5.7.1.8" in keys(all_extensions)
     end
     if "1.3.6.1.5.5.7.1.8" in keys(all_extensions)
-        @debug "got ASN extension"
+        #@debug "got ASN extension"
     end
 
     # or:
@@ -393,8 +416,45 @@ function bitstring_to_v6prefix(raw::Vector{UInt8}) :: IPv6Net
     return IPv6Net(addr << (128 - bits), bits)
 end
 
+function bitstrings_to_v4range(raw_min::Vector{UInt8}, raw_max::Vector{UInt8})
+    #min_addr:
+    unused = raw_min[1]
+    numbytes = length(raw_min) - 1 - 1 # -1 unused byte, -1 because we correct for it in `bits =` below
+    bits = numbytes*8 + (8 - unused)
+    addr = (reinterpret(UInt32, resize!(reverse(raw_min[2:end]), 4)))[1] >> unused
+    min_addr = IPv4Net(addr << (32 - bits), 32)
+
+    #max_addr:
+    unused = raw_max[1]
+    numbytes = length(raw_max) - 1 - 1 # -1 unused byte, -1 because we correct for it in `bits =` below
+    bits = numbytes*8 + (8 - unused)
+    addr = (reinterpret(UInt32, resize!(reverse(raw_max[2:end]), 4)))[1] >> unused
+    max_addr = (addr << (32 - bits)) | (0xffffffff >>> bits)
+    max_addr = IPv4Net(max_addr, 32)
+
+    (min_addr, max_addr)
+end
+
+function bitstrings_to_v6range(raw_min::Vector{UInt8}, raw_max::Vector{UInt8})
+    #min_addr:
+    unused = raw_min[1]
+    numbytes = length(raw_min) - 1 - 1 # -1 unused byte, -1 because we correct for it in `bits =` below
+    bits = numbytes*8 + (8 - unused)
+    addr = (reinterpret(UInt128, resize!(reverse(raw_min[2:end]), 16)))[1] >> unused
+    min_addr = IPv6Net(addr << (128 - bits), 128)
+
+    #max_addr:
+    unused = raw_max[1]
+    numbytes = length(raw_max) - 1 - 1 # -1 unused byte, -1 because we correct for it in `bits =` below
+    bits = numbytes*8 + (8 - unused)
+    addr = (reinterpret(UInt128, resize!(reverse(raw_max[2:end]), 16)))[1] >> unused
+    max_addr = (addr << (128 - bits)) | ( (-1 % UInt128) >>> bits)
+    max_addr = IPv6Net(max_addr, 128)
+
+    (min_addr, max_addr)
+end
+
 function check(o::RPKIObject{CER}) :: RPKIObject{CER}
-    @debug "check CER"
     # The certificate should consist of three parts: (RFC5280)
 	# Certificate  ::=  SEQUENCE  {
 	#      tbsCertificate       TBSCertificate,

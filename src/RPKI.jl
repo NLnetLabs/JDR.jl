@@ -108,19 +108,35 @@ end
 
 function containAttributeTypeAndValue(node::Node, oid::String, t::Type)
     found_oid = false
-    for c in ASN.iter(node)
-        if found_oid
-            tagisa(c, t)
-            break
-        end
-        if c.tag isa Tag{ASN.OID} && ASN.value(c.tag) == oid
-            found_oid = true
+    node.validated = true # this node is the RelativeDistinguishedName, thus a SET
+    @assert node.tag isa Tag{ASN.SET}
+    for c in node.children # every c in a SEQUENCE
+        @assert c.tag isa Tag{ASN.SEQUENCE}
+        if c[1].tag isa Tag{ASN.OID} && ASN.value(c[1].tag) == oid
+            if tagisa(c[2], t)
+                c.validated = c[1].validated = c[2].validated = true
+                return
+            end
+
         end
     end
-    if !found_oid
-        remark!(node, "expected child node OID $(oid)")
-    end
+    remark!(node, "expected child node OID $(oid)")
 end
+
+#        if found_oid
+#            tagisa(c[1], t)
+#            break
+#        end
+#        if c[1].tag isa Tag{ASN.OID} && ASN.value(c[1].tag) == oid
+#            found_oid = true
+#            c[1].validated = true
+#            c.validated = true
+#        end
+#    end
+#    if !found_oid
+#        remark!(node, "expected child node OID $(oid)")
+#    end
+#end
 
 function check_extensions(tree::Node, oids::Vector{String}) 
     oids_found = get_extension_oids(tree)
@@ -220,7 +236,7 @@ function checkTbsCertificate(o::RPKIObject, tbscert::Node)
     #  EE certified by the issuer MUST be identified using a subject name
     #  that is unique per issuer.
     #  TODO can we check on this? not here, but in a later stage?
-    containAttributeTypeAndValue(tbscert[6], "2.5.4.3", ASN.PRINTABLESTRING)
+    containAttributeTypeAndValue(tbscert[6, 1], "2.5.4.3", ASN.PRINTABLESTRING)
 
     # SubjectPublicKeyInfo
     # AlgorithmIdentifier + BITSTRING

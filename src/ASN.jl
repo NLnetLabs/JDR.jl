@@ -200,6 +200,7 @@ mutable struct Node <: AbstractNode
     parent::Union{Nothing, AbstractNode}
     children::Union{Nothing, Array{Node}}
     tag::Any #FIXME make this a DER.AbstractTag and benchmark
+    validated::Bool
     remarks::Union{Nothing, Vector{String}}
 end
 
@@ -223,10 +224,10 @@ function remark!(n::Node, remark::String)
     end
 end
 
-Leaf(t::T) where {T <: Any } = Node(nothing, nothing, t, nothing)
+_Leaf(t::T) where {T <: Any } = Node(nothing, nothing, t, false, nothing)
 #Node(t::T) where {T <: Any } = Node(nothing, Vector{Node}(undef, 1), t)
 #Node(t::T) where {T <: Any } = Node(nothing, [], t)
-Node(t::T) where {T <: Any } = Node(nothing, [], t, nothing)
+Node(t::T) where {T <: Any } = Node(nothing, [], t, false, nothing)
 
 function child(node::Node, indices...) :: Node
     current = node
@@ -245,7 +246,11 @@ Base.getindex(node::Node, indices...) = child(node, indices...)
 
 function Base.show(io::IO, n::Node)
     if !isnothing(n.tag)
-        print(io, n.tag)
+        if n.validated
+            printstyled(io, n.tag, color=:green)
+        else
+            print(io, n.tag)
+        end
         if !isnothing(n.remarks) && !isempty(n.remarks)
             printstyled(io, " [$(length(n.remarks))] "; color=:red)
             printstyled(io, n.remarks[end]; color=:yellow)

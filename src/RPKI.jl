@@ -38,16 +38,21 @@ end
 function tagisa(node::Node, t::Type)
     if !(node.tag isa Tag{t})
         remark!(node, "expected this to be a $(nameof(t))")
+    else
+        node.validated = true
     end
 end
 function tagis_contextspecific(node::Node, tagnum::UInt8)
     if !(node.tag isa Tag{ASN.CONTEXT_SPECIFIC} && node.tag.number == tagnum)
         remark!(node, "expected this to be a Context-Specific tag number $(tagnum)")
+    else
+        node.validated = true
     end
 end
 function tagisa(node::Node, ts::Vector{DataType})
     for t in ts
         if node.tag isa Tag{t}
+            node.validated = true
             return
         end
     end
@@ -317,13 +322,13 @@ function checkTbsCertificate(o::RPKIObject, tbscert::Node)
     #
 
 
-    #extension_oids = get_extension_oids(extensions)
     check_extensions(extensions, mandatory_extensions)
     all_extensions = get_extensions(extensions)
     if "1.3.6.1.5.5.7.1.7" in keys(all_extensions)
         #@debug "got IP extension"
         subtree = all_extensions["1.3.6.1.5.5.7.1.7"]
         DER.parse_append!(DER.Buf(subtree.tag.value), subtree)
+        subtree.validated = true
         tagisa(subtree[1], ASN.SEQUENCE)
         for ipaddrblock in subtree[1].children 
             tagisa(ipaddrblock, ASN.SEQUENCE)
@@ -331,50 +336,56 @@ function checkTbsCertificate(o::RPKIObject, tbscert::Node)
             afi = reinterpret(UInt16, reverse(ipaddrblock[1].tag.value))[1]
             @assert afi in [1,2] # 1 == IPv4, 2 == IPv6
             # now, or a NULL -> inherit
-            # or a SEQUENCE
+            # or a SEQUENCE OF IPAddressOrRange
             if typeof(ipaddrblock[2].tag) == Tag{ASN.SEQUENCE}
-                if typeof(ipaddrblock[2, 1].tag) == Tag{ASN.SEQUENCE}
-                    # if child is another SEQUENCE, we have an IPAddressRange
-                    #throw("check me")
+                ipaddrblock[2].validated = true
+                # now loop over children of this SEQUENCE OF IPAddressOrRange 
+                for ipaddress_or_range in ipaddrblock[2].children
 
-                    # we expect two BITSTRINGs in this SEQUENCE
-                    tagisa(ipaddrblock[2, 1, 1], ASN.BITSTRING)
-                    tagisa(ipaddrblock[2, 1, 2], ASN.BITSTRING)
-                    if afi == 1
-                        #@debug bitstring_to_v4prefix(ipaddrblock[2, 1, 1].tag.value)
-                        #@debug bitstring_to_v4prefix(ipaddrblock[2, 1, 2].tag.value)
-                        (minaddr, maxaddr) = bitstrings_to_v4range(
-                                                ipaddrblock[2, 1, 1].tag.value,
-                                                ipaddrblock[2, 1, 2].tag.value
-                                              )
-                        #@debug "got ", minaddr, maxaddr
-                        push!(o.object.prefixes, (minaddr, maxaddr))
-                    else
-                        #throw(".cer with v6 range")
-                        (minaddr, maxaddr) = bitstrings_to_v6range(
-                                                ipaddrblock[2, 1, 1].tag.value,
-                                                ipaddrblock[2, 1, 2].tag.value
-                                              )
-                        #@debug "got ", minaddr, maxaddr
-                        push!(o.object.prefixes, (minaddr, maxaddr))
+                    #if typeof(ipaddrblock[2, 1].tag) == Tag{ASN.SEQUENCE}
+                    if ipaddress_or_range.tag isa Tag{ASN.SEQUENCE}
 
-                    end
-                elseif typeof(ipaddrblock[2, 1].tag) == Tag{ASN.BITSTRING}
-                    # else if it is a BITSTRING, we have an IPAddress (prefix)
-                    #@debug "IPAddress (prefix)"
-                    bitstring = ipaddrblock[2, 1].tag.value
-                    if afi == 1
-                        push!(o.object.prefixes, bitstring_to_v4prefix(bitstring))
+                        ipaddress_or_range.validated = true
+                        # if child is another SEQUENCE, we have an IPAddressRange
+                        #throw("check me")
+
+                        # we expect two BITSTRINGs in this SEQUENCE
+                        tagisa(ipaddress_or_range[1], ASN.BITSTRING)
+                        tagisa(ipaddress_or_range[2], ASN.BITSTRING)
+                        if afi == 1
+                            (minaddr, maxaddr) = bitstrings_to_v4range(
+                                                    ipaddress_or_range[1].tag.value,
+                                                    ipaddress_or_range[2].tag.value
+                                                  )
+                            push!(o.object.prefixes, (minaddr, maxaddr))
+                        else
+                            (minaddr, maxaddr) = bitstrings_to_v6range(
+                                                    ipaddress_or_range[1].tag.value,
+                                                    ipaddress_or_range[2].tag.value
+                                                  )
+                            push!(o.object.prefixes, (minaddr, maxaddr))
+                        end
+                    #elseif typeof(ipaddrblock[2, 1].tag) == Tag{ASN.BITSTRING}
+                    elseif ipaddress_or_range.tag isa Tag{ASN.BITSTRING}
+                        ipaddress_or_range.validated = true
+                        # else if it is a BITSTRING, we have an IPAddress (prefix)
+                        #@debug "IPAddress (prefix)"
+                        bitstring = ipaddress_or_range.tag.value
+                        if afi == 1
+                            push!(o.object.prefixes, bitstring_to_v4prefix(bitstring))
+                        else
+                            push!(o.object.prefixes, bitstring_to_v6prefix(bitstring))
+                        end
                     else
-                        push!(o.object.prefixes, bitstring_to_v6prefix(bitstring))
+                        @error "unexpected tag number $(ipaddress_or_range.tag.number)"
                     end
-                else
-                    @error "unexpected tag"
-                end
-            else
+                end # for-loop over SEQUENCE OF IPAddressOrRange
+            elseif ipaddrblock[2].tag isa Tag{ASN.NULL}
                 #throw("implement inherit for ipAdressBlocks")
                 #@error "implement inherit for ipAdressBlocks"
                 o.object.inherit_prefixes = true
+            else
+                remark!(ipaddrblock[2], "expected either SEQUENCE OF or NULL here")
             end
         end
         #IP
@@ -386,6 +397,7 @@ function checkTbsCertificate(o::RPKIObject, tbscert::Node)
         #@debug "got ASN extension"
         subtree = all_extensions["1.3.6.1.5.5.7.1.8"]
         DER.parse_append!(DER.Buf(subtree.tag.value), subtree)
+        subtree.validated = true
         tagisa(subtree[1], ASN.SEQUENCE)
         for asidentifierchoice in subtree[1].children 
             # expect either a [0] or [1]
@@ -398,16 +410,23 @@ function checkTbsCertificate(o::RPKIObject, tbscert::Node)
                     #throw("implement inherit for ASIdentifierChoice")
                 elseif asidentifierchoice[1].tag isa Tag{ASN.SEQUENCE}
                     # now it can be or a single INTEGER, or again a SEQUENCE
-                    if asidentifierchoice[1,1].tag isa Tag{ASN.INTEGER}
-                        asid = UInt32(ASN.value(asidentifierchoice[1,1].tag))
-                        push!(o.object.ASNs, asid)
-                    elseif asidentifierchoice[1,1].tag isa Tag{ASN.SEQUENCE}
-                        asmin = UInt32(ASN.value(asidentifierchoice[1,1,1].tag))
-                        asmax = UInt32(ASN.value(asidentifierchoice[1,1,2].tag))
-                        push!(o.object.ASNs, (asmin, asmax))
-                    else
-                        remark!(asidentifierchoice[1,1], "unexpected tag number $(asidentifierchoice[1,1].tag.number)")
-                    end
+                    asidentifierchoice[1].validated = true
+                    for asid_or_range in asidentifierchoice[1].children
+                        if asid_or_range.tag isa Tag{ASN.INTEGER}
+                            asid = UInt32(ASN.value(asid_or_range.tag))
+                            push!(o.object.ASNs, asid)
+                            asid_or_range.validated = true
+                        elseif asid_or_range.tag isa Tag{ASN.SEQUENCE}
+                            asmin = UInt32(ASN.value(asid_or_range[1].tag))
+                            asmax = UInt32(ASN.value(asid_or_range[2].tag))
+                            push!(o.object.ASNs, (asmin, asmax))
+                            asid_or_range.validated = true
+                            asid_or_range[1].validated = true
+                            asid_or_range[2].validated = true
+                        else
+                            remark!(asid_or_range[1], "unexpected tag number $(asid_or_range[1].tag.number)")
+                        end
+                    end #for-loop asid_or_range
                 else
                     remark!(asidentifierchoice[1], "expected either a SEQUENCE OF or a NULL here")
                 end

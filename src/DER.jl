@@ -151,9 +151,9 @@ function _parse!(tag, buf, indef_stack = 0, recurse_into_octetstring = false) ::
         if tag.constructed
             remark!(me, "constructed OCTETSTRING, not allowed in DER")
         end
-        if tag.len_indef
-            remark!(me, "indefinite length, not allowed in DER")
-        end
+    end
+    if tag.len_indef
+        remark!(me, "indefinite length, not allowed in DER")
     end
 
     if isa(tag, Tag{SEQUENCE}) || isa(tag, Tag{SET}) ||

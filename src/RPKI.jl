@@ -11,10 +11,12 @@ struct RPKIObject{T}
 end
 
 mutable struct CER 
+    inherit_prefixes::Bool
     prefixes::Vector{Union{IPNet, Tuple{IPNet, IPNet}}}
-    ASNs::Vector{UInt32}
+    inherit_ASNs::Bool
+    ASNs::Vector{Union{Tuple{UInt32, UInt32}, UInt32}}
 end # <: RPKIObject end 
-CER() = CER([], [])
+CER() = CER(false, [], false, [])
 
 function RPKIObject{T}(filename::String, tree::Node) where T 
     RPKIObject{T}(filename, tree, T())
@@ -370,15 +372,53 @@ function checkTbsCertificate(o::RPKIObject, tbscert::Node)
                     @error "unexpected tag"
                 end
             else
-                @error "implement inherit"
+                #throw("implement inherit for ipAdressBlocks")
+                #@error "implement inherit for ipAdressBlocks"
+                o.object.inherit_prefixes = true
             end
         end
         #IP
     else
         @assert "1.3.6.1.5.5.7.1.8" in keys(all_extensions)
+        # TODO properly add remark if this is missing
     end
     if "1.3.6.1.5.5.7.1.8" in keys(all_extensions)
         #@debug "got ASN extension"
+        subtree = all_extensions["1.3.6.1.5.5.7.1.8"]
+        DER.parse_append!(DER.Buf(subtree.tag.value), subtree)
+        tagisa(subtree[1], ASN.SEQUENCE)
+        for asidentifierchoice in subtree[1].children 
+            # expect either a [0] or [1]
+            tagisa(asidentifierchoice, ASN.CONTEXT_SPECIFIC)
+            if asidentifierchoice.tag.number == 0
+                DER.parse_append!(DER.Buf(asidentifierchoice.tag.value), asidentifierchoice)
+                # or NULL (inherit) or SEQUENCE OF ASIdOrRange
+                if asidentifierchoice[1].tag isa Tag{ASN.NULL}
+                    o.object.inherit_ASNs = true
+                    #throw("implement inherit for ASIdentifierChoice")
+                elseif asidentifierchoice[1].tag isa Tag{ASN.SEQUENCE}
+                    # now it can be or a single INTEGER, or again a SEQUENCE
+                    if asidentifierchoice[1,1].tag isa Tag{ASN.INTEGER}
+                        asid = UInt32(ASN.value(asidentifierchoice[1,1].tag))
+                        push!(o.object.ASNs, asid)
+                    elseif asidentifierchoice[1,1].tag isa Tag{ASN.SEQUENCE}
+                        asmin = UInt32(ASN.value(asidentifierchoice[1,1,1].tag))
+                        asmax = UInt32(ASN.value(asidentifierchoice[1,1,2].tag))
+                        push!(o.object.ASNs, (asmin, asmax))
+                    else
+                        remark!(asidentifierchoice[1,1], "unexpected tag number $(asidentifierchoice[1,1].tag.number)")
+                    end
+                else
+                    remark!(asidentifierchoice[1], "expected either a SEQUENCE OF or a NULL here")
+                end
+
+            elseif asidentifierchoice.tag.number == 1
+                throw("implement rdi for ASIdentifierChoice")
+            else
+                remark!(asidentifierchoice, "Unknown Context-Specific tag number, expecting 0 or 1")
+            end
+        end
+        
     end
 
     # or:

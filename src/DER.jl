@@ -156,12 +156,16 @@ function _parse!(tag, buf, indef_stack::Stack, recurse_into_octetstring = false)
     me = Node(tag) 
     if isa(tag, Tag{OCTETSTRING})
         if tag.constructed
+            #TODO what about constructed BITSTRINGs, are those allowed?
             remark!(me, "constructed OCTETSTRING, not allowed in DER")
         end
     end
     if tag.len_indef
         remark!(me, "indefinite length, not allowed in DER")
     end
+    #if tag isa Tag{CONTEXT_SPECIFIC} && tag.constructed && ! tag.len_indef
+    #    @debug "got a constructed CONTEXT_SPECIFIC of definite length $(tag.len)"
+    #end
 
     if isa(tag, Tag{SEQUENCE}) || isa(tag, Tag{SET}) ||
         ((isa(tag, Tag{CONTEXT_SPECIFIC}) ||
@@ -242,6 +246,10 @@ function _parse!(tag, buf, indef_stack::Stack, recurse_into_octetstring = false)
     #        tag.value = read(buf.iob, tag.len)
     #    end
     elseif recurse_into_octetstring && isa(tag, Tag{OCTETSTRING})
+        #FIXME with the specific objects checks in RPKI.jl we can probably
+        #remove this altogether
+        @debug "recursing into octetstring"
+        throw("recursing into octetstring from DER.jl")
         # primitive OCTETSTRING, but we do check for a nested SEQUENCE
         # because it is primitive, the tag.value has been set
         # and the bytes have been read from buf already

@@ -129,9 +129,9 @@ function next!(buf::Buf) :: Union{Tag{<:AbstractTag}, Nothing}
         #@debug "next! for SEQUENCE, _not_ reading value"
         #[] 
         nothing
-    elseif constructed && tagclass == 0x02
-        #@debug "here with len $(len)"
-        read(buf.iob, len) 
+    #elseif constructed && tagclass == 0x02
+    #    #@debug "here with len $(len)"
+    #    read(buf.iob, len) 
     elseif !constructed
         #@debug "primitive $(tagnumber), reading value of len $(len)"
         read(buf.iob, len) 

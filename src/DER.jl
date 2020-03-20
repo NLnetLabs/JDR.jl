@@ -144,8 +144,15 @@ function next!(buf::Buf) :: Union{Tag{<:AbstractTag}, Nothing}
     return Tag(tagclass, constructed, tagnumber, len, len_indef, value)
 end
 
-function _parse!(tag, buf, indef_stack = 0, recurse_into_octetstring = false) :: Node
-    #@debug tag
+mutable struct Stack
+    level::UInt8
+end
+push(s::Stack) = s.level += 1
+pop(s::Stack) = s.level -= 1
+empty(s::Stack) = s.level == 0
+
+function _parse!(tag, buf, indef_stack::Stack, recurse_into_octetstring = false) :: Node
+    #@debug (tag, indef_stack, buf.iob.ptr)
     me = Node(tag) 
     if isa(tag, Tag{OCTETSTRING})
         if tag.constructed
@@ -157,40 +164,41 @@ function _parse!(tag, buf, indef_stack = 0, recurse_into_octetstring = false) ::
     end
 
     if isa(tag, Tag{SEQUENCE}) || isa(tag, Tag{SET}) ||
-        ((#isa(tag, Tag{RESERVED_ENC}) ||
-          isa(tag, Tag{OCTETSTRING}) || isa(tag, Tag{BITSTRING})) && tag.constructed && !(tag.class == 0x02))
-        if tag.len_indef # == 0x80 #FIXME this can be an actual definite length of 0x80
-            #@debug "indef len, level $(indef_stack), whiling inside", tag
-            my_indef_stack_level = indef_stack
-            indef_stack += 1
-            #@debug "$(indef_stack) > $(my_indef_stack_level)?"
-            while indef_stack > my_indef_stack_level #&& !eof(buf.iob) #FIXME eof should not be necessary
+        ((isa(tag, Tag{CONTEXT_SPECIFIC}) ||
+          isa(tag, Tag{OCTETSTRING}) || isa(tag, Tag{BITSTRING})) && tag.constructed )#&& !(tag.class == 0x02))
+        if tag.len_indef 
+            my_indef_stack_level = indef_stack.level
+            push(indef_stack)
+            while !empty(indef_stack)
                 #@debug "inner $(indef_stack) > $(my_indef_stack_level)?"
                 subtag = DER.next!(buf)
                 if !(isa(subtag, Tag{Unimplemented}) || isa(subtag, Tag{InvalidTag}))
-                    if isa(subtag, Tag{RESERVED_ENC} )&& subtag.len == 0
-                        indef_stack -= 1
+                    if isa(subtag, Tag{RESERVED_ENC}) && subtag.len == 0
+                        pop(indef_stack)
                         break
                     else
                         ASN.append!(me, _parse!(subtag, buf, indef_stack))
                     end
                 else
-                    indef_stack -= 1
-                    @debug "(indef) trying to parse subtag of", tag
-                    @debug "got Unimplemented"
+                    pop(indef_stack)
                 end
             end
         else
             #@debug "def len, whiling inside", tag
             offset = buf.iob.ptr
             tmp_protect = 0
-            #@debug "here because?? tag: $(tag), constructed? $(tag.constructed)"
             #@debug "buf.iob.ptr $(buf.iob.ptr) , offset+tag.len $(offset+tag.len)"
             while buf.iob.ptr < offset+tag.len && tmp_protect < 99999  
                 #@debug "in while at $(buf.iob.ptr) / $(offset+tag.len)"
                 subtag = DER.next!(buf)
                 #@debug "got subtag", subtag
-                if !(isa(subtag, Tag{Unimplemented}) || isa(subtag, Tag{InvalidTag}))
+                if subtag isa Tag{RESERVED_ENC} && subtag.len == 0
+                    pop(indef_stack)
+                    #@debug "double NULL in lower while, -- == $(indef_stack)"
+                    break
+                elseif !(isa(subtag, Tag{Unimplemented}) || isa(subtag, Tag{InvalidTag}))
+                    #@debug "in lower while, appending subtag $(subtag) to $(me)"
+                    #@debug "my value is $(me.tag.value)"
                     ASN.append!(me, _parse!(subtag, buf, indef_stack))
                 else
                     #@debug "got Unimplemented at $(buf.iob.ptr), tagnumber | tagclass:", subtag.number | subtag.class
@@ -206,8 +214,6 @@ function _parse!(tag, buf, indef_stack = 0, recurse_into_octetstring = false) ::
                 error("protection mechanism kicked in")
             end
             #@debug "post while, tmp_protect $(tmp_protect)"
-
-
         end
     #elseif isa(tag, Tag{BITSTRING})
     #    #@debug "in BITSTRING of len", tag.len
@@ -267,31 +273,19 @@ function parse_file_recursive(fn::String)
     #buf = DER.Buf(mmapraw)
     buf = DER.Buf(fd)
     tag = DER.next!(buf)
-
-    indef_stack = if tag.len == 0x80
-        1
-    else
-        0
-    end
-
     close(fd)
-    
+
     # this returns the actual tree, so it MUST be the last statement
-    _parse!(tag, buf, indef_stack, recurse_into_octetstring)
+    _parse!(tag, buf, Stack(0), recurse_into_octetstring)
 end
 
 function parse_append!(buf::Buf, parent::Node)
     tag = DER.next!(buf)
-    indef_stack = if tag.len == 0x80
-        1
-    else
-        0
-    end
-    result = _parse!(tag, buf, indef_stack)
+    result = _parse!(tag, buf, Stack(0))
     ASN.append!(parent, result)
 end
+
 function parse_value!(node::Node)
-    #@debug node.tag.value
     buf = DER.Buf(node.tag.value)
     parse_append!(buf, node)
 end

@@ -5,7 +5,7 @@ export print_node, append!, isleaf, parent, iter, lazy_iter
 export remark!, child, getindex
 
 export  Unimplemented, InvalidTag, SEQUENCE, SET, RESERVED_ENC, OCTETSTRING,
-        BITSTRING, PRINTABLESTRING
+        BITSTRING, PRINTABLESTRING, CONTEXT_SPECIFIC
 
 
 abstract type AbstractTag end 

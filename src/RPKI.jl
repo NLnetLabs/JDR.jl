@@ -183,7 +183,7 @@ end
 function checkTbsCertificate(o::RPKIObject, tbscert::Node)
     # Version == 0x02? (meaning version 3)
     tagis_contextspecific(tbscert[1], 0x0)
-    DER.parse_value!(tbscert[1])
+    #DER.parse_value!(tbscert[1])
     tagvalue(tbscert[1, 1], ASN.INTEGER, 0x02)
 
     # Serial number
@@ -269,7 +269,7 @@ function checkTbsCertificate(o::RPKIObject, tbscert::Node)
     # MUST be present
     extensions = tbscert[8]
     tagis_contextspecific(extensions, 0x3)
-    DER.parse_value!(extensions)
+    #DER.parse_value!(extensions)
 
     mandatory_extensions = Vector{String}()
 
@@ -419,7 +419,7 @@ function checkTbsCertificate(o::RPKIObject, tbscert::Node)
             # expect either a [0] or [1]
             tagisa(asidentifierchoice, ASN.CONTEXT_SPECIFIC)
             if asidentifierchoice.tag.number == 0
-                DER.parse_append!(DER.Buf(asidentifierchoice.tag.value), asidentifierchoice)
+                #DER.parse_append!(DER.Buf(asidentifierchoice.tag.value), asidentifierchoice)
                 # or NULL (inherit) or SEQUENCE OF ASIdOrRange
                 if asidentifierchoice[1].tag isa Tag{ASN.NULL}
                     o.object.inherit_ASNs = true

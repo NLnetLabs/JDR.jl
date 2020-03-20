@@ -2,7 +2,7 @@ module ASN
 
 export Tag, AbstractTag, Node, AbstractNode, Leaf
 export print_node, append!, isleaf, parent, iter, lazy_iter
-export remark!, child, getindex
+export remark!, child, getindex, tagtype
 
 export  Unimplemented, InvalidTag, SEQUENCE, SET, RESERVED_ENC, OCTETSTRING,
         BITSTRING, PRINTABLESTRING, CONTEXT_SPECIFIC
@@ -260,24 +260,42 @@ function Base.show(io::IO, n::Node)
     end
 end
 
+mutable struct PrintState
+    traverse::Bool
+    indent::Integer
+    max_lines::Integer
+    printed_lines::Integer
+end
+PrintState() = PrintState(false, 0, 0, 0)
+inc(p::PrintState) = p.printed_lines += 1
+done(p::PrintState) = p.max_lines > 0 && p.printed_lines == p.max_lines
 
-function print_node(n::Node; traverse::Bool=false, level::Integer=0)
-    #println(n)
-    if traverse && !isnothing(n.children)
-        println(level, n) #FIXME is there an extra node at the end at level 0?
-        level += 1
-        for (i, c) in enumerate(n.children)
-            print(repeat("  ", level))
-            print_node(c; traverse=true, level=level)
-            #println(c.tag)
-        end
-        level -= 1
+
+function print_node(n::Node, ps::PrintState=PrintState()) # level::Integer=0, print_max::Integer=0, printed::Integer=0)
+    if done(ps)
+        return
     end
-    #if level == 1 
-    #    #println()
-    #end
+    if ps.traverse && !isnothing(n.children)
+        inc(ps)
+        println(ps.indent, n)
+        ps.indent += 1
+        for (i, c) in enumerate(n.children)
+            print(repeat("  ", ps.indent))
+            print_node(c, ps)
+        end
+        ps.indent -= 1
+    end
+end
+function print_node(n::Node; traverse::Bool, max_lines::Integer=0)  
+    print_node(n, PrintState(traverse, 0, max_lines, 0))
+    if max_lines > 0
+        printstyled("\r---- max-lines was $(max_lines) ----\n", color=:red)
+    end
 end
 
+function tagtype(n::Node) :: DataType
+    typeof(n.tag).parameters[1]
+end
 
 ####################
 # validation helpers

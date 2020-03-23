@@ -1,10 +1,55 @@
 mutable struct CER 
+    pubpoint::String
+    manifest::String
+    rrdp_notify::String
     inherit_prefixes::Bool
     prefixes::Vector{Union{IPNet, Tuple{IPNet, IPNet}}}
     inherit_ASNs::Bool
     ASNs::Vector{Union{Tuple{UInt32, UInt32}, UInt32}}
-end # <: RPKIObject end 
-CER() = CER(false, [], false, [])
+end
+CER() = CER("", "", "", false, [], false, [])
+
+function check_subject_information_access(o::RPKIObject{CER}, subtree::Node)
+    tagisa(subtree, ASN.OCTETSTRING)
+    # second pass on the encapsulated  OCTETSTRING
+    DER.parse_append!(DER.Buf(subtree.tag.value), subtree)
+
+    # MUST be present:
+    # 1.3.6.1.5.5.7.48.5 caRepository
+    # 1.3.6.1.5.5.7.48.10 rpkiManifest
+    # could be present:
+    # 1.3.6.1.5.5.7.48.13 RRDP notification URL
+    
+    tagisa(subtree[1], ASN.SEQUENCE)
+    carepo_present = false
+    manifest_present = false
+    for access_description in subtree[1].children
+        tagisa(access_description, ASN.SEQUENCE)
+        checkchildren(access_description, 2)
+        tagisa(access_description[1], ASN.OID)
+        # [6] is a uniformResourceIdentifier, RFC5280
+        tagis_contextspecific(access_description[2], 0x06)
+
+        #now check for the MUST-be presents:
+        if value(access_description[1].tag) == "1.3.6.1.5.5.7.48.5"
+            carepo_present = true
+            o.object.pubpoint = String(copy(access_description[2].tag.value))
+        end
+        if value(access_description[1].tag) == "1.3.6.1.5.5.7.48.10"
+            manifest_present = true
+            o.object.manifest = String(copy(access_description[2].tag.value))
+        end
+        if value(access_description[1].tag) == "1.3.6.1.5.5.7.48.13"
+            o.object.rrdp_notify = String(copy(access_description[2].tag.value))
+        end
+    end
+    if !carepo_present
+        remark!(subtree, "missing essential caRepository")
+    end
+    if !manifest_present
+        remark!(subtree, "missing essential rpkiManifest")
+    end
+end
 
 function checkTbsCertificate(o::RPKIObject{CER}, tbscert::Node)
     # Version == 0x02? (meaning version 3)
@@ -141,6 +186,7 @@ function checkTbsCertificate(o::RPKIObject{CER}, tbscert::Node)
 
     # Subject Information Access, MUST be present
     ## SIA for CA Certificates MUST be present, MUST be non-critical
+    push!(mandatory_extensions, "1.3.6.1.5.5.7.1.11")
     ### MUST have an caRepository (OID 1.3.6.1.5.5.7.48.5)
     ### MUST have a rpkiManifest (OID 1.3.6.1.5.5.7.48.10) pointing to an rsync uri
     # TODO rrdp stuff is in another RFC
@@ -166,6 +212,13 @@ function checkTbsCertificate(o::RPKIObject{CER}, tbscert::Node)
 
     check_extensions(extensions, mandatory_extensions)
     all_extensions = get_extensions(extensions)
+
+
+    # SIA checks
+    check_subject_information_access(o, all_extensions["1.3.6.1.5.5.7.1.11"])
+
+    # IP and/or ASN checks:
+    
     if "1.3.6.1.5.5.7.1.7" in keys(all_extensions)
         #@debug "got IP extension"
         subtree = all_extensions["1.3.6.1.5.5.7.1.7"]

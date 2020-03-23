@@ -73,12 +73,14 @@ function checkchildren(node::Node, num::Integer) :: Bool #TODO can we use "> 1" 
         remark!(node, "expected $(num) children, found $(length(node.children))")
         valid = false
     end
+    node.validated = true
     valid
 end
 function checkchildren(node::Node, range::UnitRange{Int}) #TODO can we use "> 1" here? maybe with an Expr?
     if !(length(node.children) in range)
         remark!(node, "expected $(minimum(range)) to $(maximum(range)) children, found $(length(node.children))")
     end
+    node.validated = true
 end
 
 
@@ -109,7 +111,11 @@ end
 function containAttributeTypeAndValue(node::Node, oid::String, t::Type)
     found_oid = false
     node.validated = true # this node is the RelativeDistinguishedName, thus a SET
-    @assert node.tag isa Tag{ASN.SET}
+
+    # in case of IMPLICITly tagged context-specific SETs, the first part of the
+    # following @assert condition fails
+    @assert node.tag isa Tag{ASN.SET} || node.tag isa Tag{CONTEXT_SPECIFIC}
+
     for c in node.children # every c in a SEQUENCE
         @assert c.tag isa Tag{ASN.SEQUENCE}
         if c[1].tag isa Tag{ASN.OID} && ASN.value(c[1].tag) == oid
@@ -591,7 +597,69 @@ function check_signed_data(o::RPKIObject{MFT}, sd::Node) :: RPKIObject{MFT}
     # CertificateSet, optional [0] (IMPLICITly tagged), MUST be here
     tagis_contextspecific(sd[4], 0x00)
 
+    # SignerInfos
+    signerinfos = sd[5]
+    o = check_signerinfo(o, signerinfos)
 
+    o
+end
+
+function check_signerinfo(o::RPKIObject{MFT}, sis::Node) :: RPKIObject{MFT}
+    tagisa(sis, ASN.SET)
+
+    # SignerInfos MUST only contain a single SignerInfo object 
+    checkchildren(sis, 1)
+    # a SignerInfo is a SEQUENCE
+    si = sis[1]
+    tagisa(si, ASN.SEQUENCE)
+
+    # CMSVersion, MUST be 3
+    tagvalue(si[1], ASN.INTEGER, 0x03)
+
+    # SignerIdentifier
+    # RFC 6488:
+    #   For RPKI signed objects, the sid MUST be the SubjectKeyIdentifier
+    #   that appears in the EE certificate carried in the CMS certificates
+    #   field.
+
+    # thus: SubjectKeyIdentifier
+    tagis_contextspecific(si[2], 0x00)
+
+    # DigestAlgorithmIdentifier
+    #
+    #
+    tagisa(si[3], ASN.SEQUENCE)
+    tagvalue(si[3, 1], ASN.OID, "2.16.840.1.101.3.4.2.1")
+    tagisa(si[3, 2], ASN.NULL)
+
+    # SignedAttributes
+    # MUST be present
+    # MUST include 'content-type' and 'message-digest' 
+    # MAY include 'signing-time' and/or 'binary-signing-time'
+    checkchildren(si[4], 2:4)
+    # TODO how to check for optional Type/Values ?
+    # we can not attach them to the Object and rely on them later in the
+    # process, as they might not be present in the .mft
+
+    # content-type
+    containAttributeTypeAndValue(si[4], "1.2.840.113549.1.9.3", ASN.SET)
+    # TODO:
+    # must contain 1.2.840.113549.1.9.16.1.26 (rpkiManifest)
+
+    # message-digest
+    containAttributeTypeAndValue(si[4], "1.2.840.113549.1.9.4", ASN.SET)
+
+    # SignatureAlgorithmIdentifier
+    tagisa(si[5], ASN.SEQUENCE)
+    tagvalue(si[5, 1], ASN.OID, "1.2.840.113549.1.1.1")
+    tagisa(si[5, 2], ASN.NULL)
+
+    # SignatureValue
+    tagisa(si[6], ASN.OCTETSTRING)
+    if si[6].tag.len != 256
+        remark!(si[6], "expected 256 bytes instead of $(si[6].tag.len)")
+    end
+    
     o
 end
 

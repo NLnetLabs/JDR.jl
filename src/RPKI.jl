@@ -24,13 +24,25 @@ end
 
 struct MFT end # <: RPKIObject end 
 struct CRL end # <: RPKIObject end 
-struct ROA end # <: RPKIObject end 
+
+
+
+struct VRP{AFI<:IPNet}
+    prefix::AFI
+    maxlength::Integer
+end
+
+struct ROA
+    vrps::Vector{VRP}
+end # <: RPKIObject end 
+ROA() = ROA([])
 
 function RPKIObject(filename::String)::RPKIObject
     tree = DER.parse_file_recursive(filename)
     ext = lowercase(splitext(filename)[2])
     if      ext == ".cer" RPKIObject{CER}(filename, tree)
     elseif  ext == ".mft" RPKIObject{MFT}(filename, tree)
+    elseif  ext == ".roa" RPKIObject{ROA}(filename, tree)
     end
 end
 
@@ -714,6 +726,155 @@ function check(o::RPKIObject{MFT}) :: RPKIObject{MFT}
     tagis_contextspecific(o.tree[2], 0x00) # content
 
     # 6488:
+    tagisa(o.tree[2, 1], ASN.SEQUENCE)
+    o = check_signed_data(o, o.tree[2, 1])
+    
+    o
+end
+
+function rawv4_to_roa(o::RPKIObject{ROA}, roa_ipaddress::Node) :: RPKIObject{ROA}
+    tagisa(roa_ipaddress, ASN.SEQUENCE)
+    tagisa(roa_ipaddress[1], ASN.BITSTRING)
+
+    prefix = bitstring_to_v4prefix(roa_ipaddress[1].tag.value)
+    maxlength = prefix.netmask #FIXME typing, UInt vs Int
+
+    # optional maxLength:
+    if length(roa_ipaddress.children) == 2
+        tagisa(roa_ipaddress[2], ASN.INTEGER)
+        if ASN.value(roa_ipaddress[2].tag) == maxlength
+            remark!(roa_ipaddress[2], "redundant maxLength")
+        else
+            maxlength = roa_ipaddress[2].tag
+        end
+    end
+    push!(o.object.vrps, VRP(prefix, maxlength))
+    o
+end
+function rawv6_to_roa(o::RPKIObject{ROA}, roa_ipaddress::Node) :: RPKIObject{ROA}
+    tagisa(roa_ipaddress, ASN.SEQUENCE)
+    tagisa(roa_ipaddress[1], ASN.BITSTRING)
+    # optional maxLength:
+    if length(roa_ipaddress.children) == 2
+        tagisa(roa_ipaddress[2], ASN.INTEGER)
+    end
+    @debug bitstring_to_v6prefix(roa_ipaddress[1])
+    o
+end
+
+function check_ipaddrblocks(o::RPKIObject{ROA}, ipaddrblocks::Node) :: RPKIObject{ROA}
+    tagisa(ipaddrblocks, ASN.SEQUENCE)
+    if length(ipaddrblocks.children) == 0
+        remark!(ipaddrblocks, "there should be at least one ROAIPAddressFamily here")
+    end
+    for roa_afi in ipaddrblocks.children
+        tagisa(roa_afi, ASN.SEQUENCE)
+        # addressFamily
+        tagisa(roa_afi[1], ASN.OCTETSTRING)
+        afi = reinterpret(UInt16, reverse(roa_afi[1].tag.value))[1]
+        if ! (afi in [1,2])
+            @error "invalid AFI in ROA"
+            remark!(roa_afi[1], "addressFamily MUST be either 0002 for IPv6 or 0001 for IPv4")
+        end
+        addresses = roa_afi[2]
+        tagisa(addresses, ASN.SEQUENCE)
+        if length(addresses.children) == 0
+            remark!(addresses, "there should be at least one ROAIPAddress here")
+        end
+        if afi == 1 # IPv4
+            for roa_ipaddress in addresses.children
+                rawv4_to_roa(o, roa_ipaddress)
+            end
+        else
+            for roa_ipaddress in addresses.children
+                rawv6_to_roa(o, roa_ipaddress)
+            end
+        end
+    end
+    o
+end
+
+function check_route_origin_attestation(o::RPKIObject{ROA}, roa::Node) :: RPKIObject{ROA}
+    tagisa(roa, ASN.SEQUENCE)
+
+    # TODO again D-R-Y: see check_manifest
+    # Version
+    checkchildren(roa, 2:3)
+    # the 'version' is optional, defaults to 0
+    offset = 0
+    if length(roa.children) == 3
+        offset = 1
+        # version:
+        tagis_contextspecific(roa[1], 0x00)
+        # EXPLICIT tagging, so the version must be in a child
+        checkchildren(roa[1], 1)
+        tagisa(roa[1, 1], ASN.INTEGER)
+        if value(roa[1, 1].tag) == 0
+            remark!(roa[1, 1], "version explicitly set to 0 while that is the default")
+        else
+            remark!(roa[1, 1], "version MUST be 0, found $(value(roa[1,1].tag))")
+        end
+    else
+        @assert length(roa.children) == 2
+        # TODO: should we have different levels (INFO/WARN/ERR) of remarks?
+        #remark!(roa, "no version, assuming default 0")
+    end
+    # --- till here ---
+    
+    # ASID
+    asid = roa[offset + 1] # TODO attach to o
+    tagisa(asid, ASN.INTEGER)
+
+    # ipAddrBlocks
+    ipaddrblocks = roa[offset + 2]
+    o = check_ipaddrblocks(o, ipaddrblocks)
+    
+    o
+end
+
+function check_signed_data(o::RPKIObject{ROA}, sd::Node) :: RPKIObject{ROA}
+    # TODO refactor: first part overlaps with check_signed_data for MFT
+
+    # Signed-Data as defined in RFC 5652 (CMS) can contain up to 6 children
+    # but for RPKI Manifests, we MUST have the CertificateSet and MUST NOT have
+    # the RevocationInfoChoices
+    checkchildren(sd, 5)
+
+    # CMSVersion
+    tagvalue(sd[1], ASN.INTEGER, 0x03)
+
+    # DigestAlgorithmIdentifiers
+    tagisa(sd[2], ASN.SET) 
+    tagisa(sd[2,1], ASN.SEQUENCE)
+    tagvalue(sd[2,1,1], ASN.OID, "2.16.840.1.101.3.4.2.1")
+    tagisa(sd[2,1,2], ASN.NULL)
+
+    # ----- here things are different for .roa compared to .mft
+
+    # EncapsulatedContentInfo
+    tagisa(sd[3], ASN.SEQUENCE)
+    eContentType = sd[3,1]
+    eContent = sd[3,2]
+
+    tagvalue(eContentType, ASN.OID, "1.2.840.113549.1.9.16.1.24")
+    tagis_contextspecific(eContent, 0x00)
+    tagisa(eContent[1], ASN.OCTETSTRING)
+
+    # to the second pass over the OCTETSTRING in the eContent
+    DER.parse_append!(DER.Buf(eContent[1].tag.value), eContent[1])
+    roa = eContent[1,1]
+    o = check_route_origin_attestation(o, roa)
+    o
+end
+
+function check(o::RPKIObject{ROA}) :: RPKIObject{ROA}
+    cmsobject = o.tree
+    #CMS, RFC5652
+    tagisa(o.tree, ASN.SEQUENCE)
+    tagvalue(o.tree[1], ASN.OID, "1.2.840.113549.1.7.2") # contentType
+    tagis_contextspecific(o.tree[2], 0x00) # content
+
+    ## 6488:
     tagisa(o.tree[2, 1], ASN.SEQUENCE)
     o = check_signed_data(o, o.tree[2, 1])
     

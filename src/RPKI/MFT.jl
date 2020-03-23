@@ -1,8 +1,9 @@
-struct MFT end # <: RPKIObject end 
+struct MFT
+    files::Vector{String}
+end
+MFT() = MFT([])
 
 function check_signed_data(o::RPKIObject{MFT}, sd::Node) :: RPKIObject{MFT}
-    @debug "check_signed_data for a ", sd
-
     # Signed-Data as defined in RFC 5652 (CMS) can contain up to 6 children
     # but for RPKI Manifests, we MUST have the CertificateSet and MUST NOT have
     # the RevocationInfoChoices
@@ -40,7 +41,6 @@ function check_signed_data(o::RPKIObject{MFT}, sd::Node) :: RPKIObject{MFT}
         remark!(eContent[1,1], "unexpected tag $(tagtype(eContent[1,1]))")
         return o
     end
-    @debug "Manifest is: ", manifest
     o = check_manifest(o, manifest)
 
     # CertificateSet, optional [0] (IMPLICITly tagged), MUST be here
@@ -149,7 +149,8 @@ function check_manifest(o::RPKIObject{MFT}, m::Node) :: RPKIObject{MFT}
         tagisa(file_and_hash, ASN.SEQUENCE)
         tagisa(file_and_hash[1], ASN.IA5STRING)
         tagisa(file_and_hash[2], ASN.BITSTRING)
-        @debug file_and_hash[2]
+        #@debug file_and_hash[2]
+        push!(o.object.files, value(file_and_hash[1].tag))
     end
 
     o

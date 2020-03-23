@@ -5,7 +5,7 @@ end
 
 struct ROA
     vrps::Vector{VRP}
-end # <: RPKIObject end 
+end
 ROA() = ROA([])
 
 

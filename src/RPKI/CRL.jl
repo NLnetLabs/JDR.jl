@@ -1,1 +1,1 @@
-struct CRL end # <: RPKIObject end 
+struct CRL end

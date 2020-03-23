@@ -1,7 +1,7 @@
 module ASN
 
 export Tag, AbstractTag, Node, AbstractNode, Leaf
-export print_node, append!, isleaf, parent, iter, lazy_iter
+export value, print_node, append!, isleaf, parent, iter, lazy_iter
 export remark!, child, getindex, tagtype
 
 export  Unimplemented, InvalidTag, SEQUENCE, SET, RESERVED_ENC, OCTETSTRING,
@@ -235,7 +235,7 @@ function child(node::Node, indices...) :: Node
         try
         current = current.children[i]
         catch e
-            @warn "invalid child $(i) in $(indices)"
+            @warn "invalid child $(i) in $(indices), $(stacktrace()[4])"
             #showerror(stderr, e, catch_backtrace())
         end
     end

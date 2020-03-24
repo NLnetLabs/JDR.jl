@@ -15,7 +15,7 @@ function rawv4_to_roa(o::RPKIObject{ROA}, roa_ipaddress::Node) :: RPKIObject{ROA
     tagisa(roa_ipaddress[1], ASN.BITSTRING)
 
     prefix = bitstring_to_v4prefix(roa_ipaddress[1].tag.value)
-    maxlength = prefix.netmask #FIXME typing, UInt vs Int
+    maxlength = prefix.netmask #FIXME @code_warntype ?
 
     # optional maxLength:
     if length(roa_ipaddress.children) == 2
@@ -23,7 +23,7 @@ function rawv4_to_roa(o::RPKIObject{ROA}, roa_ipaddress::Node) :: RPKIObject{ROA
         if ASN.value(roa_ipaddress[2].tag) == maxlength
             remark!(roa_ipaddress[2], "redundant maxLength")
         else
-            maxlength = roa_ipaddress[2].tag
+            maxlength = value(roa_ipaddress[2].tag)
         end
     end
     push!(o.object.vrps, VRP(prefix, maxlength))
@@ -32,11 +32,21 @@ end
 function rawv6_to_roa(o::RPKIObject{ROA}, roa_ipaddress::Node) :: RPKIObject{ROA}
     tagisa(roa_ipaddress, ASN.SEQUENCE)
     tagisa(roa_ipaddress[1], ASN.BITSTRING)
+
+    prefix = bitstring_to_v6prefix(roa_ipaddress[1].tag.value)
+    maxlength = prefix.netmask
+
     # optional maxLength:
     if length(roa_ipaddress.children) == 2
         tagisa(roa_ipaddress[2], ASN.INTEGER)
+        if ASN.value(roa_ipaddress[2].tag) == maxlength
+            remark!(roa_ipaddress[2], "redundant maxLength")
+        else
+            maxlength = value(roa_ipaddress[2].tag)
+        end
     end
-    @debug bitstring_to_v6prefix(roa_ipaddress[1])
+
+    push!(o.object.vrps, VRP(prefix, maxlength))
     o
 end
 
@@ -125,7 +135,12 @@ function check_signed_data(o::RPKIObject{ROA}, sd::Node) :: RPKIObject{ROA}
     tagisa(sd[2], ASN.SET) 
     tagisa(sd[2,1], ASN.SEQUENCE)
     tagvalue(sd[2,1,1], ASN.OID, "2.16.840.1.101.3.4.2.1")
-    tagisa(sd[2,1,2], ASN.NULL)
+    #tagisa(sd[2,1,2], ASN.NULL)
+    #TODO D-R-Y with MFT.jl
+    if length(sd[2,1].children) == 2 
+        tagisa(sd[2,1,2], ASN.NULL)
+        remark!(sd[2,1,2], "this NULL SHOULD be absent (RFC4055)")
+    end
 
     # ----- here things are different for .roa compared to .mft
 

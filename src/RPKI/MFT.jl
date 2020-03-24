@@ -16,7 +16,13 @@ function check_signed_data(o::RPKIObject{MFT}, sd::Node) :: RPKIObject{MFT}
     tagisa(sd[2], ASN.SET) 
     tagisa(sd[2,1], ASN.SEQUENCE)
     tagvalue(sd[2,1,1], ASN.OID, "2.16.840.1.101.3.4.2.1")
-    tagisa(sd[2,1,2], ASN.NULL)
+    # TODO: This field MUST contain the same algorithm identifier as the
+    #    signature field in the sequence tbsCertificate (Section 4.1.2.3).
+    
+    if length(sd[2,1].children) == 2 
+        tagisa(sd[2,1,2], ASN.NULL)
+        remark!(sd[2,1,2], "this NULL SHOULD be absent (RFC4055)")
+    end
 
     # EncapsulatedContentInfo
     tagisa(sd[3], ASN.SEQUENCE)
@@ -27,15 +33,24 @@ function check_signed_data(o::RPKIObject{MFT}, sd::Node) :: RPKIObject{MFT}
     tagis_contextspecific(eContent, 0x00)
     tagisa(eContent[1], ASN.OCTETSTRING)
 
+    # if the OCTETSTRING is of indefinite length (BER instead of proper DER), we
+    # already have the encapsulated ASN nodes parsed
+    # if the OCTETSTRING is of definite length (like it should be), we need to
+    # to a second pass on the contents of it
+    if ! eContent[1].tag.len_indef
+        DER.parse_append!(DER.Buf(eContent[1].tag.value), eContent[1])
+    end
+
     # now, be flexible: for BER mft's, there will be another OCTETSTRING
     # either way, the eContent only has 1 child
+     
     checkchildren(eContent[1], 1)
     manifest = if eContent[1,1].tag isa Tag{ASN.OCTETSTRING} #TODO make a function for this
         remark!(eContent[1,1], "nested OCTETSTRING, BER instead of DER")
         # we need to do a second pass on this then
         DER.parse_append!(DER.Buf(eContent[1,1].tag.value), eContent[1,1])
         eContent[1,1,1]
-    elseif eContent[1,1] isa Tag{ASN.SEQUENCE}
+    elseif eContent[1,1].tag isa Tag{ASN.SEQUENCE}
         eContent[1,1]
     else
         remark!(eContent[1,1], "unexpected tag $(tagtype(eContent[1,1]))")
@@ -79,7 +94,12 @@ function check_signerinfo(o::RPKIObject{MFT}, sis::Node) :: RPKIObject{MFT}
     #
     tagisa(si[3], ASN.SEQUENCE)
     tagvalue(si[3, 1], ASN.OID, "2.16.840.1.101.3.4.2.1")
-    tagisa(si[3, 2], ASN.NULL)
+
+    if length(si[3,1].children) == 2 
+        tagisa(si[3,1,2], ASN.NULL)
+        remark!(si[3,1,2], "this NULL SHOULD be absent (RFC4055)")
+    end
+    #tagisa(si[3, 2], ASN.NULL)
 
     # SignedAttributes
     # MUST be present

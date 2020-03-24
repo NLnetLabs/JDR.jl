@@ -59,8 +59,47 @@ function split_rsync_url(url::String) :: Tuple{String, String}
     (hostname, cer_fn)
 end
 
+function process_roa(roa_fn::String)
+    o::RPKIObject{ROA} = check(RPKIObject(roa_fn))
+end
+
+function process_mft(mft_fn::String)
+    m::RPKIObject{MFT} = try 
+        check(RPKIObject(mft_fn))
+    catch e 
+        #showerror(stderr, e, catch_backtrace())
+        @error "MFT: error with $(mft_fn)"
+        return
+    end
+    #@debug m.filename
+    mft_dir = dirname(mft_fn)
+    for f in m.object.files
+        # check for .cer
+        ext = splitext(f)[2] 
+        if ext == ".cer"
+            subcer_fn = joinpath(mft_dir, f)
+            @assert isfile(subcer_fn)
+            try
+                process_cer(subcer_fn)
+            catch e
+                throw("MFT->.cer: error with $(subcer_fn): \n $(e)")
+            end
+        elseif ext == ".roa"
+            roa_fn = joinpath(mft_dir, f)
+            try
+                process_roa(roa_fn)
+            catch e
+                #showerror(stderr, e, catch_backtrace())
+                throw("MFT->.roa: error with $(roa_fn): \n $(e)")
+            end
+        end
+
+    end
+
+end
+
 function process_cer(cer_fn::String)
-    @debug cer_fn
+    #@debug cer_fn
     # now, for each .cer, get the CA Repo and 'sync' again
     o::RPKIObject{CER} = check(RPKIObject(cer_fn))
 
@@ -70,20 +109,15 @@ function process_cer(cer_fn::String)
 
     mft_host, mft_path = split_rsync_url(o.object.manifest)
     mft_fn = joinpath(REPO_DIR, mft_host, mft_path)
-    mft_dir = dirname(mft_fn)
-    @assert isfile(mft_fn)
-    m::RPKIObject{MFT} = check(RPKIObject(mft_fn))
-
-    @debug m.filename
-    for f in m.object.files
-        # check for .cer
-        if splitext(f)[2] == ".cer"
-            subcer_fn = joinpath(mft_dir, f)
-            @assert isfile(subcer_fn)
-            process_cer(subcer_fn)
-        end
-
+    #@assert isfile(mft_fn)
+    if !isfile(mft_fn)
+        @error "manifest $(basename(mft_fn)) not found"
+        return
     end
+    #@debug mft_fn
+    #m = nothing
+    
+    process_mft(mft_fn)
 
     # TODO check RFC on directory structures: do the .mft and .cer have to
     # reside in the same dir?
@@ -104,7 +138,19 @@ function retrieve_all()
         @assert isfile(ta_cer)
 
         # start recursing
-        process_cer(ta_cer)
+        try
+            process_cer(ta_cer)
+        catch e
+            # TODO: what is a proper way to record the error, but continue with
+            # the rest of the repo?
+            # maybe a 'hard error counter' per RIR/pubpoint ?
+            # also revisit the try/catches in process_cer()
+            #showerror(stderr, e, catch_backtrace())
+            @error "error while processing $(ta_cer)"
+            @error e
+            #showerror(stderr, e, catch_backtrace())
+            #break
+        end
         
     end
 end

@@ -84,6 +84,7 @@ function check_ipaddrblocks(o::RPKIObject{ROA}, ipaddrblocks::Node) :: RPKIObjec
 end
 
 function check_route_origin_attestation(o::RPKIObject{ROA}, roa::Node) :: RPKIObject{ROA}
+    @assert roa.tag isa ASN.Tag{ASN.SEQUENCE}
     tagisa(roa, ASN.SEQUENCE)
 
     # TODO again D-R-Y: see check_manifest
@@ -156,8 +157,38 @@ function check_signed_data(o::RPKIObject{ROA}, sd::Node) :: RPKIObject{ROA}
     tagisa(eContent[1], ASN.OCTETSTRING)
 
     # to the second pass over the OCTETSTRING in the eContent
-    DER.parse_append!(DER.Buf(eContent[1].tag.value), eContent[1])
-    roa = eContent[1,1]
+    # Here, in case of BER(?), an indefinite tag might already be parsed so we
+    # do NOT need the second pass
+    
+   # roa = if ! eContent[1].tag.len_indef
+   #     DER.parse_append!(DER.Buf(eContent[1].tag.value), eContent[1])
+   #     eContent[1, 1]
+   # else
+   #     DER.parse_append!(DER.Buf(eContent[1, 1].tag.value), eContent[1, 1])
+   #     eContent[1, 1, 1]
+   # end
+
+   # from MFT.jl:
+    roa = if ! eContent[1].tag.len_indef
+        DER.parse_append!(DER.Buf(eContent[1].tag.value), eContent[1])
+        eContent[1, 1]
+    else
+        # already parsed, but can we spot the chunked OCTETSTRING case?
+        if length(eContent[1].children) > 1
+            #TODO check on the 1000 byte limit of CER
+            remark!(eContent[1], "looks like CER instead of DER")
+            #@debug "found multiple children in eContent[1]"
+            concatted = collect(Iterators.flatten([n.tag.value for n in eContent[1].children]))
+            buf = DER.Buf(concatted)
+            DER.parse_replace_children!(buf, eContent[1])
+            eContent[1, 1]
+        else
+            DER.parse_append!(DER.Buf(eContent[1, 1].tag.value), eContent[1, 1])
+            eContent[1, 1, 1]
+        end
+    end
+
+
     o = check_route_origin_attestation(o, roa)
     o
 end

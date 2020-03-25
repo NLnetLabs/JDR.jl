@@ -39,6 +39,16 @@ function check_signed_data(o::RPKIObject{MFT}, sd::Node) :: RPKIObject{MFT}
     # to a second pass on the contents of it
     if ! eContent[1].tag.len_indef
         DER.parse_append!(DER.Buf(eContent[1].tag.value), eContent[1])
+    else
+        # already parsed, but can we spot the chunked OCTETSTRING case?
+        if length(eContent[1].children) > 1
+            remark!(eContent[1], "chunked OCTETSTRINGs ? TODO doublecheck me")
+            #@debug "found multiple children in eContent[1]"
+            concatted = collect(Iterators.flatten([n.tag.value for n in eContent[1].children]))
+            buf = DER.Buf(concatted)
+            DER.parse_replace_children!(buf, eContent[1])
+        end
+
     end
 
     # now, be flexible: for BER mft's, there will be another OCTETSTRING

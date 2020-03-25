@@ -287,6 +287,11 @@ function parse_file_recursive(fn::String)
     _parse!(tag, buf, Stack(0), recurse_into_octetstring)
 end
 
+function parse_replace_children!(buf::Buf, to_replace::Node)
+    tag = DER.next!(buf)
+    result = _parse!(tag, buf, Stack(0))
+    to_replace.children = [result]
+end
 function parse_append!(buf::Buf, parent::Node)
     tag = DER.next!(buf)
     result = _parse!(tag, buf, Stack(0))

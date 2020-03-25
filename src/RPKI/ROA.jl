@@ -3,10 +3,11 @@ struct VRP{AFI<:IPNet}
     maxlength::Integer
 end
 
-struct ROA
+mutable struct ROA
+    asid::Integer
     vrps::Vector{VRP}
 end
-ROA() = ROA([])
+ROA() = ROA(0, [])
 
 
 
@@ -112,6 +113,7 @@ function check_route_origin_attestation(o::RPKIObject{ROA}, roa::Node) :: RPKIOb
     # ASID
     asid = roa[offset + 1] # TODO attach to o
     tagisa(asid, ASN.INTEGER)
+    o.object.asid = value(asid.tag)
 
     # ipAddrBlocks
     ipaddrblocks = roa[offset + 2]

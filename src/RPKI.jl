@@ -312,13 +312,17 @@ function _html(tree::RPKINode, io::IOStream)
         if tree.obj isa String
             write(io, "<li><span class='caret'>$(tree.obj)")
         else
+            html(tree.obj, "/tmp/jdrhtml")
+            # a href to html_path(Object)
             write(io, "<li><span class='caret'>$(nameof(typeof(tree.obj).parameters[1]))")
             if tree.obj isa RPKIObject{CER}
                 write(io, " [$(split_rsync_url(tree.obj.object.pubpoint)[1])]")
             end
-            write(io, " $(basename(tree.obj.filename))")
+            write(io, " <a target='_blank' href='file://$(html_path(tree.obj, "/tmp/jdrhtml"))'>")
+            write(io, "$(basename(tree.obj.filename))")
+            write(io, "</a>")
         end
-            write(io, "<span style='color:red'>$(count_remarks(tree))</span>")
+            write(io, " <span style='color:red'>$(count_remarks(tree))</span>")
             write(io, "</span>\n")
     else
         write(io, "<li><span class='caret'>unsure, tree.obj was nothing<span>\n")
@@ -356,6 +360,72 @@ function html(tree::RPKINode, output_fn::String)
         write(io, "<script type='text/javascript' src='file://$(STATIC_DIR)/javascript.js'></script>")
     end
     @debug "written $(output_fn)"
+end
+
+
+# this is to generate a separate .html file for RPKIObject{CER/MFT/ROA/CRL}
+# NOT to be used in any recursive way in html(::RPKINode)
+function html_path(o::RPKIObject, output_dir::String)
+    normpath(joinpath(output_dir, replace(o.filename, REPO_DIR => ".", count=1)) * ".html")
+end
+function html(o::RPKIObject{CER}, output_dir::String)
+    output_fn = html_path(o, output_dir)
+    mkpath(dirname(output_fn))
+    STATIC_DIR = normpath(joinpath(pathof(parentmodule(RPKI)), "..", "..", "static"))
+    open(output_fn, "w") do io
+        write(io, "<link rel='stylesheet' href='file://$(STATIC_DIR)/style.css'/>\n")
+        write(io, "<h1>JDR</h1>\n")
+        write(io, "<h2>Certificate: $(basename(o.filename))</h2>\n")
+        write(io, "<b>pubpoint:</b> $(o.object.pubpoint)<br/>")
+        write(io, "<b>manifest:</b> $(o.object.manifest)<br/>")
+        write(io, "<b>rrdp:</b> $(o.object.rrdp_notify)<br/>")
+        write(io, "<b>ASNs:</b> $(o.object.ASNs)<br/>")
+        write(io, "<b>prefixes:</b> $(o.object.prefixes)<br/>")
+        write(io, "<ul class='asn'>")
+        ASN._html(o.tree, io)
+        write(io, "</ul>")
+    end
+end
+function html(o::RPKIObject{MFT}, output_dir::String)
+    output_fn = html_path(o, output_dir)
+    mkpath(dirname(output_fn))
+    STATIC_DIR = normpath(joinpath(pathof(parentmodule(RPKI)), "..", "..", "static"))
+    open(output_fn, "w") do io
+        write(io, "<link rel='stylesheet' href='file://$(STATIC_DIR)/style.css'/>\n")
+        write(io, "<h1>JDR</h1>\n")
+        write(io, "<h2>Manifest: $(basename(o.filename))</h2>\n")
+        write(io, "<b>listed files:</b> </br>")
+        write(io, "<ul>")
+        for f in o.object.files
+            write(io, "<li>$(f)</li>")
+        end
+        write(io, "</ul>")
+
+        write(io, "<ul class='asn'>")
+        ASN._html(o.tree, io)
+        write(io, "</ul>")
+    end
+end
+function html(o::RPKIObject{ROA}, output_dir::String)
+    output_fn = html_path(o, output_dir)
+    mkpath(dirname(output_fn))
+    STATIC_DIR = normpath(joinpath(pathof(parentmodule(RPKI)), "..", "..", "static"))
+    open(output_fn, "w") do io
+        write(io, "<link rel='stylesheet' href='file://$(STATIC_DIR)/style.css'/>\n")
+        write(io, "<h1>JDR</h1>\n")
+        write(io, "<h2>ROA: $(basename(o.filename))</h2>\n")
+        write(io, "<b>ASID:</b> $(o.object.asid) </br>")
+        write(io, "<b>Prefixes:</b> </br>")
+        write(io, "<ul>")
+        for v in o.object.vrps
+            write(io, "<li>$(v.prefix) , maxLength: $(v.maxlength)</li>")
+        end
+        write(io, "</ul>")
+
+        write(io, "<ul class='asn'>")
+        ASN._html(o.tree, io)
+        write(io, "</ul>")
+    end
 end
 
 end # module

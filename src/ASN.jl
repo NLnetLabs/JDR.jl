@@ -312,6 +312,82 @@ function tagtype(n::Node) :: DataType
     typeof(n.tag).parameters[1]
 end
 
+function _html(tree::Node, io::IOStream)
+
+    write(io, "<li class='asnnode $(tree.validated ? "validated" : "")'>")
+    write(io, "<span class='$(! isnothing(tree.remarks) ? "remark" : "")'>")
+    write(io, "$(nameof(typeof(tree.tag).parameters[1])): $(value(tree.tag))") # ($(tree.tag.len))")
+    if ! isnothing(tree.remarks)
+        write(io, "<div class='remarks-container'>")
+        for r in tree.remarks
+            write(io, "$(r) <br/>")
+        end
+        write(io, "</div>")
+    end
+    #TODO remarks:
+    #write(io, "<span style='color:red'>$(count_remarks(tree))</span>")
+    write(io, "</span>\n")
+
+    # children?
+    if !isnothing(tree.children)
+        write(io, "<ul class='asn'>\n")
+        for c in tree.children
+            _html(c, io)
+        end
+        write(io, "</ul>\n")
+    end
+    write(io, "</li>\n")
+
+    #    if tree.obj isa String
+    #        write(io, "<li><span class='caret'>$(tree.obj)")
+    #    else
+    #        write(io, "<li><span class='caret'>$(nameof(typeof(tree.obj).parameters[1]))")
+    #        if tree.obj isa RPKIObject{CER}
+    #            write(io, " [$(split_rsync_url(tree.obj.object.pubpoint)[1])]")
+    #        end
+    #        write(io, " $(basename(tree.obj.filename))")
+    #    end
+    #        write(io, "<span style='color:red'>$(count_remarks(tree))</span>")
+    #        write(io, "</span>\n")
+    #else
+    #    write(io, "<li><span class='caret'>unsure, tree.obj was nothing<span>\n")
+    #end
+    #if ! isempty(tree.children)
+    #    write(io, "<ul class='nested'>\n")
+    #    for c in tree.children
+    #        _html(c, io) 
+    #    end
+    #    write(io, "</ul>\n")
+    #elseif tree.obj isa RPKIObject{ROA}
+    #    write(io, "<ul class='nested'>\n")
+    #    write(io, "<li class='roa'>$(tree.obj.object.asid)</li>")
+    #    for r in tree.obj.object.vrps
+    #        write(io, "<li class='roa'>$(r)</li>")
+    #    end
+    #    write(io, "</ul>\n")
+
+    #end
+    #write(io, "</li>\n")
+end
+
+function html(tree::Node, output_fn::String) 
+    STATIC_DIR = normpath(joinpath(pathof(parentmodule(ASN)), "..", "..", "static"))
+    open(output_fn, "w") do io
+        write(io, "<link rel='stylesheet' href='file://$(STATIC_DIR)/style.css'/>\n")
+        write(io, "<h1>JDR</h1>\n\n")
+        write(io, "<ul id='main' class='asn'>\n")
+        #write(io, "<li>root</li>\n")
+        for c in tree.children
+            _html(c, io)
+        end
+        write(io, "</ul>\n")
+        write(io, "<!-- done -->\n")
+        write(io, "<script type='text/javascript' src='file://$(STATIC_DIR)/javascript.js'></script>")
+    end
+    @debug "written $(output_fn)"
+end
+
+
 ####################
 # validation helpers
 ####################

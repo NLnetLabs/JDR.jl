@@ -54,6 +54,20 @@ function add(p::RPKINode, c::Vector{RPKINode})
     end
 end
 
+function count_remarks(tree::RPKINode) :: Integer
+    if isnothing(tree.obj)
+        return 0
+    end
+    if tree.obj isa String # for the pubpoints tree
+        return sum([count_remarks(c) for c in tree.children])
+    end
+    if isempty(tree.children)
+        return ASN.count_remarks(tree.obj.tree)
+    end
+    #TODO should we actually go into .obj.tree? 
+    return ASN.count_remarks(tree.obj.tree) + sum([count_remarks(c) for c in tree.children])
+end
+
 function check(::RPKIObject{T}) where {T}
     @warn "unknown RPKIObject type"
 end
@@ -296,11 +310,16 @@ end
 function _html(tree::RPKINode, io::IOStream)
     if !isnothing(tree.obj)
         if tree.obj isa String
-            write(io, "<li><span class='caret'>$(tree.obj)</span>\n")
+            write(io, "<li><span class='caret'>$(tree.obj)")
         else
             write(io, "<li><span class='caret'>$(nameof(typeof(tree.obj).parameters[1]))")
-            write(io, "$(basename(tree.obj.filename))</span>\n")
+            if tree.obj isa RPKIObject{CER}
+                write(io, " [$(split_rsync_url(tree.obj.object.pubpoint)[1])]")
+            end
+            write(io, " $(basename(tree.obj.filename))")
         end
+            write(io, "<span style='color:red'>$(count_remarks(tree))</span>")
+            write(io, "</span>\n")
     else
         write(io, "<li><span class='caret'>unsure, tree.obj was nothing<span>\n")
     end

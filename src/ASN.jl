@@ -198,9 +198,11 @@ end
 abstract type AbstractNode end
 mutable struct Node <: AbstractNode
     parent::Union{Nothing, AbstractNode}
+    #TODO: Union needed, or can we deal with an empty Vector?
     children::Union{Nothing, Array{Node}}
     tag::Any #FIXME make this a DER.AbstractTag and benchmark
     validated::Bool
+    #TODO: Union needed, or can we deal with an empty Vector?
     remarks::Union{Nothing, Vector{String}}
 end
 
@@ -222,6 +224,19 @@ function remark!(n::Node, remark::String)
     else
         push!(n.remarks, remark)
     end
+end
+function count_remarks(tree::Node) :: Integer
+    if isnothing(tree)
+        return 0
+    end
+    if isnothing(tree.remarks)
+        return sum([count_remarks(c) for c in tree.children])
+    end
+    if isnothing(tree.children) || isempty(tree.children)
+        return length(tree.remarks)
+    end
+    return length(tree.remarks) + sum([count_remarks(c) for c in tree.children])
+
 end
 
 _Leaf(t::T) where {T <: Any } = Node(nothing, nothing, t, false, nothing)

@@ -92,21 +92,50 @@ function split_rsync_url(url::String) :: Tuple{String, String}
     (hostname, cer_fn)
 end
 
-function process_roa(roa_fn::String)
-    o::RPKIObject{ROA} = check(RPKIObject(roa_fn))
+struct AutSysNum
+    asn::UInt32
+end
+Base.show(a::AutSysNum) = print(io, "AS", a.asn)
+
+# TODO:
+# - can (do we need to) we further optimize/parametrize RPKINode on .obj?
+# - incorporate PrefixTree.jl
+struct Lookup
+    ASNs::Dict{AutSysNum}{Vector{RPKINode}}
+    prefix_Tree::Any
+end
+Lookup() = Lookup(Dict(), nothing)
+
+function add_roa!(lookup::Lookup, roanode::RPKINode)
+    # add ASN
+    @assert roanode.obj isa RPKIObject{ROA}
+    roa = roanode.obj.object
+    asn = AutSysNum(roa.asid)
+    if asn in keys(lookup.ASNs)
+        push!(lookup.ASNs[asn], roanode) 
+    else
+        lookup.ASNs[asn] = [roanode]
+    end
+
+    # TODO add prefix
 end
 
-function process_mft(mft_fn::String) :: RPKINode
+function process_roa(roa_fn::String)
+    o::RPKIObject{ROA} = check(RPKIObject(roa_fn))
+    o
+end
+
+function process_mft(mft_fn::String, lookup::Lookup) :: RPKINode
     m::RPKIObject{MFT} = try 
         check(RPKIObject(mft_fn))
     catch e 
-        #showerror(stderr, e, catch_backtrace())
+        showerror(stderr, e, catch_backtrace())
         @error "MFT: error with $(mft_fn)"
         return RPKINode(nothing, [], nothing)
     end
     #@debug m.filename
     mft_dir = dirname(mft_fn)
-    roas = Vector{RPKINode}() 
+    roas = Vector{RPKINode}()  #FIXME roas as a name is incorrect
     for f in m.object.files
         # check for .cer
         ext = splitext(f)[2] 
@@ -119,7 +148,7 @@ function process_mft(mft_fn::String) :: RPKINode
                 # of a manifest? in other words, can we be sure that if we reach
                 # this part of the `if ext ==`, there will be no other files to
                 # check?
-                cer = process_cer(subcer_fn)
+                cer = process_cer(subcer_fn, lookup)
                 push!(roas, cer)
             catch e
                 #showerror(stderr, e, catch_backtrace())
@@ -129,7 +158,10 @@ function process_mft(mft_fn::String) :: RPKINode
             roa_fn = joinpath(mft_dir, f)
             try
                 roa = process_roa(roa_fn)
-                push!(roas, RPKINode(nothing, [], roa))
+                roanode = RPKINode(nothing, [], roa)
+                #push!(roas, RPKINode(nothing, [], roa))
+                push!(roas, roanode)
+                add_roa!(lookup, roanode)
             catch e
                 #showerror(stderr, e, catch_backtrace())
                 throw("MFT->.roa: error with $(roa_fn): \n $(e)")
@@ -146,7 +178,7 @@ function process_mft(mft_fn::String) :: RPKINode
 end
 
 TMP_UNIQ_PP = Set()
-function process_cer(cer_fn::String) :: RPKINode
+function process_cer(cer_fn::String, lookup::Lookup) :: RPKINode
     #@debug cer_fn
     # now, for each .cer, get the CA Repo and 'sync' again
     o::RPKIObject{CER} = check(RPKIObject(cer_fn))
@@ -170,7 +202,7 @@ function process_cer(cer_fn::String) :: RPKINode
     #m = nothing
     
     try
-        mft = process_mft(mft_fn)
+        mft = process_mft(mft_fn, lookup)
         add(rpki_node, mft)
     catch e
         #nothing
@@ -186,7 +218,8 @@ function process_cer(cer_fn::String) :: RPKINode
     rpki_node
 end
 
-function retrieve_all()
+function retrieve_all() :: Tuple{RPKINode, Lookup}
+    lookup = Lookup()
     root = RPKINode(nothing, [], nothing)
     for (rir, rsync_url) in TAL_URLS
         @debug rir
@@ -203,7 +236,7 @@ function retrieve_all()
 
         # start recursing
         try
-            add(root, process_cer(ta_cer))
+            add(root, process_cer(ta_cer, lookup))
         catch e
             # TODO: what is a proper way to record the error, but continue with
             # the rest of the repo?
@@ -220,7 +253,7 @@ function retrieve_all()
     end
     @debug "TMP_UNIQ_PP length $(length(TMP_UNIQ_PP))"
     [@debug pp for pp in TMP_UNIQ_PP]
-    root
+    (root, lookup)
 end
 
 
@@ -425,6 +458,47 @@ function html(o::RPKIObject{ROA}, output_dir::String)
         write(io, "<ul class='asn'>")
         ASN._html(o.tree, io)
         write(io, "</ul>")
+    end
+end
+
+# Generate HTML for a 'Lookup query'
+# this is temporary: ideally we make something XHR JSON based
+# for now, this is only here to show what we can do with JDR
+#
+function search_asn_html(lookup::Lookup, asn::AutSysNum, output_dir::String)
+    if ! (asn in keys(lookup.ASNs))
+        @error "asn not in Lookup cache"
+        return
+    end
+
+    output_fn = normpath(joinpath(output_dir, "$(asn.asn).html"))
+    @debug output_fn
+    mkpath(dirname(output_fn))
+    STATIC_DIR = normpath(joinpath(pathof(parentmodule(RPKI)), "..", "..", "static"))
+
+    open(output_fn, "w") do io
+        numnodes = length(lookup.ASNs[asn])
+        write(io, "<h2>", "$(numnodes)", " ROAs found for ", "AS$(asn.asn)", "</h2>")
+
+        for roanode in lookup.ASNs[asn]
+            write(io, "<div style='border: 1px solid black;'>")
+            write(io, "<div>")
+            write(io, "prefixes: ")
+            write(io, "<ul>")
+            for vrp in roanode.obj.object.vrps
+                write(io, "<li>", "$(vrp.prefix)-$(vrp.maxlength)", "</li>")
+            end
+            write(io, "</ul>")
+            write(io, "</div>")
+            parent = roanode
+            while !(isnothing(parent.obj))
+                #write(io, "via ", parent.obj.filename, "<br/>")
+                write(io, "&#x2193;<a href='$(html_path(parent.obj, output_dir))'>$(basename(parent.obj.filename))</a><br/>")
+                parent = parent.parent
+            end
+            write(io, "</div><br/>")
+
+        end
     end
 end
 

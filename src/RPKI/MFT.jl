@@ -15,7 +15,7 @@ function check_signed_data(o::RPKIObject{MFT}, sd::Node) :: RPKIObject{MFT}
     # DigestAlgorithmIdentifiers
     tagisa(sd[2], ASN.SET) 
     tagisa(sd[2,1], ASN.SEQUENCE)
-    tagvalue(sd[2,1,1], ASN.OID, "2.16.840.1.101.3.4.2.1")
+    tag_OID(sd[2,1,1], @oid "2.16.840.1.101.3.4.2.1")
     # TODO: This field MUST contain the same algorithm identifier as the
     #    signature field in the sequence tbsCertificate (Section 4.1.2.3).
     
@@ -29,7 +29,7 @@ function check_signed_data(o::RPKIObject{MFT}, sd::Node) :: RPKIObject{MFT}
     eContentType = sd[3,1]
     eContent = sd[3,2]
 
-    tagvalue(eContentType, ASN.OID, "1.2.840.113549.1.9.16.1.26")
+    tag_OID(eContentType, @oid "1.2.840.113549.1.9.16.1.26")
     tagis_contextspecific(eContent, 0x00)
     tagisa(eContent[1], ASN.OCTETSTRING)
 
@@ -103,7 +103,7 @@ function check_signerinfo(o::RPKIObject{MFT}, sis::Node) :: RPKIObject{MFT}
     #
     #
     tagisa(si[3], ASN.SEQUENCE)
-    tagvalue(si[3, 1], ASN.OID, "2.16.840.1.101.3.4.2.1")
+    tag_OID(si[3, 1], @oid "2.16.840.1.101.3.4.2.1")
 
     if length(si[3,1].children) == 2 
         tagisa(si[3,1,2], ASN.NULL)
@@ -121,16 +121,16 @@ function check_signerinfo(o::RPKIObject{MFT}, sis::Node) :: RPKIObject{MFT}
     # process, as they might not be present in the .mft
 
     # content-type
-    containAttributeTypeAndValue(si[4], "1.2.840.113549.1.9.3", ASN.SET)
+    containAttributeTypeAndValue(si[4], @oid("1.2.840.113549.1.9.3"), ASN.SET)
     # TODO:
     # must contain 1.2.840.113549.1.9.16.1.26 (rpkiManifest)
 
     # message-digest
-    containAttributeTypeAndValue(si[4], "1.2.840.113549.1.9.4", ASN.SET)
+    containAttributeTypeAndValue(si[4], @oid("1.2.840.113549.1.9.4"), ASN.SET)
 
     # SignatureAlgorithmIdentifier
     tagisa(si[5], ASN.SEQUENCE)
-    tagvalue(si[5, 1], ASN.OID, "1.2.840.113549.1.1.1")
+    tag_OID(si[5, 1], @oid "1.2.840.113549.1.1.1")
     tagisa(si[5, 2], ASN.NULL)
 
     # SignatureValue
@@ -170,7 +170,7 @@ function check_manifest(o::RPKIObject{MFT}, m::Node) :: RPKIObject{MFT}
     tagisa(m[offset+3], ASN.GENTIME) 
 
     # fileHashAlg
-    tagvalue(m[offset+4], ASN.OID, "2.16.840.1.101.3.4.2.1")
+    tag_OID(m[offset+4], @oid "2.16.840.1.101.3.4.2.1")
 
     # fileList
     filelist = m[offset+5]
@@ -190,7 +190,7 @@ function check(o::RPKIObject{MFT}) :: RPKIObject{MFT}
     cmsobject = o.tree
     # CMS, RFC5652
     tagisa(o.tree, ASN.SEQUENCE)
-    tagvalue(o.tree[1], ASN.OID, "1.2.840.113549.1.7.2") # contentType
+    tag_OID(o.tree[1], @oid "1.2.840.113549.1.7.2") # contentType
     tagis_contextspecific(o.tree[2], 0x00) # content
 
     # 6488:

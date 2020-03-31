@@ -31,15 +31,15 @@ function check_subject_information_access(o::RPKIObject{CER}, subtree::Node)
         tagis_contextspecific(access_description[2], 0x06)
 
         #now check for the MUST-be presents:
-        if value(access_description[1].tag) == "1.3.6.1.5.5.7.48.5"
+        if access_description[1].tag.value == @oid "1.3.6.1.5.5.7.48.5"
             carepo_present = true
             o.object.pubpoint = String(copy(access_description[2].tag.value))
         end
-        if value(access_description[1].tag) == "1.3.6.1.5.5.7.48.10"
+        if access_description[1].tag.value == @oid "1.3.6.1.5.5.7.48.10"
             manifest_present = true
             o.object.manifest = String(copy(access_description[2].tag.value))
         end
-        if value(access_description[1].tag) == "1.3.6.1.5.5.7.48.13"
+        if access_description[1].tag.value == @oid "1.3.6.1.5.5.7.48.13"
             o.object.rrdp_notify = String(copy(access_description[2].tag.value))
         end
     end
@@ -64,7 +64,7 @@ function checkTbsCertificate(o::RPKIObject{CER}, tbscert::Node)
     # SEQ / OID / NULL
     tagisa(tbscert[3], ASN.SEQUENCE)
 
-    tagvalue(tbscert[3, 1], ASN.OID, "1.2.840.113549.1.1.11")
+    tag_OID(tbscert[3, 1], @oid "1.2.840.113549.1.1.11")
     if checkchildren(tbscert[3], 2)
         tagisa(tbscert[3, 2], ASN.NULL) # TODO be more explicit in the remark
     end
@@ -88,7 +88,7 @@ function checkTbsCertificate(o::RPKIObject{CER}, tbscert::Node)
     # If the issuer contains the serialNumber as well,
     # the set should contain 1 child, the RECOMMENDED set
     # TODO check this interpretation
-    containAttributeTypeAndValue(issuer_set, "2.5.4.3", ASN.PRINTABLESTRING)
+    containAttributeTypeAndValue(issuer_set, @oid("2.5.4.3"), ASN.PRINTABLESTRING)
 	if length(issuer_set.children) > 1
 	    # if size == 2, the second thing must be a CertificateSerialNumber
         @error "TODO: serialNumber in Issuer"
@@ -107,14 +107,14 @@ function checkTbsCertificate(o::RPKIObject{CER}, tbscert::Node)
     #  EE certified by the issuer MUST be identified using a subject name
     #  that is unique per issuer.
     #  TODO can we check on this? not here, but in a later stage?
-    containAttributeTypeAndValue(tbscert[6, 1], "2.5.4.3", ASN.PRINTABLESTRING)
+    containAttributeTypeAndValue(tbscert[6, 1], @oid("2.5.4.3"), ASN.PRINTABLESTRING)
 
     # SubjectPublicKeyInfo
     # AlgorithmIdentifier + BITSTRING
     tagisa(tbscert[7], ASN.SEQUENCE)
     tagisa(tbscert[7, 1], ASN.SEQUENCE)
     # FIXME: RFC6485 is not quite clear on which OID we should expect here..
-    tagvalue(tbscert[7, 1, 1], ASN.OID, "1.2.840.113549.1.1.1")
+    tag_OID(tbscert[7, 1, 1], @oid "1.2.840.113549.1.1.1")
     tagisa(tbscert[7, 1, 2], ASN.NULL)
     tagisa(tbscert[7, 2], ASN.BITSTRING)
     # here we go for a second pass:

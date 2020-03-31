@@ -31,6 +31,16 @@ function tagvalue(node::Node, t::Type, v::Any)
     end
 end
 
+function tag_OID(node::Node, v::Vector{UInt8})
+#function tagoid(node::Node, oid::String)
+    tagisa(node, ASN.OID)
+    if !(node.tag.value == v)
+        #FIXME: we need a nice string repr of v here!
+        #as this part will be an exception, we can handle the allocation penalty
+        remark!(node, "expected OID to be '$(v)', got '$(ASN.value(node.tag))'")
+    end
+end
+
 function checkchildren(node::Node, num::Integer) :: Bool #TODO can we use "> 1" here? maybe with an Expr?
     valid = true
     if !(length(node.children) == num)
@@ -72,7 +82,8 @@ function childrencontainvalue(node::Node, t::Type, v::Any)
     end
 end
 
-function containAttributeTypeAndValue(node::Node, oid::String, t::Type)
+#function containAttributeTypeAndValue(node::Node, oid::String, t::Type)
+function containAttributeTypeAndValue(node::Node, oid::Vector{UInt8}, t::Type)
     found_oid = false
     node.validated = true # this node is the RelativeDistinguishedName, thus a SET
 
@@ -82,7 +93,8 @@ function containAttributeTypeAndValue(node::Node, oid::String, t::Type)
 
     for c in node.children # every c in a SEQUENCE
         @assert c.tag isa Tag{ASN.SEQUENCE}
-        if c[1].tag isa Tag{ASN.OID} && ASN.value(c[1].tag) == oid
+        #if c[1].tag isa Tag{ASN.OID} && ASN.value(c[1].tag) == oid
+        if c[1].tag isa Tag{ASN.OID} && c[1].tag.value == oid
             if tagisa(c[2], t)
                 c.validated = c[1].validated = c[2].validated = true
                 return

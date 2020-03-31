@@ -137,7 +137,8 @@ function check_signed_data(o::RPKIObject{ROA}, sd::Node) :: RPKIObject{ROA}
     # DigestAlgorithmIdentifiers
     tagisa(sd[2], ASN.SET) 
     tagisa(sd[2,1], ASN.SEQUENCE)
-    tagvalue(sd[2,1,1], ASN.OID, "2.16.840.1.101.3.4.2.1")
+    #tagvalue(sd[2,1,1], ASN.OID, "2.16.840.1.101.3.4.2.1")
+    tag_OID(sd[2,1,1], @oid "2.16.840.1.101.3.4.2.1")
     #tagisa(sd[2,1,2], ASN.NULL)
     #TODO D-R-Y with MFT.jl
     if length(sd[2,1].children) == 2 
@@ -152,7 +153,8 @@ function check_signed_data(o::RPKIObject{ROA}, sd::Node) :: RPKIObject{ROA}
     eContentType = sd[3,1]
     eContent = sd[3,2]
 
-    tagvalue(eContentType, ASN.OID, "1.2.840.113549.1.9.16.1.24")
+    #tagvalue(eContentType, ASN.OID, "1.2.840.113549.1.9.16.1.24")
+    tag_OID(eContentType, @oid "1.2.840.113549.1.9.16.1.24")
     tagis_contextspecific(eContent, 0x00)
     tagisa(eContent[1], ASN.OCTETSTRING)
 
@@ -197,7 +199,8 @@ function check(o::RPKIObject{ROA}) :: RPKIObject{ROA}
     cmsobject = o.tree
     #CMS, RFC5652
     tagisa(o.tree, ASN.SEQUENCE)
-    tagvalue(o.tree[1], ASN.OID, "1.2.840.113549.1.7.2") # contentType
+    #tagvalue(o.tree[1], ASN.OID, "1.2.840.113549.1.7.2") # contentType
+    tag_OID(o.tree[1], @oid "1.2.840.113549.1.7.2") # contentType
     tagis_contextspecific(o.tree[2], 0x00) # content
 
     ## 6488:

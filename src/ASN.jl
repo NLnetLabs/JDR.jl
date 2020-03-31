@@ -10,15 +10,6 @@ export  Unimplemented, InvalidTag, SEQUENCE, SET, RESERVED_ENC, OCTETSTRING,
 
 
 abstract type AbstractTag end 
-struct Tag{T}
-    class::UInt8
-    constructed::Bool # PC bit
-    number::UInt8
-    len::Int32
-    len_indef::Bool
-    value::Union{Nothing, Array{UInt8, 1}}
-end
-
 struct  Unimplemented   <:	AbstractTag	end
 struct  InvalidTag      <:	AbstractTag	end
 
@@ -49,33 +40,59 @@ struct  IA5STRING       <:  AbstractTag end
 struct  UTCTIME         <:  AbstractTag end
 struct  GENTIME         <:  AbstractTag end
 
+struct Tag{AbstractTag}
+    class::UInt8
+    constructed::Bool # PC bit
+    number::UInt8
+    len::Int32
+    len_indef::Bool
+    value::Union{Nothing, Array{UInt8, 1}}
+end
 
-Tag(class, constructed, number, len, len_indef, value) :: Tag{<: AbstractTag} = begin
-    t = if number   == 0    Tag{RESERVED_ENC} 
-    elseif number   == 1    Tag{BOOLEAN}
-    elseif number   == 2    Tag{INTEGER}
-    elseif number   == 3    Tag{BITSTRING}
-    elseif number   == 4    Tag{OCTETSTRING}
-    elseif number   == 5    Tag{NULL}
-    elseif number   == 6    Tag{OID}
-    elseif number   == 12   Tag{UTF8STRING}
-    elseif number   == 16   Tag{SEQUENCE}
-    elseif number   == 17   Tag{SET}
-    elseif number   == 22   Tag{IA5STRING}
-    elseif number   == 23   Tag{UTCTIME}
-    elseif number   == 24   Tag{GENTIME}
-    #elseif number   in (18:22)   Tag{CHAR}
-    elseif number   == 19   Tag{PRINTABLESTRING}
-    elseif number   in (25:30)   Tag{CHAR}
-    else                    Tag{Unimplemented}
-    end
-    if class == 0x00 # Universal
-        t(class, constructed, number, len, len_indef, value)
-    elseif class == 0x02 # Context-specific
+
+Tag(class::UInt8, constructed::Bool, number::UInt8, len::Int32, len_indef::Bool, value) :: Tag= begin
+    if class == 0x02 # Context-specific
         Tag{CONTEXT_SPECIFIC}(class, constructed, number, len, len_indef, value)
+    elseif number   == UInt8(0)    
+        Tag{RESERVED_ENC}(class, constructed, number, len, len_indef, value)
+    elseif number   == UInt8(1)
+        Tag{BOOLEAN}(class, constructed, number, len, len_indef, value)
+    elseif number   == UInt8(2)
+        Tag{INTEGER}(class, constructed, number, len, len_indef, value)
+    elseif number   == UInt8(3)
+        Tag{BITSTRING}(class, constructed, number, len, len_indef, value)
+    elseif number   == UInt8(4)  
+        Tag{OCTETSTRING}(class, constructed, number, len, len_indef, value)
+    elseif number   == UInt8(5)  
+        Tag{NULL}(class, constructed, number, len, len_indef, value)
+    elseif number   == UInt8(6)  
+        Tag{OID}(class, constructed, number, len, len_indef, value)
+    elseif number   == UInt8(12) 
+        Tag{UTF8STRING}(class, constructed, number, len, len_indef, value)
+    elseif number   == UInt8(16) 
+        Tag{SEQUENCE}(class, constructed, number, len, len_indef, value)
+    elseif number   == UInt8(17) 
+        Tag{SET}(class, constructed, number, len, len_indef, value)
+    elseif number   == UInt8(22) 
+        Tag{IA5STRING}(class, constructed, number, len, len_indef, value)
+    elseif number   == UInt8(23) 
+        Tag{UTCTIME}(class, constructed, number, len, len_indef, value)
+    elseif number   == UInt8(24) 
+        Tag{GENTIME}(class, constructed, number, len, len_indef, value)
+        #elseif number   in (18:22)  
+        Tag{CHAR}(class, constructed, number, len, len_indef, value)
+    elseif number   == UInt(19)  
+        Tag{PRINTABLESTRING}(class, constructed, number, len, len_indef, value)
+        #elseif number   in (25:30)  
+        #Tag{CHAR}(class, constructed, number, len, len_indef, value)
     else
-        @error "implement me"
-    end
+        Tag{Unimplemented}(class, constructed, number, len, len_indef, value)
+    end #::Tag{<:AbstractTag}
+#    else # class == 0x00 # Universal
+#        t(class, constructed, number, len, len_indef, value)::Tag{<:AbstractTag}
+#    #else
+#    #    @error "implement me"
+#    end
 end
 
 #InvalidTag() = Tag{InvalidTag}(0, 0, 0, 0, [])
@@ -235,10 +252,10 @@ end
 
 abstract type AbstractNode end
 mutable struct Node <: AbstractNode
-    parent::Union{Nothing, AbstractNode}
+    parent::Union{Nothing, Node}
     #TODO: Union needed, or can we deal with an empty Vector?
-    children::Union{Nothing, Array{Node}}
-    tag::Any #FIXME make this a DER.AbstractTag and benchmark
+    children:: Union{Nothing, Vector{Node}}
+    tag #FIXME make this a DER.AbstractTag and benchmark
     validated::Bool
     #TODO: Union needed, or can we deal with an empty Vector?
     remarks::Union{Nothing, Vector{String}}
@@ -280,7 +297,7 @@ end
 _Leaf(t::T) where {T <: Any } = Node(nothing, nothing, t, false, nothing)
 #Node(t::T) where {T <: Any } = Node(nothing, Vector{Node}(undef, 1), t)
 #Node(t::T) where {T <: Any } = Node(nothing, [], t)
-Node(t::T) where {T <: Any } = Node(nothing, [], t, false, nothing)
+Node(t::T) where {T <: Any } = Node(nothing, nothing, t, false, nothing)
 
 function child(node::Node, indices...) :: Node
     current = node

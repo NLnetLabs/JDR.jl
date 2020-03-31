@@ -42,7 +42,7 @@ Base.showerror(io::IO, e::NotImplementedYetError) = print(io, "Not Yet Implement
 
 
 
-function next!(buf::Buf) :: Union{Tag{<:AbstractTag}, Nothing}
+function next!(buf::Buf) #:: Tag{<:AbstractTag} #:: Union{Tag{<:AbstractTag}, Nothing}
     _tmp = Vector{UInt8}(undef, 1) 
     #if eof(buf.iob) 
     #    @warn "wat"
@@ -60,26 +60,29 @@ function next!(buf::Buf) :: Union{Tag{<:AbstractTag}, Nothing}
     tagclass    = first_byte  >> 6; # bit 8-7
     constructed = first_byte & 0x20 == 0x20 # bit 6
     tagnumber   = first_byte & 0x1f # bit 5-0
-    if tagnumber == 31
-        longtag = 0
-        #readbytes!(buf.iob, _tmp, 1)
-        #byte = read(buf.iob, 1)[1]
-        #byte =_tmp[1]
-        
-        #byte = buf.iob.data[buf.iob.ptr]
-        #buf.iob.ptr += 1
-
-        byte = lookahead(buf)
-        while byte & 0x80 == 0x80 # first bit is 1
-            longtag = (longtag << 7) | (byte & 0x7f) # take the last 7 bits
-            #byte = read(buf.iob, 1)[1]
-            #readbytes!(buf.iob, _tmp, 1)
-            #byte = _tmp[1]
-            byte = buf.iob.data[buf.iob.ptr]
-            buf.iob.ptr += 1
-        end
-        tagnumber = (longtag << 7) | (byte & 0x7f) # take the last 7 bits
-    end
+# we never see longtag, but this code caused type instability for tagnumber
+# UInt8 vs Int64 
+#    if tagnumber == 31
+#        throw("longtag ?")
+#        longtag = 0
+#        #readbytes!(buf.iob, _tmp, 1)
+#        #byte = read(buf.iob, 1)[1]
+#        #byte =_tmp[1]
+#        
+#        #byte = buf.iob.data[buf.iob.ptr]
+#        #buf.iob.ptr += 1
+#
+#        byte = lookahead(buf)
+#        while byte & 0x80 == 0x80 # first bit is 1
+#            longtag = (longtag << 7) | (byte & 0x7f) # take the last 7 bits
+#            #byte = read(buf.iob, 1)[1]
+#            #readbytes!(buf.iob, _tmp, 1)
+#            #byte = _tmp[1]
+#            byte = buf.iob.data[buf.iob.ptr]
+#            buf.iob.ptr += 1
+#        end
+#        tagnumber = (longtag << 7) | (byte & 0x7f) # take the last 7 bits
+#    end
     #if tagclass > 0 # TODO what should we do on a context-specific (0x02) class?
     #    @debug "tagclass", tagclass
     #end
@@ -90,7 +93,7 @@ function next!(buf::Buf) :: Union{Tag{<:AbstractTag}, Nothing}
     lenbyte = buf.iob.data[buf.iob.ptr]
     buf.iob.ptr += 1
     len_indef = lenbyte == 0x80
-    len = lenbyte
+    len = Int32(lenbyte)
 
     if lenbyte & 0x80 == 0x80 && lenbyte != 0x80 
         # first bit set, but not 0x80 (Indefinite form) so we are dealing with either a
@@ -105,7 +108,7 @@ function next!(buf::Buf) :: Union{Tag{<:AbstractTag}, Nothing}
 
         # Definite long
         octets::Array{UInt8,1} = read(buf.iob, lenbyte & 0x7f)
-        res::Int64 = 0
+        res::Int32 = 0
         for o in octets
             res = (res << 8) | o
         end

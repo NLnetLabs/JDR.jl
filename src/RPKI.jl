@@ -78,7 +78,9 @@ TAL_URLS = Dict(
     :apnic      => "rsync://rpki.apnic.net/repository/apnic-rpki-root-iana-origin.cer",
     :arin       => "rsync://rpki.arin.net/repository/arin-rpki-ta.cer",
     :lacnic     => "rsync://repository.lacnic.net/rpki/lacnic/rta-lacnic-rpki.cer",
-    :ripe       => "rsync://rpki.ripe.net/ta/ripe-ncc-ta.cer"
+    :ripe       => "rsync://rpki.ripe.net/ta/ripe-ncc-ta.cer",
+    #:ripetest   => "rsync://localcert.ripe.net/ta/RIPE-NCC-TA-TEST.cer",
+    #:apnictest  => "rsync://rpki-testbed.apnic.net/repository/apnic-rpki-root-iana-origin-test.cer"
 )
 REPO_DIR = joinpath(homedir(), ".rpki-cache/repository/rsync")
 
@@ -184,7 +186,8 @@ function process_cer(cer_fn::String, lookup::Lookup) :: RPKINode
     (ca_host, ca_path) = split_rsync_url(o.object.pubpoint)
     ca_dir = joinpath(REPO_DIR, ca_host, ca_path)
     push!(TMP_UNIQ_PP, ca_host)
-    @assert isdir(ca_dir)
+    #@debug ca_dir
+    #@assert isdir(ca_dir)
 
     mft_host, mft_path = split_rsync_url(o.object.manifest)
     mft_fn = joinpath(REPO_DIR, mft_host, mft_path)

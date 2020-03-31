@@ -268,7 +268,11 @@ function parent(n::Node) :: Node
 end
 
 function append!(p::Node, c::Node) :: Node
-    push!(p.children, c)
+    if isnothing(p.children)
+        p.children = [c]
+    else
+        push!(p.children, c)
+    end
     c.parent = p
     p
 end
@@ -284,7 +288,7 @@ function count_remarks(tree::Node) :: Integer
     if isnothing(tree)
         return 0
     end
-    if isnothing(tree.remarks)
+    if isnothing(tree.remarks) && !isnothing(tree.children)
         return sum([count_remarks(c) for c in tree.children])
     end
     if isnothing(tree.children) || isempty(tree.children)

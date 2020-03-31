@@ -3,6 +3,8 @@ struct MFT
 end
 MFT() = MFT([])
 
+import Base.length
+length(::Nothing) = 0
 function check_signed_data(o::RPKIObject{MFT}, sd::Node) :: RPKIObject{MFT}
     # Signed-Data as defined in RFC 5652 (CMS) can contain up to 6 children
     # but for RPKI Manifests, we MUST have the CertificateSet and MUST NOT have

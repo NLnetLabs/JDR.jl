@@ -261,8 +261,8 @@ mutable struct Node <: AbstractNode
     remarks::Union{Nothing, Vector{String}}
 end
 
-
 isleaf(n::Node) :: Bool = isnothing(n.children)
+
 function parent(n::Node) :: Node 
     n.parent
 end
@@ -298,9 +298,6 @@ function count_remarks(tree::Node) :: Integer
 
 end
 
-_Leaf(t::T) where {T <: Any } = Node(nothing, nothing, t, false, nothing)
-#Node(t::T) where {T <: Any } = Node(nothing, Vector{Node}(undef, 1), t)
-#Node(t::T) where {T <: Any } = Node(nothing, [], t)
 Node(t::T) where {T <: Any } = Node(nothing, nothing, t, false, nothing)
 
 function child(node::Node, indices...) :: Node
@@ -309,8 +306,8 @@ function child(node::Node, indices...) :: Node
         try
         current = current.children[i]
         catch e
-            @warn "invalid child $(i) in $(indices), $(stacktrace()[4])"
-            #showerror(stderr, e, catch_backtrace())
+            #@warn "invalid child $(i) in $(indices), $(stacktrace()[4])"
+            throw("invalid child $(i) in $(indices), $(stacktrace()[4])")
         end
     end
     current

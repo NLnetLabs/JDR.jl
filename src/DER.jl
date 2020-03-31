@@ -154,7 +154,7 @@ push(s::Stack) = s.level += 1
 pop(s::Stack) = s.level -= 1
 empty(s::Stack) = s.level == 0
 
-function _parse!(tag, buf, indef_stack::Stack, recurse_into_octetstring = false) :: Node
+function _parse!(tag, buf, indef_stack::Stack)
     #@debug (tag, indef_stack, buf.iob.ptr)
     me = Node(tag) 
     if isa(tag, Tag{OCTETSTRING})
@@ -222,63 +222,11 @@ function _parse!(tag, buf, indef_stack::Stack, recurse_into_octetstring = false)
             end
             #@debug "post while, tmp_protect $(tmp_protect)"
         end
-    #elseif isa(tag, Tag{BITSTRING})
-    #    #@debug "in BITSTRING of len", tag.len
-    #    #dbg = read(buf.iob, 2)
-    #    #buf.iob.ptr -= 2
-    #    #@debug "first 2 bytes of BITSTRING:", dbg
-    #    skip_unused_octet = 0
-    #    if tag.class != 0x02
-    #        @warn "tag.class is not 0x02 .."
-    #        skip_unused_octet = 1
-    #    else
-    #        @warn "tag.class is 0x02 .."
-    #    end
-    #    #if tag.len > 2 && tag.value[1 + skip_unused_octet] == 0x30 
-    #    lookahead = read(buf.iob, 1+ skip_unused_octet)[end]
-    #    buf.iob.ptr -= 1 # TODO -= 1 or 1+skip_unused_octet ? 
-    #    @debug "lookahead", lookahead
-    #    if tag.len > 2 && lookahead == 0x30 
-    #        # nested SEQUENCE in this BITSTRING
-    #        #subbuf = DER.Buf(tag.value[1 + skip_unused_octet:end])
-    #        subtag = DER.next!(buf)
-    #        @debug "calling _parse! for subtag of BITSTRING, max_read:", tag.len
-    #        ASN.append!(me, _parse!(subtag, buf, tag.len))
-    #    else
-    #        @debug "no SEQUENCE in this BITSTRING, filling .value"
-    #        tag.value = read(buf.iob, tag.len)
-    #    end
-    elseif recurse_into_octetstring && isa(tag, Tag{OCTETSTRING})
-        #FIXME with the specific objects checks in RPKI.jl we can probably
-        #remove this altogether
-        @debug "recursing into octetstring"
-        throw("recursing into octetstring from DER.jl")
-        # primitive OCTETSTRING, but we do check for a nested SEQUENCE
-        # because it is primitive, the tag.value has been set
-        # and the bytes have been read from buf already
-
-        # TODO perhaps we should only do this for specific files
-        # e.g. in .cer but not in .roa ?
-        # or, really make this a second pass thingy
-        # for now, we use the recurse_into_octetstring bool
-        if tag.len > 0 && tag.value[1] == 0x30
-            #@debug "tag.value for this OCTETSTRING contains SEQUENCE"
-            subbuf = DER.Buf(tag.value)
-            subtag = DER.next!(subbuf)
-            if isa(subtag, Tag{InvalidTag})
-                #@warn "got an InvalidTag, so, NOT an nested SEQUENCE in this OCTETSTRING?"
-            elseif isa(subtag, Tag{Unimplemented})
-                #@warn "in nested OCTETSTRING, got Unimplemented"
-            else
-                ASN.append!(me, _parse!(subtag, subbuf, indef_stack))
-            end
-        end
     end
     return me
 end
 
 function parse_file_recursive(fn::String) 
-    recurse_into_octetstring = splitext(fn)[2] == "cer" #FIXME malloc
     fd = open(fn)
     #mmapraw = Mmap.mmap(fd, Vector{UInt8})
     #buf = DER.Buf(mmapraw)
@@ -287,7 +235,7 @@ function parse_file_recursive(fn::String)
     close(fd)
 
     # this returns the actual tree, so it MUST be the last statement
-    _parse!(tag, buf, Stack(0), recurse_into_octetstring)
+    _parse!(tag, buf, Stack(0))
 end
 
 function parse_replace_children!(buf::Buf, to_replace::Node)

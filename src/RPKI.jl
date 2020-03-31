@@ -43,12 +43,9 @@ mutable struct RPKINode
 end
 function add(p::RPKINode, c::RPKINode)#, o::RPKIObject)
     c.parent = p
-    #c.obj = o
     push!(p.children, c)
 end
 function add(p::RPKINode, c::Vector{RPKINode})
-    #[child.parent = p for child in c]
-    #Base.append!(p.children, c)
     for child in c
         add(p, child)
     end

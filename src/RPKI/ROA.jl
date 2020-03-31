@@ -110,6 +110,9 @@ function check_route_origin_attestation(o::RPKIObject{ROA}, roa::Node) :: RPKIOb
         #remark!(roa, "no version, assuming default 0")
     end
     # --- till here ---
+
+    #@debug "early return"
+    #return o
     
     # ASID
     asid = roa[offset + 1] # TODO attach to o

@@ -20,7 +20,6 @@ function tagisa(node::Node, ts::Vector{DataType})
             return
         end
     end
-    #remark!(node, "expected this to be a $(nameof(t))")
     remark!(node, "unexpected type $(nameof(typeof(node.tag).parameters[1]))")
 end
 
@@ -32,7 +31,6 @@ function tagvalue(node::Node, t::Type, v::Any)
 end
 
 function tag_OID(node::Node, v::Vector{UInt8})
-#function tagoid(node::Node, oid::String)
     tagisa(node, ASN.OID)
     if !(node.tag.value == v)
         #FIXME: we need a nice string repr of v here!
@@ -82,7 +80,6 @@ function childrencontainvalue(node::Node, t::Type, v::Any)
     end
 end
 
-#function containAttributeTypeAndValue(node::Node, oid::String, t::Type)
 function containAttributeTypeAndValue(node::Node, oid::Vector{UInt8}, t::Type)
     found_oid = false
     node.validated = true # this node is the RelativeDistinguishedName, thus a SET
@@ -93,7 +90,6 @@ function containAttributeTypeAndValue(node::Node, oid::Vector{UInt8}, t::Type)
 
     for c in node.children # every c in a SEQUENCE
         @assert c.tag isa Tag{ASN.SEQUENCE}
-        #if c[1].tag isa Tag{ASN.OID} && ASN.value(c[1].tag) == oid
         if c[1].tag isa Tag{ASN.OID} && c[1].tag.value == oid
             if tagisa(c[2], t)
                 c.validated = c[1].validated = c[2].validated = true
@@ -104,21 +100,6 @@ function containAttributeTypeAndValue(node::Node, oid::Vector{UInt8}, t::Type)
     end
     remark!(node, "expected child node OID $(oid)")
 end
-
-#        if found_oid
-#            tagisa(c[1], t)
-#            break
-#        end
-#        if c[1].tag isa Tag{ASN.OID} && ASN.value(c[1].tag) == oid
-#            found_oid = true
-#            c[1].validated = true
-#            c.validated = true
-#        end
-#    end
-#    if !found_oid
-#        remark!(node, "expected child node OID $(oid)")
-#    end
-#end
 
 function check_extensions(tree::Node, oids::Vector{String}) 
     oids_found = get_extension_oids(tree)

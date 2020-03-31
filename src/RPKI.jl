@@ -101,9 +101,10 @@ Base.show(a::AutSysNum) = print(io, "AS", a.asn)
 # - incorporate PrefixTree.jl
 struct Lookup
     ASNs::Dict{AutSysNum}{Vector{RPKINode}}
+    filenames::Dict{String}{Vector{RPKINode}}
     prefix_Tree::Any
 end
-Lookup() = Lookup(Dict(), nothing)
+Lookup() = Lookup(Dict(), Dict(), nothing)
 
 function add_roa!(lookup::Lookup, roanode::RPKINode)
     # add ASN
@@ -125,6 +126,10 @@ function process_roa(roa_fn::String)
 end
 
 function process_mft(mft_fn::String, lookup::Lookup) :: RPKINode
+    #if mft_fn in keys(lookup.filenames)
+    #    @warn "$(mft_fn) already seen, loop?"
+    #    throw("possible loop in $(mft_fn)" )
+    #end
     m::RPKIObject{MFT} = try 
         check(RPKIObject(mft_fn))
     catch e 
@@ -147,6 +152,11 @@ function process_mft(mft_fn::String, lookup::Lookup) :: RPKINode
                 # of a manifest? in other words, can we be sure that if we reach
                 # this part of the `if ext ==`, there will be no other files to
                 # check?
+
+                #if subcer_fn in keys(lookup.filenames)
+                #    @warn "$(subcer_fn) already seen, loop?"
+                #    throw("possible loop in $(subcer_fn)" )
+                #end
                 cer = process_cer(subcer_fn, lookup)
                 push!(roas, cer)
             catch e
@@ -172,7 +182,7 @@ function process_mft(mft_fn::String, lookup::Lookup) :: RPKINode
     # returning:
     me = RPKINode(nothing, [], m)
     add(me, roas)
-    #RPKINode(nothing, roas, m)
+    #lookup.filenames[mft_fn] = [me]
     me
 end
 
@@ -180,6 +190,16 @@ TMP_UNIQ_PP = Set()
 function process_cer(cer_fn::String, lookup::Lookup) :: RPKINode
     #@debug cer_fn
     # now, for each .cer, get the CA Repo and 'sync' again
+    if cer_fn in keys(lookup.filenames)
+        @warn "$(basename(cer_fn)) already seen, loop?"
+        throw("possible loop in $(cer_fn)" )
+    else
+        # placeholder: we need to put something in because when a loop appears
+        # in the RPKI repo, this call will never finish so adding it at the end
+        # of this function will never happen.
+        lookup.filenames[cer_fn] = [RPKINode(nothing, [], nothing)]
+    end
+
     o::RPKIObject{CER} = check(RPKIObject(cer_fn))
     #@debug o.object.pubpoint
 
@@ -215,6 +235,8 @@ function process_cer(cer_fn::String, lookup::Lookup) :: RPKINode
     # ireturning:
     #rpki_node = RPKINode(nothing, [], o)
     #@debug "process_cer add() on", rpki_node, "\n", mft
+    
+    lookup.filenames[cer_fn] = [rpki_node]
     rpki_node
 end
 

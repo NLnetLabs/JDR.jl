@@ -22,10 +22,15 @@ const STRICT = true
 
 struct Buf
     iob::IOBuffer
+    _tmp_octets::Vector{UInt8}
+    # 126 is the max number of octets to describe the length of an ASN.1 tag in
+    # long format
+    Buf(iob) = new(iob, zeros(UInt8, 126))
 end
 
 Buf(b::Array{UInt8,1})  = Buf(IOBuffer(b))
 Buf(s::IOStream)        = Buf(IOBuffer(read(s)))
+
 #Buf(s::IOStream)        = Buf(IOBuffer(Mmap.mmap(s, Vector{UInt8})))
 #
 function lookahead(buf::Buf) :: UInt8
@@ -80,9 +85,9 @@ function next!(buf::Buf) #:: Tag{<:AbstractTag} #:: Union{Tag{<:AbstractTag}, No
         end
 
         # Definite long
-        octets::Array{UInt8,1} = read(buf.iob, lenbyte & 0x7f)
+        readbytes!(buf.iob, buf._tmp_octets, lenbyte & 0x7f)
         res::Int32 = 0
-        for o in octets
+        for o in @view buf._tmp_octets[1:(lenbyte & 0x7f)]
             res = (res << 8) | o
         end
         len = res

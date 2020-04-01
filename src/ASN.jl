@@ -204,7 +204,10 @@ end
 
 
 function value(t::Tag{OID}) 
-    #@warn "am I deprecated yet? use the macro (only use me for actual prettyprinting of the OID)"
+    @warn "am I deprecated yet? use the macro (only use me for actual prettyprinting of the OID)"
+    #throw("oid fail in MFT? (temp exception to debug)")
+    #display(stacktrace())
+    #return
     if t.class == 0x02 # context specific TODO find documentation for this
         return String(copy(t.value))
     end
@@ -439,7 +442,12 @@ end
 function contains_set(tree::Node, tags::Set{Pair{Type{T} where {T<:AbstractTag}, Any}})
     for node in iter(tree)
         for (tagtype, v) in tags
-            if node.tag isa Tag{tagtype} && value(node.tag) == v
+            if (node.tag isa Tag{tagtype} && tagtype == ASN.OID)
+                if node.tag.value == v
+                    delete!(tags, tagtype => v)
+                    break
+                end
+            elseif (node.tag isa Tag{tagtype} && value(node.tag) == v)
                 delete!(tags, tagtype => v)
                 break
             end
@@ -451,7 +459,8 @@ end
 function contains_in_order(tree::Node, tags::Vector{Pair{Type{T} where {T<:AbstractTag}, Any}})
     for node in iter(tree)#,
         (tagtype, v) = first(tags)
-        if node.tag isa Tag{tagtype} && value(node.tag) == v
+        if ((node.tag isa Tag{tagtype} == Tag{ASN.OID} && node.tag.value == v)
+            || (node.tag isa Tag{tagtype} && value(node.tag) == v))
             popfirst!(tags)
             if isempty(tags) break end
         end

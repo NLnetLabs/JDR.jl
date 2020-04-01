@@ -112,15 +112,15 @@ end
     @test isequal(ASN.contains(tree, ASN.PRINTABLESTRING, "ripe-ncc-ta"), true)
 
     s = Set{Pair{Type{<:ASN.AbstractTag}, Any}}() 
-    push!(s, ASN.OID => "2.5.4.3")
-    push!(s, ASN.OID => "1.2.840.113549.1.1.11")
+    push!(s, ASN.OID => @oid("2.5.4.3"))
+    push!(s, ASN.OID => @oid("1.2.840.113549.1.1.11"))
     push!(s, ASN.PRINTABLESTRING => "ripe-ncc-ta")
     @test isequal(ASN.contains_set(tree, s), true)
     
 
     v = Vector{Pair{Type{T} where {T<:ASN.AbstractTag}, Any}}() 
-    push!(v, ASN.OID => "1.2.840.113549.1.1.11")
-    push!(v, ASN.OID => "2.5.4.3")
+    push!(v, ASN.OID => @oid("1.2.840.113549.1.1.11"))
+    push!(v, ASN.OID => @oid("2.5.4.3"))
     push!(v, ASN.PRINTABLESTRING => "ripe-ncc-ta")
     @test isequal(ASN.contains_in_order(tree, v), true)
 end

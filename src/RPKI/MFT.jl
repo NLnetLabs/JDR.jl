@@ -134,7 +134,7 @@ function check_signerinfo(o::RPKIObject{MFT}, sis::Node) :: RPKIObject{MFT}
 
     # SignatureAlgorithmIdentifier
     tagisa(si[5], ASN.SEQUENCE)
-    tag_OID(si[5, 1], @oid "1.2.840.113549.1.1.1")
+    tag_OID(si[5, 1], @oid("1.2.840.113549.1.1.1"))
     tagisa(si[5, 2], ASN.NULL)
 
     # SignatureValue

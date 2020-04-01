@@ -142,7 +142,7 @@ function checkTbsCertificate(o::RPKIObject{CER}, tbscert::Node)
     tagis_contextspecific(extensions, 0x3)
     #DER.parse_value!(extensions)
 
-    mandatory_extensions = Vector{String}()
+    mandatory_extensions = Vector{Vector{UInt8}}()
 
     # RFC 6487 4.8.1 unclear:
     #   'The issuer determines whether the "cA" boolean is set.'
@@ -152,7 +152,7 @@ function checkTbsCertificate(o::RPKIObject{CER}, tbscert::Node)
     
     # Subject Key Identifier, MUST appear
     #check_extension(extensions, "2.5.29.14") # non-critical, 160bit SHA-1
-    push!(mandatory_extensions, "2.5.29.14")
+    push!(mandatory_extensions, @oid "2.5.29.14")
 
     # Authority Key Identifier
 	# RFC 6487:
@@ -171,7 +171,7 @@ function checkTbsCertificate(o::RPKIObject{CER}, tbscert::Node)
 	#  In EE certificates, the digitalSignature bit MUST be set to TRUE and
 	#  MUST be the only bit set to TRUE.
 	#check_extension(extensions, "2.5.29.15") # critical, 1byte BITSTRING
-    push!(mandatory_extensions, "2.5.29.15")
+    push!(mandatory_extensions, @oid "2.5.29.15")
 
 	# Extended Key Usage
 	# may only appear in specific certs
@@ -186,7 +186,7 @@ function checkTbsCertificate(o::RPKIObject{CER}, tbscert::Node)
 
     # Subject Information Access, MUST be present
     ## SIA for CA Certificates MUST be present, MUST be non-critical
-    push!(mandatory_extensions, "1.3.6.1.5.5.7.1.11")
+    push!(mandatory_extensions, @oid "1.3.6.1.5.5.7.1.11")
     ### MUST have an caRepository (OID 1.3.6.1.5.5.7.48.5)
     ### MUST have a rpkiManifest (OID 1.3.6.1.5.5.7.48.10) pointing to an rsync uri
     # TODO rrdp stuff is in another RFC
@@ -215,13 +215,13 @@ function checkTbsCertificate(o::RPKIObject{CER}, tbscert::Node)
 
 
     # SIA checks
-    check_subject_information_access(o, all_extensions["1.3.6.1.5.5.7.1.11"])
+    check_subject_information_access(o, all_extensions[@oid "1.3.6.1.5.5.7.1.11"])
 
     # IP and/or ASN checks:
     
-    if "1.3.6.1.5.5.7.1.7" in keys(all_extensions)
+    if @oid("1.3.6.1.5.5.7.1.7") in keys(all_extensions)
         #@debug "got IP extension"
-        subtree = all_extensions["1.3.6.1.5.5.7.1.7"]
+        subtree = all_extensions[@oid "1.3.6.1.5.5.7.1.7"]
         DER.parse_append!(DER.Buf(subtree.tag.value), subtree)
         subtree.validated = true
         tagisa(subtree[1], ASN.SEQUENCE)
@@ -285,12 +285,12 @@ function checkTbsCertificate(o::RPKIObject{CER}, tbscert::Node)
         end
         #IP
     else
-        @assert "1.3.6.1.5.5.7.1.8" in keys(all_extensions)
+        @assert @oid("1.3.6.1.5.5.7.1.8") in keys(all_extensions)
         # TODO properly add remark if this is missing
     end
-    if "1.3.6.1.5.5.7.1.8" in keys(all_extensions)
+    if @oid("1.3.6.1.5.5.7.1.8") in keys(all_extensions)
         #@debug "got ASN extension"
-        subtree = all_extensions["1.3.6.1.5.5.7.1.8"]
+        subtree = all_extensions[@oid "1.3.6.1.5.5.7.1.8"]
         DER.parse_append!(DER.Buf(subtree.tag.value), subtree)
         subtree.validated = true
         tagisa(subtree[1], ASN.SEQUENCE)

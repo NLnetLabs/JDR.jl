@@ -35,7 +35,9 @@ function tag_OID(node::Node, v::Vector{UInt8})
     if !(node.tag.value == v)
         #FIXME: we need a nice string repr of v here!
         #as this part will be an exception, we can handle the allocation penalty
-        remark!(node, "expected OID to be '$(v)', got '$(ASN.value(node.tag))'")
+        #remark!(node, "expected OID to be '$(v)', got '$(ASN.value(node.tag))'")
+        remark!(node, "expected OID to be '$(v)', got FIXME")
+        #@warn "expected OID to be '$(v)', got $(ASN.value(node.tag))"
     end
 end
 
@@ -101,7 +103,8 @@ function containAttributeTypeAndValue(node::Node, oid::Vector{UInt8}, t::Type)
     remark!(node, "expected child node OID $(oid)")
 end
 
-function check_extensions(tree::Node, oids::Vector{String}) 
+#function check_extensions(tree::Node, oids::Vector{String}) 
+function check_extensions(tree::Node, oids::Vector{Vector{UInt8}}) 
     oids_found = get_extension_oids(tree)
     for o in oids
         if !(o in oids_found)
@@ -110,21 +113,25 @@ function check_extensions(tree::Node, oids::Vector{String})
     end
 end
 
-function get_extension_oids(tree::Node) :: Vector{String}
+#function get_extension_oids(tree::Node) :: Vector{String}
+function get_extension_oids(tree::Node) :: Vector{Vector{UInt8}}
     tagisa(tree[1], ASN.SEQUENCE)
 
-    oids_found = Vector{String}([])
+    oids_found = Vector{Vector{UInt8}}()
     for c in tree[1].children
         tagisa(c, ASN.SEQUENCE)
         tagisa(c[1], ASN.OID)
-        push!(oids_found, ASN.value(c[1].tag))
+        #push!(oids_found, ASN.value(c[1].tag))
+        push!(oids_found, c[1].tag.value)
     end
     oids_found
 end
-function get_extensions(tree::Node) :: Dict{String,Node}
+
+#function get_extensions(tree::Node) :: Dict{String,Node}
+function get_extensions(tree::Node) :: Dict{Vector{UInt8},Node}
     tagisa(tree[1], ASN.SEQUENCE)
 
-    extensions = Dict{String,Node}()
+    extensions = Dict{Vector{UInt8},Node}()
     for c in tree[1].children
         tagisa(c, ASN.SEQUENCE)
         tagisa(c[1], ASN.OID)
@@ -138,7 +145,8 @@ function get_extensions(tree::Node) :: Dict{String,Node}
             extension_octetstring = c[2]
         end
                                            
-        extensions[ASN.value(c[1].tag)] = extension_octetstring
+        #extensions[ASN.value(c[1].tag)] = extension_octetstring
+        extensions[c[1].tag.value] = extension_octetstring
     end
     extensions
 end

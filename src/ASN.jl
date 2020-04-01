@@ -43,14 +43,14 @@ struct  GENTIME         <:  AbstractTag end
 struct Tag{AbstractTag}
     class::UInt8
     constructed::Bool # PC bit
-    number::UInt8
+    number::Integer
     len::Int32
     len_indef::Bool
     value::Union{Nothing, Array{UInt8, 1}}
 end
 
 
-Tag(class::UInt8, constructed::Bool, number::UInt8, len::Int32, len_indef::Bool, value) = begin
+Tag(class::UInt8, constructed::Bool, number::Integer, len::Int32, len_indef::Bool, value) = begin
     if class == 0x02 # Context-specific
         Tag{CONTEXT_SPECIFIC}(class, constructed, number, len, len_indef, value)
     elseif number   == UInt8(0)    

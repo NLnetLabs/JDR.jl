@@ -73,14 +73,14 @@ end
 # Retrieving and validating the entire repository 
 
 # start at the RIR TAs
-TAL_URLS = Dict(
+const TAL_URLS = Dict(
     :afrinic    => "rsync://rpki.afrinic.net/repository/AfriNIC.cer",
     :apnic      => "rsync://rpki.apnic.net/repository/apnic-rpki-root-iana-origin.cer",
     :arin       => "rsync://rpki.arin.net/repository/arin-rpki-ta.cer",
     :lacnic     => "rsync://repository.lacnic.net/rpki/lacnic/rta-lacnic-rpki.cer",
     :ripe       => "rsync://rpki.ripe.net/ta/ripe-ncc-ta.cer",
-    #:ripetest   => "rsync://localcert.ripe.net/ta/RIPE-NCC-TA-TEST.cer",
-    #:apnictest  => "rsync://rpki-testbed.apnic.net/repository/apnic-rpki-root-iana-origin-test.cer"
+    :ripetest   => "rsync://localcert.ripe.net/ta/RIPE-NCC-TA-TEST.cer",
+    :apnictest  => "rsync://rpki-testbed.apnic.net/repository/apnic-rpki-root-iana-origin-test.cer"
 )
 REPO_DIR = joinpath(homedir(), ".rpki-cache/repository/rsync")
 

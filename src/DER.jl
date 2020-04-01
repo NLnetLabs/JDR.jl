@@ -44,52 +44,24 @@ Base.showerror(io::IO, e::NotImplementedYetError) = print(io, "Not Yet Implement
 
 function next!(buf::Buf) #:: Tag{<:AbstractTag} #:: Union{Tag{<:AbstractTag}, Nothing}
     _tmp = Vector{UInt8}(undef, 1) 
-    #if eof(buf.iob) 
-    #    @warn "wat"
-    #    return nothing
-    #end
     readbytes!(buf.iob, _tmp, 1) 
-    #first_byte = read(buf.iob, 1)[1] 
     first_byte = _tmp[1] 
-    
-    #first_byte = buf.iob.data[buf.iob.ptr]  #FIXME make Buf.lookahead or something
-                                            # that also does the ptr++
-    #buf.iob.ptr += 1
-    #first_byte = lookahead(buf)
 
     tagclass    = first_byte  >> 6; # bit 8-7
     constructed = first_byte & 0x20 == 0x20 # bit 6
     tagnumber   = first_byte & 0x1f # bit 5-0
-# we never see longtag, but this code caused type instability for tagnumber
-# UInt8 vs Int64 
-#    if tagnumber == 31
-#        throw("longtag ?")
-#        longtag = 0
-#        #readbytes!(buf.iob, _tmp, 1)
-#        #byte = read(buf.iob, 1)[1]
-#        #byte =_tmp[1]
-#        
-#        #byte = buf.iob.data[buf.iob.ptr]
-#        #buf.iob.ptr += 1
-#
-#        byte = lookahead(buf)
-#        while byte & 0x80 == 0x80 # first bit is 1
-#            longtag = (longtag << 7) | (byte & 0x7f) # take the last 7 bits
-#            #byte = read(buf.iob, 1)[1]
-#            #readbytes!(buf.iob, _tmp, 1)
-#            #byte = _tmp[1]
-#            byte = buf.iob.data[buf.iob.ptr]
-#            buf.iob.ptr += 1
-#        end
-#        tagnumber = (longtag << 7) | (byte & 0x7f) # take the last 7 bits
-#    end
-    #if tagclass > 0 # TODO what should we do on a context-specific (0x02) class?
-    #    @debug "tagclass", tagclass
-    #end
+    if tagnumber == 31
+        longtag = 0
 
-    #readbytes!(buf.iob, _tmp, 1) 
-    #lenbyte = Int32(read(buf.iob, 1)[1]) 
-    #lenbyte = Int32(_tmp[1])
+        byte = lookahead(buf)
+        while byte & 0x80 == 0x80 # first bit is 1
+            longtag = (longtag << 7) | (byte & 0x7f) # take the last 7 bits
+            byte = buf.iob.data[buf.iob.ptr]
+            buf.iob.ptr += 1
+        end
+        tagnumber = (longtag << 7) | (byte & 0x7f) # take the last 7 bits
+    end
+
     lenbyte = buf.iob.data[buf.iob.ptr]
     buf.iob.ptr += 1
     len_indef = lenbyte == 0x80
@@ -116,8 +88,6 @@ function next!(buf::Buf) #:: Tag{<:AbstractTag} #:: Union{Tag{<:AbstractTag}, No
     end
     # check for cases where we are parsing something that is not a (valid) tag
     if len < 0
-        #@warn "negative length tag $(len) == $(bitstring(len))", tagnumber
-        #error("negative length")
         return Tag{InvalidTag}()
     elseif len > (buf.iob.size - buf.iob.ptr + 1) 
         #@warn "length $(len) goes beyond end of buffer $(buf.iob.size) - $(buf.iob.ptr), returning InvalidTag"
@@ -129,19 +99,10 @@ function next!(buf::Buf) #:: Tag{<:AbstractTag} #:: Union{Tag{<:AbstractTag}, No
         #@warn "indef len, not reading value"
         []
     elseif tagnumber == 16 # FIXME also include SET ?
-        #@debug "next! for SEQUENCE, _not_ reading value"
-        #[] 
         nothing
-    #elseif constructed && tagclass == 0x02
-    #    #@debug "here with len $(len)"
-    #    read(buf.iob, len) 
     elseif !constructed
-        #@debug "primitive $(tagnumber), reading value of len $(len)"
         read(buf.iob, len) 
     else
-        #@warn "constructed, def len, NOT reading value, but should we get here?"
-        #read(buf.iob, len)
-        #[]
         nothing
     end
     return Tag(tagclass, constructed, tagnumber, len, len_indef, value)

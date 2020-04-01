@@ -7,8 +7,8 @@ using JuliASN.RPKI
 
 # example from wikipedia
 BLOB=hex2bytes(b"3013020105160e416e79626f64792074686572653f")
-LONGFORM=hex2bytes(b"3f5501")
-LONGLENGTH=hex2bytes(b"3082040A")
+LONGFORM=hex2bytes(b"3f5501ff")
+LONGLENGTH=vcat(hex2bytes(b"3082040A") , zeros(UInt8, 2000))
 
 
 @testset "DER" begin
@@ -18,23 +18,21 @@ LONGLENGTH=hex2bytes(b"3082040A")
     @test isequal(tag.constructed, true)
     @test isequal(tag.number, 0x10)
     @test isequal(tag.len, 19)
-    #DER.print_tag(tag)
 
     tag2 = DER.next!(b1)
     @test isequal(tag2.number, 0x02)
     @test isequal(tag2.len, 1)
     @test isequal(Int(tag2.value[1]), 5) #ugly
-    #DER.print_tag(tag2)
 
     tag3 = DER.next!(b1)
     @test isequal(tag3.number, 0x16)
     @test isequal(tag3.len, 14 )
-    #DER.print_tag(tag3)
 
-    # long form error
+    # long form 
     b2 = DER.Buf(LONGFORM)
     tag4 = DER.next!(b2)
     @test isequal(tag4.number, 0x55)
+    @test isequal(typeof(tag4), ASN.Tag{ASN.Unimplemented})
 
 
     # long length

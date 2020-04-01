@@ -33,7 +33,7 @@ end
 @testset "Counting remarks" begin
     o = RPKI.check(RPKI.RPKIObject(testdata_fn("ripe-ncc-ta.mft")))
     #@debug ASN.count_remarks(o.tree)
-    m = RPKI.process_cer(testdata_fn("ripe-ncc-ta.cer"))
+    m = RPKI.process_cer(testdata_fn("ripe-ncc-ta.cer"), RPKI.Lookup())
     #@debug "process_cer done, now counting remarks"
     remark_cnt = RPKI.count_remarks(m)
     #@debug remark_cnt

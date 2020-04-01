@@ -43,9 +43,10 @@ Base.showerror(io::IO, e::NotImplementedYetError) = print(io, "Not Yet Implement
 
 
 function next!(buf::Buf) #:: Tag{<:AbstractTag} #:: Union{Tag{<:AbstractTag}, Nothing}
-    _tmp = Vector{UInt8}(undef, 1) 
-    readbytes!(buf.iob, _tmp, 1) 
-    first_byte = _tmp[1] 
+    #_tmp = Vector{UInt8}(undef, 1) 
+    #readbytes!(buf.iob, _tmp, 1) 
+    #first_byte = _tmp[1] 
+    first_byte = lookahead(buf)
 
     tagclass    = first_byte  >> 6; # bit 8-7
     constructed = first_byte & 0x20 == 0x20 # bit 6
@@ -97,9 +98,10 @@ function next!(buf::Buf) #:: Tag{<:AbstractTag} #:: Union{Tag{<:AbstractTag}, No
 
     value = if len_indef
         #@warn "indef len, not reading value"
-        []
-    elseif tagnumber == 16 # FIXME also include SET ?
+        #[]
         nothing
+    #elseif tagnumber == 16 # FIXME also include SET ?
+    #    nothing
     elseif !constructed
         read(buf.iob, len) 
     else

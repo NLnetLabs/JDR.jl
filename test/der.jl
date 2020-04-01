@@ -44,44 +44,31 @@ LONGLENGTH=hex2bytes(b"3082040A")
 end
 
 @testset "RIR TAs" begin
-    @debug "RIPE NCC"
-    tree = DER.parse_file_recursive(testdata_fn("ripe-ncc-ta.cer"))
-    #ASN.print_node(tree, traverse=true)
-    
-    @debug "ARIN"
-    tree = DER.parse_file_recursive(testdata_fn("arin-rpki-ta.cer"))
-    #ASN.print_node(tree, traverse=true)
-    @debug "LACNIC"
-    tree = DER.parse_file_recursive(testdata_fn("rta-lacnic-rpki.cer"))
-    #ASN.print_node(tree, traverse=true)
-    @debug "APNIC"
-    tree = DER.parse_file_recursive(testdata_fn("apnic-rpki-root-iana-origin.cer"))
-    #ASN.print_node(tree, traverse=true)
-    @debug "AFRINIC"
-    tree = DER.parse_file_recursive(testdata_fn("AfriNIC.cer"))
-    #ASN.print_node(tree, traverse=true)
+    RIR_CERS = [
+                "ripe-ncc-ta.cer",
+                "arin-rpki-ta.cer",
+                "rta-lacnic-rpki.cer",
+                "apnic-rpki-root-iana-origin.cer",
+                "AfriNIC.cer"
+               ]
+    for cer in RIR_CERS
+        tree = DER.parse_file_recursive(testdata_fn(cer))
+        #ASN.print_node(tree, traverse=true)
+    end
 end
 
+
 @testset "RIR manifests" begin
-    @debug "RIPE NCC manifest"
-    @time tree = DER.parse_file_recursive(testdata_fn("ripe-ncc-ta.mft"))
-    #ASN.print_node(tree, traverse=true)
-
-    @debug "ARIN manifest"
-    @time tree = DER.parse_file_recursive(testdata_fn("arin.mft"))
-    #ASN.print_node(tree, traverse=true)
-
-    @debug "LACNIC manifest"
-    @time tree = DER.parse_file_recursive(testdata_fn("lacnic.mft"))
-    #ASN.print_node(tree, traverse=true)
-
-    @debug "APNIC manifest"
-    @time tree = DER.parse_file_recursive(testdata_fn("lacnic.mft"))
-    #ASN.print_node(tree, traverse=true)
-
-    @debug "AFRINIC manifest"
-    @time tree = DER.parse_file_recursive(testdata_fn("afrinic.mft"))
-    #ASN.print_node(tree, traverse=true)
+    RIR_MFTS = [
+                "ripe-ncc-ta.mft",
+                "arin.mft",
+                "lacnic.mft",
+                "afrinic.mft"
+               ]
+    for mft in RIR_MFTS
+        tree = DER.parse_file_recursive(testdata_fn("ripe-ncc-ta.mft"))
+        #ASN.print_node(tree, traverse=true)
+    end
 end
 
 

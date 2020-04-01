@@ -204,10 +204,6 @@ end
 
 
 function value(t::Tag{OID}) 
-    @warn "am I deprecated yet? use the macro (only use me for actual prettyprinting of the OID)"
-    #throw("oid fail in MFT? (temp exception to debug)")
-    #display(stacktrace())
-    #return
     if t.class == 0x02 # context specific TODO find documentation for this
         return String(copy(t.value))
     end

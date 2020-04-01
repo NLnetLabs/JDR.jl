@@ -33,7 +33,7 @@ struct	TIME           	<:	AbstractTag	end
 struct	RESERVED_FUTURE	<:	AbstractTag	end
 struct	SEQUENCE       	<:	AbstractTag	end
 struct	SET            	<:	AbstractTag	end
-struct  CHAR            <:  AbstractTag end
+#struct  CHAR            <:  AbstractTag end
 struct  PRINTABLESTRING <:  AbstractTag end
 struct  IA5STRING       <:  AbstractTag end
 
@@ -50,7 +50,7 @@ struct Tag{AbstractTag}
 end
 
 
-Tag(class::UInt8, constructed::Bool, number::UInt8, len::Int32, len_indef::Bool, value) :: Tag= begin
+Tag(class::UInt8, constructed::Bool, number::UInt8, len::Int32, len_indef::Bool, value) = begin
     if class == 0x02 # Context-specific
         Tag{CONTEXT_SPECIFIC}(class, constructed, number, len, len_indef, value)
     elseif number   == UInt8(0)    
@@ -79,12 +79,12 @@ Tag(class::UInt8, constructed::Bool, number::UInt8, len::Int32, len_indef::Bool,
         Tag{UTCTIME}(class, constructed, number, len, len_indef, value)
     elseif number   == UInt8(24) 
         Tag{GENTIME}(class, constructed, number, len, len_indef, value)
-        #elseif number   in (18:22)  
-        Tag{CHAR}(class, constructed, number, len, len_indef, value)
     elseif number   == UInt(19)  
         Tag{PRINTABLESTRING}(class, constructed, number, len, len_indef, value)
         #elseif number   in (25:30)  
         #Tag{CHAR}(class, constructed, number, len, len_indef, value)
+    #elseif number   in (18:22)  
+    #    Tag{CHAR}(class, constructed, number, len, len_indef, value)
     else
         Tag{Unimplemented}(class, constructed, number, len, len_indef, value)
     end #::Tag{<:AbstractTag}

@@ -28,7 +28,7 @@ include("RPKI/validation_common.jl")
 
 function RPKIObject(filename::String)::RPKIObject
     tree = DER.parse_file_recursive(filename)
-    ext = lowercase(splitext(filename)[2])
+    ext = lowercase(filename[end-3:end])
     if      ext == ".cer" RPKIObject{CER}(filename, tree)
     elseif  ext == ".mft" RPKIObject{MFT}(filename, tree)
     elseif  ext == ".roa" RPKIObject{ROA}(filename, tree)
@@ -148,7 +148,7 @@ function process_mft(mft_fn::String, lookup::Lookup) :: RPKINode
     roas = Vector{RPKINode}()  #FIXME roas as a name is incorrect
     for f in m.object.files
         # check for .cer
-        ext = splitext(f)[2] 
+        ext = lowercase(f[end-3:end])
         if ext == ".cer"
             subcer_fn = joinpath(mft_dir, f)
             @assert isfile(subcer_fn)

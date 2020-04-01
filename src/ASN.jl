@@ -346,13 +346,15 @@ function print_node(n::Node, ps::PrintState=PrintState()) # level::Integer=0, pr
     if done(ps)
         return
     end
-    if ps.traverse && !isnothing(n.children)
+    if ps.traverse
         inc(ps)
         println(ps.indent, n)
         ps.indent += 1
-        for (i, c) in enumerate(n.children)
-            print(repeat("  ", ps.indent))
-            print_node(c, ps)
+        if !isnothing(n.children)
+            for (i, c) in enumerate(n.children)
+                print(repeat("  ", ps.indent))
+                print_node(c, ps)
+            end
         end
         ps.indent -= 1
     end

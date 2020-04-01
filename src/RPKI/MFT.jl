@@ -1,7 +1,9 @@
-struct MFT
+mutable struct MFT
     files::Vector{String}
+    loops::Union{Nothing, Vector{String}}
+    missing_files::Union{Nothing, Vector{String}}
 end
-MFT() = MFT([])
+MFT() = MFT([], nothing, nothing)
 
 import Base.length
 length(::Nothing) = 0

@@ -125,6 +125,13 @@ function process_roa(roa_fn::String)
     o
 end
 
+struct LoopError <: Exception 
+    file1::String
+    file2::String
+end
+LoopError(file1::String) = LoopError(file1, "")
+Base.showerror(io::IO, e::LoopError) = print(io, "loop between ", e.file1, " and ", e.file2)
+
 function process_mft(mft_fn::String, lookup::Lookup) :: RPKINode
     #if mft_fn in keys(lookup.filenames)
     #    @warn "$(mft_fn) already seen, loop?"
@@ -137,7 +144,6 @@ function process_mft(mft_fn::String, lookup::Lookup) :: RPKINode
         @error "MFT: error with $(mft_fn)"
         return RPKINode(nothing, [], nothing)
     end
-    #@debug m.filename
     mft_dir = dirname(mft_fn)
     roas = Vector{RPKINode}()  #FIXME roas as a name is incorrect
     for f in m.object.files
@@ -160,8 +166,19 @@ function process_mft(mft_fn::String, lookup::Lookup) :: RPKINode
                 cer = process_cer(subcer_fn, lookup)
                 push!(roas, cer)
             catch e
-                #showerror(stderr, e, catch_backtrace())
-                throw("MFT->.cer: error with $(subcer_fn): \n $(e)")
+                if e isa LoopError
+                    #throw("loop between $(mft_fn) and $(e.filename)")
+                    #throw(LoopError(e.file1, mft_fn))
+                    @warn "LoopError, trying to continue"
+
+                    if isnothing(m.object.loops)
+                        m.object.loops = [subcer_fn]
+                    else
+                        push!(m.object.loops, subcer_fn)
+                    end
+                else
+                    throw("MFT->.cer: error with $(subcer_fn): \n $(e)")
+                end
             end
         elseif ext == ".roa"
             roa_fn = joinpath(mft_dir, f)
@@ -188,11 +205,14 @@ end
 
 TMP_UNIQ_PP = Set()
 function process_cer(cer_fn::String, lookup::Lookup) :: RPKINode
-    #@debug cer_fn
     # now, for each .cer, get the CA Repo and 'sync' again
     if cer_fn in keys(lookup.filenames)
         @warn "$(basename(cer_fn)) already seen, loop?"
-        throw("possible loop in $(cer_fn)" )
+        throw(LoopError(cer_fn))
+        #return nothing
+        #node = lookup.filenames[cer_fn]
+        #@warn node
+        #throw("possible loop in $(cer_fn)" )
     else
         # placeholder: we need to put something in because when a loop appears
         # in the RPKI repo, this call will never finish so adding it at the end
@@ -225,8 +245,12 @@ function process_cer(cer_fn::String, lookup::Lookup) :: RPKINode
         mft = process_mft(mft_fn, lookup)
         add(rpki_node, mft)
     catch e
-        #nothing
-        throw(e)
+        if e isa LoopError
+            @warn "Loop! between $(basename(e.file1)) and $(basename(e.file2))"
+            #throw(e)
+        else
+            print(e)
+        end
     end
 
     # TODO check RFC on directory structures: do the .mft and .cer have to
@@ -268,7 +292,7 @@ function retrieve_all() :: Tuple{RPKINode, Lookup}
             @error "error while processing $(ta_cer)"
             @error e
 
-            #throw(e)
+            throw(e)
             
         end
         

@@ -81,21 +81,11 @@ Tag(class::UInt8, constructed::Bool, number::UInt8, len::Int32, len_indef::Bool,
         Tag{GENTIME}(class, constructed, number, len, len_indef, value)
     elseif number   == UInt(19)  
         Tag{PRINTABLESTRING}(class, constructed, number, len, len_indef, value)
-        #elseif number   in (25:30)  
-        #Tag{CHAR}(class, constructed, number, len, len_indef, value)
-    #elseif number   in (18:22)  
-    #    Tag{CHAR}(class, constructed, number, len, len_indef, value)
     else
         Tag{Unimplemented}(class, constructed, number, len, len_indef, value)
-    end #::Tag{<:AbstractTag}
-#    else # class == 0x00 # Universal
-#        t(class, constructed, number, len, len_indef, value)::Tag{<:AbstractTag}
-#    #else
-#    #    @error "implement me"
-#    end
+    end 
 end
 
-#InvalidTag() = Tag{InvalidTag}(0, 0, 0, 0, [])
 Tag{InvalidTag}() = Tag{InvalidTag}(0, 0, 0, 0, false, [])
 
 
@@ -253,11 +243,9 @@ end
 abstract type AbstractNode end
 mutable struct Node <: AbstractNode
     parent::Union{Nothing, Node}
-    #TODO: Union needed, or can we deal with an empty Vector?
     children:: Union{Nothing, Vector{Node}}
     tag #FIXME make this a DER.AbstractTag and benchmark
     validated::Bool
-    #TODO: Union needed, or can we deal with an empty Vector?
     remarks::Union{Nothing, Vector{String}}
 end
 
@@ -342,7 +330,7 @@ inc(p::PrintState) = p.printed_lines += 1
 done(p::PrintState) = p.max_lines > 0 && p.printed_lines == p.max_lines
 
 
-function print_node(n::Node, ps::PrintState=PrintState()) # level::Integer=0, print_max::Integer=0, printed::Integer=0)
+function print_node(n::Node, ps::PrintState=PrintState())
     if done(ps)
         return
     end
@@ -382,8 +370,6 @@ function _html(tree::Node, io::IOStream)
         end
         write(io, "</div>")
     end
-    #TODO remarks:
-    #write(io, "<span style='color:red'>$(count_remarks(tree))</span>")
     write(io, "</span>\n")
 
     # children?
@@ -396,36 +382,6 @@ function _html(tree::Node, io::IOStream)
     end
     write(io, "</li>\n")
 
-    #    if tree.obj isa String
-    #        write(io, "<li><span class='caret'>$(tree.obj)")
-    #    else
-    #        write(io, "<li><span class='caret'>$(nameof(typeof(tree.obj).parameters[1]))")
-    #        if tree.obj isa RPKIObject{CER}
-    #            write(io, " [$(split_rsync_url(tree.obj.object.pubpoint)[1])]")
-    #        end
-    #        write(io, " $(basename(tree.obj.filename))")
-    #    end
-    #        write(io, "<span style='color:red'>$(count_remarks(tree))</span>")
-    #        write(io, "</span>\n")
-    #else
-    #    write(io, "<li><span class='caret'>unsure, tree.obj was nothing<span>\n")
-    #end
-    #if ! isempty(tree.children)
-    #    write(io, "<ul class='nested'>\n")
-    #    for c in tree.children
-    #        _html(c, io) 
-    #    end
-    #    write(io, "</ul>\n")
-    #elseif tree.obj isa RPKIObject{ROA}
-    #    write(io, "<ul class='nested'>\n")
-    #    write(io, "<li class='roa'>$(tree.obj.object.asid)</li>")
-    #    for r in tree.obj.object.vrps
-    #        write(io, "<li class='roa'>$(r)</li>")
-    #    end
-    #    write(io, "</ul>\n")
-
-    #end
-    #write(io, "</li>\n")
 end
 
 function html(tree::Node, output_fn::String) 
@@ -457,7 +413,6 @@ function iter(tree::Node)
             Base.append!(result, iter(c))
         end
     end
-    #@debug "result of size $(length(result))"
     result
 end
 

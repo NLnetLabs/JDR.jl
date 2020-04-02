@@ -194,17 +194,18 @@ function process_mft(mft_fn::String, lookup::Lookup) :: RPKINode
                 push!(roas, cer)
             catch e
                 if e isa LoopError
-                    #throw("loop between $(mft_fn) and $(e.filename)")
-                    #throw(LoopError(e.file1, mft_fn))
-                    @warn "LoopError, trying to continue"
+                    #@warn "LoopError, trying to continue"
+                    #@warn "but pushing $(basename(subcer_fn))"
 
                     if isnothing(m.object.loops)
-                        m.object.loops = [subcer_fn]
+                        m.object.loops = [basename(subcer_fn)]
                     else
-                        push!(m.object.loops, subcer_fn)
+                        push!(m.object.loops, basename(subcer_fn))
                     end
+                    #@warn "so now it is $(m.object.loops)"
                 else
-                    throw("MFT->.cer: error with $(subcer_fn): \n $(e)")
+                    #throw("MFT->.cer: error with $(subcer_fn): \n $(e)")
+                    throw(e)
                 end
             end
         elseif ext == ".roa"
@@ -277,7 +278,8 @@ function process_cer(cer_fn::String, lookup::Lookup) :: RPKINode
             @warn "Loop! between $(basename(e.file1)) and $(basename(e.file2))"
             #throw(e)
         else
-            print(e)
+            #print(e)
+            throw(e)
         end
     end
 

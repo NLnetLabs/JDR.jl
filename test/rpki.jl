@@ -40,6 +40,28 @@ end
     @test length(node.obj.remarks) > 0
 end
 
+@testset "Loop detection" begin
+    old_env = if "JULIA_DEBUG" in keys(ENV)
+        ENV["JULIA_DEBUG"]
+    else
+        ""
+    end
+    ENV["JULIA_DEBUG"] = "all"
+    l = RPKI.Lookup()
+    node = RPKI.process_cer(testdata_fn("loop_afrinic/AfriNIC.cer"), l)
+    mft = node.children[1].obj.object
+    @test  length(mft.loops) > 2
+    # FIXME: because we try to continue iterating of the filed listed in the
+    # manifest, the files that are eventually listed in MFT.loops might not be
+    # the complete list of loops..
+    #@test "arin-to-afrinic.cer" in mft.loops
+    #@test "apnic-to-afrinic.cer" in mft.loops
+    #@test "ripe-to-afrinic.cer" in mft.loops
+    #@test "afrinic-ca.cer" in mft.loops
+    #@test "lacnic-to-afrinic.cer" in mft.loops
+    ENV["JULIA_DEBUG"] = old_env
+end
+
 @testset "Counting remarks" begin
     o = RPKI.check(RPKI.RPKIObject(testdata_fn("ripe-ncc-ta.mft")))
     #@debug ASN.count_remarks(o.tree)

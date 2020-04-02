@@ -5,6 +5,14 @@ mutable struct MFT
 end
 MFT() = MFT([], nothing, nothing)
 
+function add_missing_file(m::MFT, filename::String)
+    if isnothing(m.missing_files)
+        m.missing_files = [filename]
+    else
+        push!(m.missing_files, filename)
+    end
+end
+
 import Base.length
 length(::Nothing) = 0
 function check_signed_data(o::RPKIObject{MFT}, sd::Node) :: RPKIObject{MFT}

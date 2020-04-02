@@ -169,10 +169,16 @@ function process_mft(mft_fn::String, lookup::Lookup) :: RPKINode
     roas = Vector{RPKINode}()  #FIXME roas as a name is incorrect
     for f in m.object.files
         # check for .cer
+        if !isfile(joinpath(mft_dir, f))
+            @error "Missing file: $(f)"
+            add_missing_file(m.object, f)
+            err!(m, "Files listed in manifest missing on file system")
+            continue
+        end
         ext = lowercase(f[end-3:end])
         if ext == ".cer"
             subcer_fn = joinpath(mft_dir, f)
-            @assert isfile(subcer_fn)
+            #@assert isfile(subcer_fn)
             try
                 # TODO
                 # can .cer and .roa files be in the same dir / on the same level
@@ -257,6 +263,7 @@ function process_cer(cer_fn::String, lookup::Lookup) :: RPKINode
 
     if !isfile(mft_fn)
         @error "manifest $(basename(mft_fn)) not found"
+        err!(o, "Manifest file $(basename(mft_fn)) not in repo")
         return rpki_node
     end
     #@debug mft_fn

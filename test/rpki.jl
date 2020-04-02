@@ -30,6 +30,16 @@ end
     #RPKI.html(tree, "/tmp/rpki.html")
 end
 
+
+@testset "Missing files in .mft" begin
+    l = RPKI.Lookup()
+    node = RPKI.process_mft(testdata_fn("mft_missing_files/RIPE-NCC-TA-TEST.mft"), l)
+    @test  length(node.obj.object.missing_files) == 2
+    @test "RIPE-NCC-TA-TEST.crl" in node.obj.object.missing_files 
+    @test "4b63f8aeaddeb5951907764a034cff3f7d64c097.cer" in node.obj.object.missing_files 
+    @test length(node.obj.remarks) > 0
+end
+
 @testset "Counting remarks" begin
     o = RPKI.check(RPKI.RPKIObject(testdata_fn("ripe-ncc-ta.mft")))
     #@debug ASN.count_remarks(o.tree)

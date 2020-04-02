@@ -163,7 +163,16 @@ function bitstring_to_v4prefix(raw::Vector{UInt8}) :: IPv4Net
     unused = raw[1]
     numbytes = length(raw) - 1 - 1
     bits = numbytes*8 + (8 - unused)
-    addr = (reinterpret(UInt32, resize!(reverse(raw[2:end]), 4)))[1] >> unused
+    addr =  @inbounds if length(raw) - 1 == 4
+                reinterpret(UInt32, [raw[5], raw[4], raw[3], raw[2]])[1]
+            elseif length(raw) - 1 == 3
+                reinterpret(UInt32, [raw[4], raw[3], raw[2], 0x00])[1]
+            elseif length(raw) - 1 == 2
+                reinterpret(UInt32, [raw[3], raw[2], 0x00, 0x00])[1]
+            elseif length(raw) - 1 == 1
+                UInt32(raw[2])
+            end >> unused
+
     return IPv4Net(addr << (32 - bits), bits)
 end
 

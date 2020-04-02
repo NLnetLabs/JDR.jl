@@ -21,10 +21,12 @@ function rawv4_to_roa(o::RPKIObject{ROA}, roa_ipaddress::Node) :: RPKIObject{ROA
     # optional maxLength:
     if length(roa_ipaddress.children) == 2
         tagisa(roa_ipaddress[2], ASN.INTEGER)
-        if ASN.value(roa_ipaddress[2].tag) == maxlength
+        @assert roa_ipaddress[2].tag.len == 1
+        #if ASN.value(roa_ipaddress[2].tag) == maxlength
+        if roa_ipaddress[2].tag.value[1] == maxlength
             remark!(roa_ipaddress[2], "redundant maxLength")
         else
-            maxlength = value(roa_ipaddress[2].tag)
+            maxlength = roa_ipaddress[2].tag.value[1]
         end
     end
     push!(o.object.vrps, VRP(prefix, maxlength))
@@ -40,10 +42,18 @@ function rawv6_to_roa(o::RPKIObject{ROA}, roa_ipaddress::Node) :: RPKIObject{ROA
     # optional maxLength:
     if length(roa_ipaddress.children) == 2
         tagisa(roa_ipaddress[2], ASN.INTEGER)
-        if ASN.value(roa_ipaddress[2].tag) == maxlength
+        explicit_len = if roa_ipaddress[2].tag.len == 1
+            #@debug roa_ipaddress[2].tag.value
+            roa_ipaddress[2].tag.value[1]
+        elseif roa_ipaddress[2].tag.len == 2
+            reinterpret(Int16, [roa_ipaddress[2].tag.value[2], roa_ipaddress[2].tag.value[1]])[1]
+        else
+            value(roa_ipaddress[2].tag)
+        end
+        if explicit_len == maxlength
             remark!(roa_ipaddress[2], "redundant maxLength")
         else
-            maxlength = value(roa_ipaddress[2].tag)
+            maxlength = explicit_len
         end
     end
 

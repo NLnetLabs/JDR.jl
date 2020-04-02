@@ -35,7 +35,7 @@ Buf(s::IOStream)        = Buf(IOBuffer(read(s)))
 #
 function lookahead(buf::Buf) :: UInt8
     buf.iob.ptr += 1 
-    buf.iob.data[buf.iob.ptr - 1]
+    @inbounds buf.iob.data[buf.iob.ptr - 1]
 end
 
 struct NotImplementedYetError <: Exception

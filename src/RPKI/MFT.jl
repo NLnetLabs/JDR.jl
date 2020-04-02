@@ -2,8 +2,10 @@ mutable struct MFT
     files::Vector{String}
     loops::Union{Nothing, Vector{String}}
     missing_files::Union{Nothing, Vector{String}}
+    this_update::Union{Nothing, DateTime}
+    next_update::Union{Nothing, DateTime}
 end
-MFT() = MFT([], nothing, nothing)
+MFT() = MFT([], nothing, nothing, nothing, nothing)
 
 function add_missing_file(m::MFT, filename::String)
     if isnothing(m.missing_files)
@@ -11,6 +13,10 @@ function add_missing_file(m::MFT, filename::String)
     else
         push!(m.missing_files, filename)
     end
+end
+
+function gentime_to_ts(raw::Vector{UInt8})
+    DateTime(String(copy(raw)), dateformat"yyyymmddHHMMSSZ")
 end
 
 import Base.length
@@ -175,11 +181,32 @@ function check_manifest(o::RPKIObject{MFT}, m::Node) :: RPKIObject{MFT}
     # manifestNumber
     tagisa(m[offset+1], ASN.INTEGER)
 
-    # TODO: attach these to the RPKIObject.object ?
     # thisUpdate
     tagisa(m[offset+2], ASN.GENTIME) 
+    try
+        o.object.this_update = gentime_to_ts(m[offset+2].tag.value)
+    catch e
+        if e isa ArgumentError
+            @error "Could not parse GENTIME"
+            err!(o, "Could not parse GENTIME in thisUpdate field")
+        else
+            @error e
+            throw(e)
+        end
+    end
     # nextUpdate
     tagisa(m[offset+3], ASN.GENTIME) 
+    try
+        o.object.next_update = gentime_to_ts(m[offset+3].tag.value)
+    catch e
+        if e isa ArgumentError
+            @error "Could not parse GENTIME"
+            err!(o, "Could not parse GENTIME in nextUpdate field")
+        else
+            @error e
+            throw(e)
+        end
+    end
 
     # fileHashAlg
     tag_OID(m[offset+4], @oid "2.16.840.1.101.3.4.2.1")

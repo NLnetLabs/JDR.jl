@@ -6,17 +6,38 @@ using IPNets
 
 export retrieve_all
 
+@enum RemarkLevel INFO WARN ERR
+struct Remark
+    level::RemarkLevel
+    msg::String
+end
+
+
 #abstract type RPKIObject <: AbstractNode end
-struct RPKIObject{T}
+mutable struct RPKIObject{T}
     filename::String
     tree::Node
     object::T
+    remarks::Union{Nothing, Vector{Remark}}
 end
 
 
 function RPKIObject{T}(filename::String, tree::Node) where T 
-    RPKIObject{T}(filename, tree, T())
+    RPKIObject{T}(filename, tree, T(), nothing)
 end
+
+import JuliASN.ASN.remark! # just so we can extend it here
+function remark!(o::RPKIObject, lvl::RemarkLevel, msg::String)
+    if isnothing(o.remarks)
+        o.remarks = [Remark(lvl, msg)]
+    else
+        push!(o.remarks, Remark(lvl, msg))
+    end
+end
+
+info!(o::RPKIObject, msg::String) = RPKI.remark!(o, INFO, msg)
+warn!(o::RPKIObject, msg::String) = RPKI.remark!(o, WARN, msg)
+err!(o::RPKIObject, msg::String)  = RPKI.remark!(o, ERR, msg)
 
 include("RPKI/CER.jl")
 include("RPKI/MFT.jl")

@@ -1,6 +1,7 @@
 module RPKI
 using ..ASN
 using ..DER
+using ..PrefixTrees
 
 using IPNets
 using Dates
@@ -125,9 +126,9 @@ Base.show(a::AutSysNum) = print(io, "AS", a.asn)
 struct Lookup
     ASNs::Dict{AutSysNum}{Vector{RPKINode}}
     filenames::Dict{String}{Vector{RPKINode}}
-    prefix_Tree::Any
+    prefix_tree::PrefixTree{RPKINode}
 end
-Lookup() = Lookup(Dict(), Dict(), nothing)
+Lookup() = Lookup(Dict(), Dict(), PrefixTree{RPKINode}())
 
 function add_roa!(lookup::Lookup, roanode::RPKINode)
     # add ASN
@@ -140,7 +141,10 @@ function add_roa!(lookup::Lookup, roanode::RPKINode)
         lookup.ASNs[asn] = [roanode]
     end
 
-    # TODO add prefix
+    # add prefixes
+    for vrp in roa.vrps
+        lookup.prefix_tree[vrp.prefix] = roanode
+    end
 end
 
 function process_roa(roa_fn::String)

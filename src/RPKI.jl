@@ -25,6 +25,13 @@ mutable struct RPKIObject{T}
 end
 
 
+function Base.show(io::IO, obj::RPKIObject{T}) where T
+    print(io, "RPKIObject type: ", nameof(typeof(obj).parameters[1]), '\n')
+    print(io, "filename: ", basename(obj.filename), '\n')
+    print(io, obj.object)
+end
+
+
 function RPKIObject{T}(filename::String, tree::Node) where T 
     RPKIObject{T}(filename, tree, T(), nothing)
 end

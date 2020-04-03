@@ -10,6 +10,13 @@ end
 ROA() = ROA(0, [])
 
 
+function Base.show(io::IO, roa::ROA)
+    print(io, "ASID: ", roa.asid, "\n")
+    print(io, "VRPs:\n")
+    for vrp in roa.vrps
+        print(io, "      ", vrp.prefix, "-", vrp.maxlength, "\n")
+    end
+end
 
 function rawv4_to_roa(o::RPKIObject{ROA}, roa_ipaddress::Node) :: RPKIObject{ROA}
     tagisa(roa_ipaddress, ASN.SEQUENCE)

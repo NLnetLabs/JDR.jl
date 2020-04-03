@@ -7,6 +7,18 @@ mutable struct MFT
 end
 MFT() = MFT([], nothing, nothing, nothing, nothing)
 
+function Base.show(io::IO, mft::MFT)
+    print(io, "  num of files: ", length(mft.files), '\n')
+    if !isnothing(mft.missing_files)
+        printstyled(io, "  missing files: \n")
+        for m in mft.missing
+            print(io, "    ", m, '\n')
+        end
+    end
+    print(io, "  thisUpdate: ", mft.this_update, '\n')
+    print(io, "  nextUpdate: ", mft.next_update, '\n')
+end
+
 function add_missing_file(m::MFT, filename::String)
     if isnothing(m.missing_files)
         m.missing_files = [filename]

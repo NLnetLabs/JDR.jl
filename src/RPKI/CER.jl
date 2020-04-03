@@ -9,6 +9,20 @@ mutable struct CER
 end
 CER() = CER("", "", "", false, [], false, [])
 
+function Base.show(io::IO, cer::CER)
+    print(io, "  pubpoint: ", cer.pubpoint, '\n')
+    print(io, "  manifest: ", cer.manifest, '\n')
+    print(io, "  rrdp: ", cer.rrdp_notify, '\n')
+    printstyled(io, "  ASNs: \n")
+    for a in cer.ASNs
+        print(io, "    ", a, '\n')
+    end
+    printstyled(io, "  prefixes: \n")
+    for p in cer.prefixes
+        print(io, "    ", p, '\n')
+    end
+end
+
 function check_subject_information_access(o::RPKIObject{CER}, subtree::Node)
     tagisa(subtree, ASN.OCTETSTRING)
     # second pass on the encapsulated  OCTETSTRING

@@ -2,15 +2,18 @@ using HTTP
 using Dates
 using JSON2
 
+using JuliASN
 
 const ROUTER = HTTP.Router()
 const APIV = "/api/v1"
 const LAST_UPDATE = Ref(now(UTC))
 const LAST_UPDATE_SERIAL = Ref(0)
+const LOOKUP = Ref(RPKI.Lookup())
 
 
 function asn(req::HTTP.Request)
     asid = HTTP.URIs.splitpath(req.target)[4] # /api/v1/asn/10, get 10
+    @info "returning for asn()"
     return "fake results for ASN $(asid)"
 end
 
@@ -20,12 +23,16 @@ function prefix(req::HTTP.Request)
     return "fake results for prefix $(prefix)"
 end
 
-function update(req::HTTP.Request)
+
+function update()
     @info "update()"
-    # lock and sleep or something
-    sleep(5)
+    (_, lookup) = fetch(Threads.@spawn(RPKI.retrieve_all()))
+    LOOKUP[] = lookup
     set_last_update()
     @info "update() done, serial: $(LAST_UPDATE_SERIAL[])"
+end
+function update(req::HTTP.Request)
+    update()
     ("msg" => "update done")
 end
 
@@ -38,8 +45,8 @@ end
 struct Envelope
     last_update::DateTime
     serial::Integer
-	timestamp::DateTime
-	data::Any
+    timestamp::DateTime
+    data::Any
 end
 
 function set_last_update()
@@ -56,24 +63,30 @@ function JSONHandler(req::HTTP.Request)
     else
         # there's a body, so pass it on to the handler we dispatch to
         response_body = handle(ROUTER, req, JSON2.read(body))
-		#@error "request with body, not implemented"
+        #@error "request with body, not implemented"
     end
 
-	# wrap the response in an envelope
+    # wrap the response in an envelope
     #return HTTP.Response(200, JSON2.write(response_body))
     response = Envelope(LAST_UPDATE[], LAST_UPDATE_SERIAL[], now(UTC), response_body)
-	return HTTP.Response(200, JSON2.write(response))
+    return HTTP.Response(200, JSON2.write(response))
+end
+
+function updater()
+    while true
+        @time update()
+        @info "updater(): update() done, going to sleep again"
+        sleep(5*60)
+        @info "updater(): sleep done, running update()"
+    end
 end
 
 function start()
-    @info "starting webservice"
+    @info "starting webservice on CPU $(Threads.threadid()) out of $(Threads.nthreads()) available"
     @info "init() ..."
     _init()
     @info "init() done" 
 
-    # do a RPKI.retrieve_all and store the update time
-    set_last_update()
-    
     HTTP.serve(JSONHandler, "::1", 8081)
 end
 

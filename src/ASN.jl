@@ -1,7 +1,7 @@
 module ASN
 
 export Tag, AbstractTag, Node, AbstractNode, Leaf
-export value, print_node, append!, isleaf, parent, iter, lazy_iter
+export value, print_node, append!, isleaf, iter, lazy_iter #parent
 export remark!, child, getindex, tagtype
 export @oid
 
@@ -241,7 +241,7 @@ end
 
 abstract type AbstractNode end
 mutable struct Node <: AbstractNode
-    parent::Union{Nothing, Node}
+    #parent::Union{Nothing, Node}
     children:: Union{Nothing, Vector{Node}}
     tag #FIXME make this a DER.AbstractTag and benchmark
     validated::Bool
@@ -250,9 +250,9 @@ end
 
 isleaf(n::Node) :: Bool = isnothing(n.children)
 
-function parent(n::Node) :: Node 
-    n.parent
-end
+#function parent(n::Node) :: Node 
+#    n.parent
+#end
 
 function append!(p::Node, c::Node) :: Node
     if isnothing(p.children)
@@ -260,7 +260,7 @@ function append!(p::Node, c::Node) :: Node
     else
         push!(p.children, c)
     end
-    c.parent = p
+    #c.parent = p
     p
 end
 
@@ -285,7 +285,8 @@ function count_remarks(tree::Node) :: Integer
 
 end
 
-Node(t::T) where {T <: Any } = Node(nothing, nothing, t, false, nothing)
+#Node(t::T) where {T <: Any } = Node(nothing, nothing, t, false, nothing)
+Node(t::T) where {T <: Any } = Node(nothing, t, false, nothing)
 
 function child(node::Node, indices...) :: Node
     current = node

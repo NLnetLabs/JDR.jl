@@ -137,6 +137,31 @@ struct Lookup
 end
 Lookup() = Lookup(Dict(), Dict(), PrefixTree{RPKINode}())
 
+function lookup(l::Lookup, asn::AutSysNum)
+    if asn in keys(l.ASNs)
+        l.ASNs[asn]
+    else
+        []
+    end
+end
+
+function lookup(l::Lookup, prefix::IPv4Net)
+    values(firstparent(l.prefix_tree, prefix))
+end
+
+function lookup(l::Lookup, prefix::IPv4Net)
+    values(firstparent(l.prefix_tree, prefix))
+end
+
+# TODO make a struct, e.g. ObjectFilename, for this?
+function lookup(l::Lookup, filename::String)
+    if filename in keys(l.filenames)
+        l.filenames[filename]
+    else
+        nothing
+    end
+end
+
 function add_roa!(lookup::Lookup, roanode::RPKINode)
     # add ASN
     @assert roanode.obj isa RPKIObject{ROA}

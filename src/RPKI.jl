@@ -332,10 +332,10 @@ function process_cer(cer_fn::String, lookup::Lookup) :: RPKINode
     rpki_node
 end
 
-function retrieve_all() :: Tuple{RPKINode, Lookup}
+function retrieve_all(tal_urls=TAL_URLS) :: Tuple{RPKINode, Lookup}
     lookup = Lookup()
     root = RPKINode(nothing, [], nothing)
-    for (rir, rsync_url) in TAL_URLS
+    for (rir, rsync_url) in tal_urls
         @debug rir
         (hostname, cer_fn) = split_rsync_url(rsync_url)  
         rir_dir = joinpath(REPO_DIR, hostname)

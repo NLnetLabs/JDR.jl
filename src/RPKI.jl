@@ -179,9 +179,16 @@ function add_roa!(lookup::Lookup, roanode::RPKINode)
     end
 end
 
-function process_roa(roa_fn::String)
+function process_roa(roa_fn::String, lookup::Lookup) :: RPKINode
     o::RPKIObject{ROA} = check(RPKIObject(roa_fn))
-    o
+    roa_node = RPKINode(nothing, [], o)
+    if roa_fn in keys(lookup.filenames) 
+        push!(lookup.filenames[roa_fn], roa_node)
+    else
+        lookup.filenames[roa_fn] = [roa_node]
+    end
+    #roanode = RPKINode(nothing, [], roa)
+    roa_node
 end
 
 struct LoopError <: Exception 
@@ -204,7 +211,7 @@ function process_mft(mft_fn::String, lookup::Lookup) :: RPKINode
         return RPKINode(nothing, [], nothing)
     end
     mft_dir = dirname(mft_fn)
-    roas = Vector{RPKINode}()  #FIXME roas as a name is incorrect
+    listed_files = Vector{RPKINode}()
     for f in m.object.files
         # check for .cer
         if !isfile(joinpath(mft_dir, f))
@@ -229,7 +236,7 @@ function process_mft(mft_fn::String, lookup::Lookup) :: RPKINode
                 #    throw("possible loop in $(subcer_fn)" )
                 #end
                 cer = process_cer(subcer_fn, lookup)
-                push!(roas, cer)
+                push!(listed_files, cer)
             catch e
                 if e isa LoopError
                     #@warn "LoopError, trying to continue"
@@ -249,10 +256,10 @@ function process_mft(mft_fn::String, lookup::Lookup) :: RPKINode
         elseif ext == ".roa"
             roa_fn = joinpath(mft_dir, f)
             try
-                roa = process_roa(roa_fn)
-                roanode = RPKINode(nothing, [], roa)
+                roanode = process_roa(roa_fn, lookup)
+                #roanode = RPKINode(nothing, [], roa)
                 #push!(roas, RPKINode(nothing, [], roa))
-                push!(roas, roanode)
+                push!(listed_files, roanode)
                 add_roa!(lookup, roanode)
             catch e
                 #showerror(stderr, e, catch_backtrace())
@@ -264,8 +271,12 @@ function process_mft(mft_fn::String, lookup::Lookup) :: RPKINode
 
     # returning:
     me = RPKINode(nothing, [], m)
-    add(me, roas)
-    #lookup.filenames[mft_fn] = [me]
+    add(me, listed_files)
+    if mft_fn in keys(lookup.filenames) 
+        push!(lookup.filenames[mft_fn], me)
+    else
+        lookup.filenames[mft_fn] = [me]
+    end
     me
 end
 

@@ -357,6 +357,10 @@ end
 function tagtype(n::Node) :: DataType
     typeof(n.tag).parameters[1]
 end
+function tagtype(t::Tag{<:AbstractTag}) :: DataType
+    typeof(t).parameters[1]
+end
+
 
 function _html(tree::Node, io::IOStream)
 

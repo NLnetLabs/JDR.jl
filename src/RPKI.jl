@@ -19,7 +19,7 @@ end
 #abstract type RPKIObject <: AbstractNode end
 mutable struct RPKIObject{T}
     filename::String
-    tree::Node
+    tree::Union{Nothing, Node}
     object::T
     remarks::Union{Nothing, Vector{Remark}}
 end
@@ -156,7 +156,9 @@ end
 # TODO make a struct, e.g. ObjectFilename, for this?
 function lookup(l::Lookup, filename::String)
     if filename in keys(l.filenames)
-        l.filenames[filename]
+        res = l.filenames[filename]
+        @assert length(res) == 1
+        first(res)
     else
         nothing
     end
@@ -188,6 +190,9 @@ function process_roa(roa_fn::String, lookup::Lookup) :: RPKINode
         lookup.filenames[roa_fn] = [roa_node]
     end
     #roanode = RPKINode(nothing, [], roa)
+
+    # now strip the ASN tree
+    o.tree = nothing
     roa_node
 end
 
@@ -271,6 +276,7 @@ function process_mft(mft_fn::String, lookup::Lookup) :: RPKINode
 
     # returning:
     me = RPKINode(nothing, [], m)
+    m.tree = nothing
     add(me, listed_files)
     if mft_fn in keys(lookup.filenames) 
         push!(lookup.filenames[mft_fn], me)
@@ -340,6 +346,7 @@ function process_cer(cer_fn::String, lookup::Lookup) :: RPKINode
     #@debug "process_cer add() on", rpki_node, "\n", mft
     
     lookup.filenames[cer_fn] = [rpki_node]
+    o.tree = nothing
     rpki_node
 end
 

@@ -16,11 +16,17 @@ struct ObjectDetails{T}
     objecttype::String
     remarks::Union{Nothing, Vector{RPKI.Remark}}
 end
-ObjectDetails(r::RPKI.RPKIObject) = ObjectDetails(r.filename,
-                                        r.tree,
-                                        r.object,
-                                        string(nameof(typeof(r.object))),
-                                        r.remarks)
+
+function ObjectDetails(r::RPKI.RPKIObject) 
+    # we parse this again, because it is removed from the main tree/lookup 
+    tree = DER.parse_file_recursive(r.filename)
+    ObjectDetails(r.filename,
+                  tree,
+                  r.object,
+                  string(nameof(typeof(r.object))),
+                  r.remarks
+                )
+end
 
 struct Basename
     filename::String

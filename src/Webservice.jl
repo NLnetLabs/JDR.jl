@@ -45,10 +45,8 @@ function object(req::HTTP.Request)
     object = HTTP.URIs.splitpath(req.target)[4] 
     object = HTTP.URIs.unescapeuri(object)
     res = RPKI.lookup(LOOKUP[], object)
-    # res is a Vector or nothing
-    res = [ObjectDetails(r.obj) for r in res]
-    @debug res
-    res
+    
+    ObjectDetails(res.obj)
 end
 
 

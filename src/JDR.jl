@@ -1,4 +1,4 @@
-module JuliASN
+module JDR
 
 export ASN
 include("ASN.jl")

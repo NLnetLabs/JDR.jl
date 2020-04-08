@@ -4,7 +4,7 @@ using JSON2
 
 using IPNets
 
-using JuliASN
+using JDR
 
 const ROUTER = HTTP.Router()
 const APIV = "/api/v1"

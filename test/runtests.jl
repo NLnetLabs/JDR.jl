@@ -1,15 +1,15 @@
 using Revise, Jive
-using JuliASN
-using JuliASN.PrefixTrees
+using JDR
+using JDR.PrefixTrees
 using Test
 using Glob
 
 ROUTINATOR_DIR = "/home/luuk/.rpki-cache/repository/rsync/"
-TESTDATA = joinpath(dirname(pathof(JuliASN)), "..", "test", "testdata")
+TESTDATA = joinpath(dirname(pathof(JDR)), "..", "test", "testdata")
 
 
 # some helpers:
-testdata_fn(filename::String) = joinpath(dirname(pathof(JuliASN)), "..", "test", "testdata", filename)
+testdata_fn(filename::String) = joinpath(dirname(pathof(JDR)), "..", "test", "testdata", filename)
 
 function all_rpki_files(dir, exts=["cer", "mft", "crl", "roa"])
     all_files = []
@@ -28,7 +28,7 @@ trigger = function (path)
     runtests(@__DIR__, skip=["runtests.jl"])
 end
 
-watch(trigger, @__DIR__, sources=[pathof(JuliASN)])
+watch(trigger, @__DIR__, sources=[pathof(JDR)])
 trigger("")
 
 Base.JLOptions().isinteractive==0 && wait()

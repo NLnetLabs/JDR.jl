@@ -1,6 +1,6 @@
 println("testing $(@__FILE__)")
 
-using JuliASN.ASN
+using JDR.ASN
 
 @skip @testset "ASN" begin
     l1  = Leaf("leaf 1")

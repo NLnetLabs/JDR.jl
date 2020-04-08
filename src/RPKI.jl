@@ -36,7 +36,7 @@ function RPKIObject{T}(filename::String, tree::Node) where T
     RPKIObject{T}(filename, tree, T(), nothing)
 end
 
-import JuliASN.ASN.remark! # just so we can extend it here
+import JDR.ASN.remark! # just so we can extend it here
 function remark!(o::RPKIObject, lvl::RemarkLevel, msg::String)
     if isnothing(o.remarks)
         o.remarks = [Remark(lvl, msg)]

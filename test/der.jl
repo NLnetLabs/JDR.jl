@@ -1,9 +1,9 @@
 println("testing $(@__FILE__)")
 
-#using JuliASN
-using JuliASN.ASN
-using JuliASN.DER
-using JuliASN.RPKI
+#using JDR
+using JDR.ASN
+using JDR.DER
+using JDR.RPKI
 
 # example from wikipedia
 BLOB=hex2bytes(b"3013020105160e416e79626f64792074686572653f")
@@ -100,7 +100,7 @@ end
             
     @test isempty(failed_files)
     #for failed_file in failed_files
-    #    cp(failed_file, joinpath(dirname(pathof(JuliASN)), "..", "test", "testdata", "failed_files", basename(failed_file)))
+    #    cp(failed_file, joinpath(dirname(pathof(JDR)), "..", "test", "testdata", "failed_files", basename(failed_file)))
     #end
 end
 

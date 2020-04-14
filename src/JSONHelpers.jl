@@ -15,18 +15,51 @@ struct ObjectDetails{T}
     object::T
     objecttype::String
     remarks::Union{Nothing, Vector{RPKI.Remark}}
+    remark_counts_me::Union{Nothing, RemarkCounts_t}
 end
 
-function ObjectDetails(r::RPKI.RPKIObject) 
+function ObjectDetails(r::RPKI.RPKIObject, rc::RemarkCounts_t) 
     # we parse this again, because it is removed from the main tree/lookup 
-    tree = DER.parse_file_recursive(r.filename)
-    ObjectDetails(r.filename,
-                  tree,
-                  r.object,
-                  string(nameof(typeof(r.object))),
-                  r.remarks
-                )
+    r.tree = DER.parse_file_recursive(r.filename)
+    RPKI.check(r)
+    
+    d = ObjectDetails(r.filename,
+                      r.tree,
+                      r.object,
+                      string(nameof(typeof(r.object))),
+                      r.remarks,
+                      rc # FIXME assert r.remarks ==~ rc
+                    )
+    # is the original `r` cluttered now?
+    @debug r.tree
+    r.tree = nothing # now we are in the old state again
+    @debug r.tree
+
+    return d
 end
+
+struct ObjectSlim{T}
+    filename::String
+    details_url::String # this is only for ease of development
+    object::T
+    objecttype::String
+    remarks::Union{Nothing, Vector{RPKI.Remark}}
+    remark_counts_me::RemarkCounts_t
+end
+
+const DOMAIN = "http://localhost:8081/" # TODO move this into separate config
+
+details_url(filename::String) = DOMAIN * "api/v1/object/" * HTTP.escapeuri(filename)
+function ObjectSlim(r::RPKI.RPKIObject, rc::RemarkCounts_t) 
+    ObjectSlim(r.filename,
+               details_url(r.filename),
+               r.object,
+               string(nameof(typeof(r.object))),
+               r.remarks,
+               rc # FIXME assert r.remarks ==~ rc
+            )
+end
+
 
 struct Basename
     filename::String
@@ -77,20 +110,17 @@ to_slim(o::RPKI.MFT) = SlimMFT(o)
 to_slim(o::RPKI.CER) = SlimCER(o)
 to_slim(o::RPKI.ROA) = o
 
-to_slim(o::RPKI.RPKIObject) = RPKI.RPKIObject(o.filename, o.tree, to_slim(o.object), o.remarks)
 
-# the circular ref between  `parent` and `children` in the RPKINode struct
-# causes the JSON generation to stackoverflow
-# So we combine to_root() with a custom JSON format where we exclude the parent
-# Results are then a chain from root to leaf, though without refs to the parent
-# FIXME this comment is outdated/incorrect now
-function to_root(node::RPKI.RPKINode) :: Vector
+# to_root is used to show a part of the tree, namely from the passed object up
+# to the root. The circular ref between  `parent` and `children` in the RPKINode
+# struct causes trouble in the JSON generation, so to_root returns a simple
+# Vector with ObjectSlim's, and no explicition pointers to parents or children.
+function to_root(node::RPKI.RPKINode) :: Vector{ObjectSlim}
     current = node
-    res = Vector{Any}([current.obj])
+    res = Vector{ObjectSlim}([ObjectSlim(current.obj, current.remark_counts_me)])
     while !isnothing(current.parent)
         if !isnothing(current.parent.obj)
-            #push!(res, to_slim(current.parent.obj.object))
-            push!(res, to_slim(current.parent.obj))
+            push!(res, ObjectSlim(current.parent.obj, current.parent.remark_counts_me))
         end
         current = current.parent
     end

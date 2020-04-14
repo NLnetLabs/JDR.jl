@@ -1,5 +1,9 @@
 module JDR
 
+ 
+include("Common.jl")
+using .Common
+
 export ASN
 include("ASN.jl")
 

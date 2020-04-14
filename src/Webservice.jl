@@ -5,6 +5,7 @@ using JSON2
 using IPNets
 
 using JDR
+using JDR.Common
 
 const ROUTER = HTTP.Router()
 const APIV = "/api/v1"
@@ -46,7 +47,7 @@ function object(req::HTTP.Request)
     object = HTTP.URIs.unescapeuri(object)
     res = RPKI.lookup(LOOKUP[], object)
     
-    ObjectDetails(res.obj)
+    ObjectDetails(res.obj, res.remark_counts_me)
 end
 
 
@@ -82,6 +83,8 @@ function set_last_update()
 end
 
 function JSONHandler(req::HTTP.Request)
+    @info "Request: $(req.target)"
+
     # first check if there's any request body
     body = IOBuffer(HTTP.payload(req))
     if eof(body)

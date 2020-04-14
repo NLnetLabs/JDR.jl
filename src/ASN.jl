@@ -1,4 +1,5 @@
 module ASN
+using ...JDR.Common
 
 export Tag, AbstractTag, Node, AbstractNode, Leaf
 export value, print_node, append!, isleaf, iter, lazy_iter #parent
@@ -245,7 +246,7 @@ mutable struct Node <: AbstractNode
     children:: Union{Nothing, Vector{Node}}
     tag #FIXME make this a DER.AbstractTag and benchmark
     validated::Bool
-    remarks::Union{Nothing, Vector{String}}
+	remarks::Union{Nothing, Vector{Remark}}
 end
 
 isleaf(n::Node) :: Bool = isnothing(n.children)
@@ -264,25 +265,17 @@ function append!(p::Node, c::Node) :: Node
     p
 end
 
-function remark!(n::Node, remark::String)
-    if isnothing(n.remarks)
-        n.remarks = [remark]
-    else
-        push!(n.remarks, remark)
+import JDR.Common.count_remarks # import so we can extend it
+function count_remarks(tree::Node) :: RemarkCounts_t
+    cnts = RemarkCounts()
+    for n in iter(tree)
+        if !isnothing(n.remarks)
+            for r in n.remarks
+                cnts[r.lvl] += 1
+            end
+        end
     end
-end
-function count_remarks(tree::Node) :: Integer
-    if isnothing(tree)
-        return 0
-    end
-    if isnothing(tree.remarks) && !isnothing(tree.children)
-        return sum([count_remarks(c) for c in tree.children])
-    end
-    if isnothing(tree.children) || isempty(tree.children)
-        return length(tree.remarks)
-    end
-    return length(tree.remarks) + sum([count_remarks(c) for c in tree.children])
-
+    cnts
 end
 
 #Node(t::T) where {T <: Any } = Node(nothing, nothing, t, false, nothing)

@@ -1,4 +1,5 @@
 module RPKI
+using ...JDR.Common
 using ..ASN
 using ..DER
 using ..PrefixTrees
@@ -8,13 +9,6 @@ using Dates
 
 
 export retrieve_all
-
-@enum RemarkLevel INFO WARN ERR
-struct Remark
-    level::RemarkLevel
-    msg::String
-end
-
 
 #abstract type RPKIObject <: AbstractNode end
 mutable struct RPKIObject{T}
@@ -35,19 +29,6 @@ end
 function RPKIObject{T}(filename::String, tree::Node) where T 
     RPKIObject{T}(filename, tree, T(), nothing)
 end
-
-import JDR.ASN.remark! # just so we can extend it here
-function remark!(o::RPKIObject, lvl::RemarkLevel, msg::String)
-    if isnothing(o.remarks)
-        o.remarks = [Remark(lvl, msg)]
-    else
-        push!(o.remarks, Remark(lvl, msg))
-    end
-end
-
-info!(o::RPKIObject, msg::String) = RPKI.remark!(o, INFO, msg)
-warn!(o::RPKIObject, msg::String) = RPKI.remark!(o, WARN, msg)
-err!(o::RPKIObject, msg::String)  = RPKI.remark!(o, ERR, msg)
 
 include("RPKI/CER.jl")
 include("RPKI/MFT.jl")
@@ -71,29 +52,22 @@ mutable struct RPKINode
     parent::Union{Nothing, RPKINode}
     children::Vector{RPKINode}
     obj::Union{Nothing, RPKIObject, String}
+    # remark_counts_me could be a wrapper to the obj.remark_counts_me 
+    remark_counts_me::RemarkCounts_t
+    remark_counts_children::RemarkCounts_t
 end
+# FIXME: check how we actually use RPKINode() throughout the codebase
+RPKINode(p, c, o) = RPKINode(p, c, o, RemarkCounts(), RemarkCounts())
+
 function add(p::RPKINode, c::RPKINode)#, o::RPKIObject)
     c.parent = p
+    p.remark_counts_children += c.remark_counts_me
     push!(p.children, c)
 end
 function add(p::RPKINode, c::Vector{RPKINode})
     for child in c
         add(p, child)
     end
-end
-
-function count_remarks(tree::RPKINode) :: Integer
-    if isnothing(tree.obj)
-        return 0
-    end
-    if tree.obj isa String # for the pubpoints tree
-        return sum([count_remarks(c) for c in tree.children])
-    end
-    if isempty(tree.children)
-        return ASN.count_remarks(tree.obj.tree)
-    end
-    #TODO should we actually go into .obj.tree? 
-    return ASN.count_remarks(tree.obj.tree) + sum([count_remarks(c) for c in tree.children])
 end
 
 function check(::RPKIObject{T}) where {T}
@@ -145,11 +119,12 @@ function lookup(l::Lookup, asn::AutSysNum)
     end
 end
 
+# FIXME: do we need separate lookup trees for v6 and v4?
 function lookup(l::Lookup, prefix::IPv4Net)
     values(firstparent(l.prefix_tree, prefix))
 end
 
-function lookup(l::Lookup, prefix::IPv4Net)
+function lookup(l::Lookup, prefix::IPv6Net)
     values(firstparent(l.prefix_tree, prefix))
 end
 
@@ -189,7 +164,8 @@ function process_roa(roa_fn::String, lookup::Lookup) :: RPKINode
     else
         lookup.filenames[roa_fn] = [roa_node]
     end
-    #roanode = RPKINode(nothing, [], roa)
+
+    roa_node.remark_counts_me = count_remarks(o) + count_remarks(o.tree)
 
     # now strip the ASN tree
     o.tree = nothing
@@ -252,6 +228,7 @@ function process_mft(mft_fn::String, lookup::Lookup) :: RPKINode
                     else
                         push!(m.object.loops, basename(subcer_fn))
                     end
+                    err!(m, "Loop detected!")
                     #@warn "so now it is $(m.object.loops)"
                 else
                     #throw("MFT->.cer: error with $(subcer_fn): \n $(e)")
@@ -276,6 +253,7 @@ function process_mft(mft_fn::String, lookup::Lookup) :: RPKINode
 
     # returning:
     me = RPKINode(nothing, [], m)
+    me.remark_counts_me = count_remarks(m) + count_remarks(m.tree)
     m.tree = nothing
     add(me, listed_files)
     if mft_fn in keys(lookup.filenames) 
@@ -346,6 +324,8 @@ function process_cer(cer_fn::String, lookup::Lookup) :: RPKINode
     #@debug "process_cer add() on", rpki_node, "\n", mft
     
     lookup.filenames[cer_fn] = [rpki_node]
+
+    rpki_node.remark_counts_me = count_remarks(o) + count_remarks(o.tree)
     o.tree = nothing
     rpki_node
 end
@@ -378,7 +358,7 @@ function retrieve_all(tal_urls=TAL_URLS) :: Tuple{RPKINode, Lookup}
             @error "error while processing $(ta_cer)"
             @error e
 
-            throw(e)
+            rethrow(e)
             
         end
         

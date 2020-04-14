@@ -1,4 +1,5 @@
 module DER
+using ...JDR.Common
 using ..ASN
 using Mmap
 
@@ -128,11 +129,11 @@ function _parse!(tag, buf, indef_stack::Stack)
     if isa(tag, Tag{OCTETSTRING})
         if tag.constructed
             #TODO what about constructed BITSTRINGs, are those allowed?
-            remark!(me, "constructed OCTETSTRING, not allowed in DER")
+            info!(me, "constructed OCTETSTRING, not allowed in DER")
         end
     end
     if tag.len_indef
-        remark!(me, "indefinite length, not allowed in DER")
+        info!(me, "indefinite length, not allowed in DER")
     end
     #if tag isa Tag{CONTEXT_SPECIFIC} && tag.constructed && ! tag.len_indef
     #    @debug "got a constructed CONTEXT_SPECIFIC of definite length $(tag.len)"

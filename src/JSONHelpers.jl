@@ -20,21 +20,16 @@ end
 
 function ObjectDetails(r::RPKI.RPKIObject, rc::RemarkCounts_t) 
     # we parse this again, because it is removed from the main tree/lookup 
-    r.tree = DER.parse_file_recursive(r.filename)
-    RPKI.check(r)
+    tmp = RPKI.RPKIObject(r.filename)
+    RPKI.check(tmp)
     
     d = ObjectDetails(r.filename,
-                      r.tree,
+                      tmp.tree,
                       r.object,
                       string(nameof(typeof(r.object))),
                       r.remarks,
                       rc # FIXME assert r.remarks ==~ rc
                     )
-    # is the original `r` cluttered now?
-    @debug r.tree
-    r.tree = nothing # now we are in the old state again
-    @debug r.tree
-
     return d
 end
 

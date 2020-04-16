@@ -36,7 +36,7 @@ end
 struct ObjectSlim{T}
     filename::String
     details_url::String # this is only for ease of development
-    object::T
+    object::T # FIXME force this to be a SlimCER or SlimMFT etc
     objecttype::String
     remarks::Union{Nothing, Vector{RPKI.Remark}}
     remark_counts_me::RemarkCounts_t
@@ -48,7 +48,7 @@ details_url(filename::String) = DOMAIN * "api/v1/object/" * HTTP.escapeuri(filen
 function ObjectSlim(r::RPKI.RPKIObject, rc::RemarkCounts_t) 
     ObjectSlim(r.filename,
                details_url(r.filename),
-               r.object,
+               to_slim(r.object),
                string(nameof(typeof(r.object))),
                r.remarks,
                rc # FIXME assert r.remarks ==~ rc

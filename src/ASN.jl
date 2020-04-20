@@ -132,8 +132,8 @@ value(t::Tag{UTCTIME}) = String(copy(t.value))
 value(t::Tag{GENTIME}) = String(copy(t.value))
 value(t::Tag{UTF8STRING}) = String(copy(t.value))
 value(t::Tag{IA5STRING}) = String(copy(t.value))
-function value(t::Tag{INTEGER}) where {T}
-    if t.len > 5
+function value(t::Tag{INTEGER}; force_reinterpret=false) where {T}
+    if t.len > 5 && !force_reinterpret
         "$(t.len * 8)bit integer" #FIXME not accurate, perhaps the lenbytes itself cause that
     else
         reinterpret(Int64, resize!(reverse(t.value), 8))[1]

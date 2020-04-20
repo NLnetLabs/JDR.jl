@@ -44,6 +44,7 @@ function RPKIObject(filename::String)::RPKIObject
     if      ext == ".cer" RPKIObject{CER}(filename, tree)
     elseif  ext == ".mft" RPKIObject{MFT}(filename, tree)
     elseif  ext == ".roa" RPKIObject{ROA}(filename, tree)
+    elseif  ext == ".crl" RPKIObject{CRL}(filename, tree)
     end
 end
 

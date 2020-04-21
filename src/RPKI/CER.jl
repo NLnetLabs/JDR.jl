@@ -1,4 +1,5 @@
 mutable struct CER 
+    serial::Integer
     pubpoint::String
     manifest::String
     rrdp_notify::String
@@ -7,7 +8,7 @@ mutable struct CER
     inherit_ASNs::Bool
     ASNs::Vector{Union{Tuple{UInt32, UInt32}, UInt32}}
 end
-CER() = CER("", "", "", false, [], false, [])
+CER() = CER(0, "", "", "", false, [], false, [])
 
 function Base.show(io::IO, cer::CER)
     print(io, "  pubpoint: ", cer.pubpoint, '\n')
@@ -73,6 +74,7 @@ function checkTbsCertificate(o::RPKIObject{CER}, tbscert::Node)
 
     # Serial number
     tagisa(tbscert[2], ASN.INTEGER)
+    o.object.serial = ASN.value(tbscert[2].tag, force_reinterpret=true)
 
     # Signature AlgorithmIdentifier
     # SEQ / OID / NULL

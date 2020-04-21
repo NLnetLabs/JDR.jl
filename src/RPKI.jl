@@ -109,8 +109,9 @@ struct Lookup
     ASNs::Dict{AutSysNum}{Vector{RPKINode}}
     filenames::Dict{String}{Vector{RPKINode}}
     prefix_tree::PrefixTree{RPKINode}
+    too_specific::Set{RPKINode}
 end
-Lookup() = Lookup(Dict(), Dict(), PrefixTree{RPKINode}())
+Lookup() = Lookup(Dict(), Dict(), PrefixTree{RPKINode}(), Set())
 
 function lookup(l::Lookup, asn::AutSysNum)
     if asn in keys(l.ASNs)
@@ -154,6 +155,10 @@ function add_roa!(lookup::Lookup, roanode::RPKINode)
     # add prefixes
     for vrp in roa.vrps
         lookup.prefix_tree[vrp.prefix] = roanode
+        if ((vrp.prefix isa IPv4Net && vrp.prefix.netmask > 24)
+            || (vrp.prefix isa IPv6Net && vrp.prefix.netmask > 48))
+            push!(lookup.too_specific, roanode)
+        end
     end
 end
 

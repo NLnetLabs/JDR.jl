@@ -6,6 +6,7 @@ using IPNets
 
 using JDR
 using JDR.Common
+using JDR.JSONHelpers
 
 const ROUTER = HTTP.Router()
 const APIV = "/api/v1"
@@ -13,7 +14,6 @@ const LAST_UPDATE = Ref(now(UTC))
 const LAST_UPDATE_SERIAL = Ref(0)
 const LOOKUP = Ref(RPKI.Lookup())
 
-include("JSONHelpers.jl")
 
 const TAL_URLS = Dict(
     :afrinic    => "rsync://rpki.afrinic.net/repository/AfriNIC.cer",

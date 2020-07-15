@@ -9,7 +9,7 @@ using ..RPKI
 using ..JDR.Common
 using ..ASN
 
-export to_vue_branch, to_vue_tree, length
+export to_root, to_vue_branch, to_vue_tree, length
 
 
 JSON2.@format RPKI.RPKINode begin

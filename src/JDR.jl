@@ -15,4 +15,6 @@ include("DER.jl")
 export RPKI
 include("RPKI.jl")
 
+include("JSONHelpers.jl")
+
 end # module

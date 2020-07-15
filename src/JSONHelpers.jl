@@ -1,3 +1,17 @@
+# TODO: check whether Webservice.jl still works after putting JSONHelpers in an
+# actual module
+module JSONHelpers
+using JSON2
+using IPNets
+using HTTP
+using Dates
+using ..RPKI
+using ..JDR.Common
+using ..ASN
+
+export to_vue_branch, to_vue_tree, length
+
+
 JSON2.@format RPKI.RPKINode begin
         parent => (;exclude=true,)
 end
@@ -125,5 +139,93 @@ function to_root(node::RPKI.RPKINode) :: Vector{ObjectSlim}
     res
 end
 
+mutable struct VueNode
+    children::Vector{VueNode}
+    mates::Vector{VueNode}
+    object::Union{Nothing, ObjectSlim}
+end
+
+function to_vue_branch(node::RPKI.RPKINode)
+    nodes = reverse(to_root(node))
+    root = VueNode([], [], nothing)
+    current = root
+    for n in nodes
+        if n.objecttype == "MFT"
+            #@debug "MFT!"
+            current.mates = [VueNode([], [], n)]
+            #current = current.children[1]
+        else
+            current.children = [VueNode([], [], n)]
+            current = current.children[1]
+        end
+        #@debug "current:", current
+    end
+    root
+end
+
+import Base.length
+function length(vue_branch::VueNode)
+    res = 0
+    v = vue_branch
+    while !isempty(v.children)
+        res += 1
+        v = v.children[1]
+    end
+    res
+end
+
+function to_vue_tree(branches::Vector)
+    
+    for b in branches
+        @debug "branch length:", length(b)
+    end
+    sort!(branches, by = x -> length(x), rev=true)
+    @debug "----"
+    for b in branches
+        @debug "branch length:", length(b)
+    end
+    
+    left = branches[1]
+    for b in (2:length(branches)) 
+        #@debug "branch", b
+        right = branches[b]
 
 
+        l = left
+        r = right#.children[1]
+
+        done = false
+        while ! done
+            # FIXME: we need to compare with all the children of r
+            @debug "children in left:", length(l.children)
+            if isnothing(findfirst(x -> x.object.filename == r.children[1].object.filename, l.children))
+            ###for left_child in l.children
+            ###    if left_child.object.filename == r.children[1].object.filename
+            ###        @debug "left_child same as r.children[1]!, breaking.."
+            ###        break
+            ###    end
+            ###end
+
+
+            #if l.children[1].object.filename == r.children[1].object.filename
+                #@debug "same", l.children[1].object.filename
+            #else
+                @debug "different", r.children[1].object.filename
+                # using append! throws an UndefVar error for some reason..
+                #l.children = append!(l.children, r.children)
+                push!(l.children, r.children[1])
+                done = true
+                continue # break /  and branch out
+            else
+                @debug "left_child same as r.children[1]!, breaking.."
+            end
+            l = l.children[1]
+            r = r.children[1]
+        end
+    end
+    left
+end
+
+
+
+end # module

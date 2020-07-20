@@ -173,8 +173,53 @@ function length(vue_branch::VueNode)
     res
 end
 
+function _pubpoints!(pp_tree::VueNode, tree::RPKI.RPKINode, current_pp::String)
+    if isempty(tree.children)
+        return
+    end
+
+    for c in tree.children
+        if c.obj isa RPKI.RPKIObject{CER}
+            this_pp = RPKI.split_rsync_url(c.obj.object.pubpoint)[1]
+            if this_pp != current_pp
+                # check if this_pp exists on the same level
+                if this_pp in [c2.name for c2 in pp_tree.children]
+                    @debug "new but duplicate: $(this_pp)"
+                    _pubpoints!(pp_tree, c, this_pp)
+                else
+                    #TODO check remark_counts_me, should we take the
+                    #remarks_counts from the parent?
+                    #but, pp_tree does not have any..
+                    new_pp = VueNode([], [], this_pp, ObjectSlim(c.obj, c.remark_counts_me))
+                    _pubpoints!(new_pp, c, this_pp)
+                    push!(pp_tree.children, new_pp)
+                end
+            else
+                _pubpoints!(pp_tree, c, current_pp)
+            end
+        elseif c.obj isa RPKI.RPKIObject{MFT}
+            _pubpoints!(pp_tree, c, current_pp)
+        else
+            _pubpoints!(pp_tree, c, current_pp)
+        end
+    end
+end
+
+function to_vue_pubpoints(tree::RPKI.RPKINode)
+    #pp_tree = RPKINode(nothing, [], "root")
+    pp_tree = VueNode([], [], "root", nothing)
+    for c in tree.children
+        if ! isnothing(c.obj) && c.obj isa RPKI.RPKIObject{CER}
+            pp = RPKI.split_rsync_url(c.obj.object.pubpoint)[1]
+            subtree = VueNode([], [], pp, ObjectSlim(c.obj, c.remark_counts_me))
+            _pubpoints!(subtree, c, pp)
+            push!(pp_tree.children, subtree)
+        end
+    end
+    pp_tree
+end
+
 function to_vue_tree(branches::Vector)
-    
     for b in branches
         @debug "branch length:", length(b)
     end

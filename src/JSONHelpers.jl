@@ -1,5 +1,3 @@
-# TODO: check whether Webservice.jl still works after putting JSONHelpers in an
-# actual module
 module JSONHelpers
 using JSON2
 using IPNets
@@ -142,20 +140,21 @@ end
 mutable struct VueNode
     children::Vector{VueNode}
     mates::Vector{VueNode}
+    name::String
     object::Union{Nothing, ObjectSlim}
 end
 
 function to_vue_branch(node::RPKI.RPKINode)
     nodes = reverse(to_root(node))
-    root = VueNode([], [], nothing)
+    root = VueNode([], [], "root", nothing)
     current = root
     for n in nodes
         if n.objecttype == "MFT"
             #@debug "MFT!"
-            current.mates = [VueNode([], [], n)]
+            current.mates = [VueNode([], [], basename(n.filename), n)]
             #current = current.children[1]
         else
-            current.children = [VueNode([], [], n)]
+            current.children = [VueNode([], [], basename(n.filename), n)]
             current = current.children[1]
         end
         #@debug "current:", current

@@ -8,7 +8,7 @@ using IPNets
 using Dates
 
 
-export retrieve_all
+export retrieve_all, CER, MFT, CRL, ROA
 
 #abstract type RPKIObject <: AbstractNode end
 mutable struct RPKIObject{T}

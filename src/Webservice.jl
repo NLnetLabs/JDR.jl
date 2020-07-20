@@ -68,6 +68,11 @@ function object(req::HTTP.Request)
 end
 
 
+function pubpoints(req::HTTP.Request)
+    # /api/v1/pubpoints
+    to_vue_pubpoints(TREE[])
+end
+
 function update()
     @info "update()"
     (tree, lookup) = fetch(Threads.@spawn(RPKI.retrieve_all(TAL_URLS)))
@@ -85,6 +90,9 @@ function _init()
     HTTP.@register(ROUTER, "GET", APIV*"/asn/*", asn)
     HTTP.@register(ROUTER, "GET", APIV*"/prefix/*", prefix)
     HTTP.@register(ROUTER, "GET", APIV*"/object/*", object)
+    HTTP.@register(ROUTER, "GET", APIV*"/pp/", pubpoints)
+
+
     HTTP.@register(ROUTER, "GET", APIV*"/update", update)
 end
 

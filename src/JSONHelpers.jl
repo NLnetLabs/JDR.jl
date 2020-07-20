@@ -52,18 +52,20 @@ struct ObjectSlim{T}
     objecttype::String
     remarks::Union{Nothing, Vector{RPKI.Remark}}
     remark_counts_me::RemarkCounts_t
+    remark_counts_children::RemarkCounts_t
 end
 
 const DOMAIN = "http://localhost:8081/" # TODO move this into separate config
 
 details_url(filename::String) = DOMAIN * "api/v1/object/" * HTTP.escapeuri(filename)
-function ObjectSlim(r::RPKI.RPKIObject, rc::RemarkCounts_t) 
+function ObjectSlim(r::RPKI.RPKIObject, rcm::RemarkCounts_t, rcc::RemarkCounts_t) 
     ObjectSlim(r.filename,
                details_url(r.filename),
                to_slim(r.object),
                string(nameof(typeof(r.object))),
                r.remarks,
-               rc # FIXME assert r.remarks ==~ rc
+               rcm, # FIXME assert r.remarks ==~ rcm
+               rcc
             )
 end
 
@@ -127,10 +129,18 @@ to_slim(o::RPKI.ROA) = o
 # Vector with ObjectSlim's, and no explicition pointers to parents or children.
 function to_root(node::RPKI.RPKINode) :: Vector{ObjectSlim}
     current = node
-    res = Vector{ObjectSlim}([ObjectSlim(current.obj, current.remark_counts_me)])
+    res = Vector{ObjectSlim}([ObjectSlim(
+                                         current.obj,
+                                         current.remark_counts_me,
+                                         current.remark_counts_children
+                                        )])
     while !isnothing(current.parent)
         if !isnothing(current.parent.obj)
-            push!(res, ObjectSlim(current.parent.obj, current.parent.remark_counts_me))
+            push!(res, ObjectSlim(
+                                  current.parent.obj,
+                                  current.parent.remark_counts_me,
+                                  current.parent.remark_counts_children
+                                 ))
         end
         current = current.parent
     end
@@ -190,7 +200,7 @@ function _pubpoints!(pp_tree::VueNode, tree::RPKI.RPKINode, current_pp::String)
                     #TODO check remark_counts_me, should we take the
                     #remarks_counts from the parent?
                     #but, pp_tree does not have any..
-                    new_pp = VueNode([], [], this_pp, ObjectSlim(c.obj, c.remark_counts_me))
+                    new_pp = VueNode([], [], this_pp, ObjectSlim(c.obj, c.remark_counts_me, c.remark_counts_children))
                     _pubpoints!(new_pp, c, this_pp)
                     push!(pp_tree.children, new_pp)
                 end
@@ -211,7 +221,7 @@ function to_vue_pubpoints(tree::RPKI.RPKINode)
     for c in tree.children
         if ! isnothing(c.obj) && c.obj isa RPKI.RPKIObject{CER}
             pp = RPKI.split_rsync_url(c.obj.object.pubpoint)[1]
-            subtree = VueNode([], [], pp, ObjectSlim(c.obj, c.remark_counts_me))
+            subtree = VueNode([], [], pp, ObjectSlim(c.obj, c.remark_counts_me, c.remark_counts_children))
             _pubpoints!(subtree, c, pp)
             push!(pp_tree.children, subtree)
         end

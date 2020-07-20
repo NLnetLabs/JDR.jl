@@ -62,7 +62,7 @@ RPKINode(p, c, o) = RPKINode(p, c, o, RemarkCounts(), RemarkCounts())
 
 function add(p::RPKINode, c::RPKINode)#, o::RPKIObject)
     c.parent = p
-    p.remark_counts_children += c.remark_counts_me
+    p.remark_counts_children += c.remark_counts_me + c.remark_counts_children
     push!(p.children, c)
 end
 function add(p::RPKINode, c::Vector{RPKINode})

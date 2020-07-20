@@ -187,35 +187,19 @@ function to_vue_tree(branches::Vector)
     
     left = branches[1]
     for b in (2:length(branches)) 
-        #@debug "branch", b
         right = branches[b]
 
-
         l = left
-        r = right#.children[1]
+        r = right
 
         done = false
         while ! done
-            # FIXME: we need to compare with all the children of r
             @debug "children in left:", length(l.children)
             if isnothing(findfirst(x -> x.object.filename == r.children[1].object.filename, l.children))
-            ###for left_child in l.children
-            ###    if left_child.object.filename == r.children[1].object.filename
-            ###        @debug "left_child same as r.children[1]!, breaking.."
-            ###        break
-            ###    end
-            ###end
-
-
-            #if l.children[1].object.filename == r.children[1].object.filename
-                #@debug "same", l.children[1].object.filename
-            #else
                 @debug "different", r.children[1].object.filename
-                # using append! throws an UndefVar error for some reason..
-                #l.children = append!(l.children, r.children)
                 push!(l.children, r.children[1])
                 done = true
-                continue # break /  and branch out
+                continue
             else
                 @debug "left_child same as r.children[1]!, breaking.."
             end

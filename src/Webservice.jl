@@ -12,6 +12,7 @@ const ROUTER = HTTP.Router()
 const APIV = "/api/v1"
 const LAST_UPDATE = Ref(now(UTC))
 const LAST_UPDATE_SERIAL = Ref(0)
+const TREE = Ref(RPKI.RPKINode(nothing, [], nothing))
 const LOOKUP = Ref(RPKI.Lookup())
 
 
@@ -53,7 +54,8 @@ end
 
 function update()
     @info "update()"
-    (_, lookup) = fetch(Threads.@spawn(RPKI.retrieve_all(TAL_URLS)))
+    (tree, lookup) = fetch(Threads.@spawn(RPKI.retrieve_all(TAL_URLS)))
+    TREE[] = tree
     LOOKUP[] = lookup
     set_last_update()
     @info "update() done, serial: $(LAST_UPDATE_SERIAL[])"

@@ -30,7 +30,15 @@ function asn(req::HTTP.Request)
     # /api/v1/asn/10, get 10
     asid = HTTP.URIs.splitpath(req.target)[4] 
     res = RPKI.lookup(LOOKUP[], RPKI.AutSysNum(parse(UInt32, asid)))
-    return [to_root(r) for r in res] 
+
+    if length(HTTP.URIs.splitpath(req.target)) > 4 && 
+        HTTP.URIs.splitpath(req.target)[5]  == "raw"
+        @info "RAW request"
+        return [to_root(r) for r in res] 
+    else
+        @info "returning new vue tree format"
+        return to_vue_tree(map(to_vue_branch, res))
+    end
 end
 
 function prefix(req::HTTP.Request)
@@ -39,7 +47,15 @@ function prefix(req::HTTP.Request)
     prefix = HTTP.URIs.unescapeuri(prefix)
     prefix = IPNet(prefix)
     res = RPKI.lookup(LOOKUP[], prefix)
-    return [to_root(r) for r in res]
+
+    if length(HTTP.URIs.splitpath(req.target)) > 4 && 
+        HTTP.URIs.splitpath(req.target)[5]  == "raw"
+        @info "RAW request"
+        return [to_root(r) for r in res]
+    else
+        @info "returning new vue tree format"
+        return to_vue_tree(map(to_vue_branch, res))
+    end
 end
 
 function object(req::HTTP.Request)

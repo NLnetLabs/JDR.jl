@@ -230,6 +230,9 @@ function to_vue_pubpoints(tree::RPKI.RPKINode)
 end
 
 function to_vue_tree(branches::Vector)
+    if length(branches) < 2
+        return branches
+    end
     for b in branches
         @debug "branch length:", length(b)
     end

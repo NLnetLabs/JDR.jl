@@ -1,7 +1,13 @@
 # JDR API documentation
 
+The API offers two ways to search for resources: `/asn/$asn` and
+`/prefix/$prefix`, and one way to get a overview of the global repository
+represented in publication points via `/pp`. All results are formatted as a
+tree, compatible with the Vue-Tree-Chart plugin.
 
-The API offers two ways to search for resources: `/asn/$asn` and `/prefix/$prefix`
+By appending `/raw` at the end of the URL, results are returned as individual
+branches instead of the tree. 
+
 
 Details for objects (i.e. certificates, manifests or ROAs) can be retrieved via
 `/object/$escaped_filename`
@@ -21,16 +27,44 @@ information is located in the `data` child:
 
 ```
 
+## General publication point overview via `/pp`
+
+The publication point tree (pp tree) is a tree comprised of the certificates
+(CER) where a new delegation is observed. The root of this tree has no object
+attached to it. Its children are the RIR publication points, et cetera. Every
+node in the tree contains the following:
+
+ * **children**: more of this same node, recursively
+ * **mates**: empty for now
+ * **name**: a string representing the hostname of this publication point, e.g.
+   `rpki.ripe.net`
+ * **object**: the _object_, which is always a CER, as described below.
+
+The pp tree is meant to show overall status / health of the public repositories,
+but not all prefixes for which ROAs have been created or any other detailed
+information. The _object_ does contain a *details_url* to go to a detailed view
+(`/object`) for the certificate. It also contains _remark_ counts (both `_me`
+and `_children`, respectively showing warning/error counts for itself and all of
+its children, recursively).
+
 
 ## Searching via `/asn` and `/prefix`
 
 Searches for ROAs where the ASN or the prefix occurs. For ASNs, only exact
-matches are returned. For prefixes, ROAs with the prefix itself (if any) or
-ROAs with the first less-specific covering the passed prefix are returned.
+matches are returned. For prefixes, ROAs with the prefix itself (if any) or ROAs
+with the first less-specific covering the passed prefix are returned.
 
-In both cases, the `data` field in the response contains an array of objects,
-from the ROA up to the CA certificate, listing all the related manifests and
-resource certificates in order. For every object the following information is included:
+In both cases, the `data` field in the response contains a tree (Vue-Tree-Chart
+compatible) of objects from an empty root node down to the actual ROA, with only
+CER nodes in between. Every such node contains the following:
+
+ * **children**: more of this same node, recursively
+ * **mates**: for CER nodes, this contains the manifest
+ * **name**: the filename this node represents (ending in .cer, .mft or .roa)
+ * **object**: the _object_ which is a CER, MFT or for the very last node, the
+   ROA 
+
+Every _object_, regardless of its exact type, contains the following:
 
  * **filename**: filename on filesystem 
  * **details_url**: URL to do a /object/ request (for ease of development/troubleshooting)
@@ -41,6 +75,21 @@ resource certificates in order. For every object the following information is in
        we have `DBG/INFO/WARN/ERR`.
     * **msg**: the actual annotation
  * **remark_counts_me**: sum of remarks for the *object* and *object.tree*
+ * **remark_counts_children**: :construction: sum of remarks of the children of this node,
+   recursively. *NB*: the counts are summed in the full RPKI repository tree in
+   the backend, where manifests are considered 'children' of certificates. This
+   possibly produces unexpected numbers when looking at `/pp` results, for
+   example.
+
+If `/raw` is appended to the URL, for example `/api/v1/asn/1234/raw`, the
+results are not formatted as a tree, but as an array: this array contains, for every ROA matching the
+search query, a list of _objects_ going from ROA to the CER of the RIR, with the
+related manifests and resource certificates in order. Thus, instead of a 'from
+the root' perspective, the `/raw` results are more like a backtrace from the ROA
+back to the root. (This was the original behavior of the `/asn` and `/prefix`
+endpoints!)
+
+
 
 ### object types: CER/MFT/ROA
 

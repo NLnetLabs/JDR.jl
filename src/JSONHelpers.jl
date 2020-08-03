@@ -154,6 +154,11 @@ mutable struct VueNode
     object::Union{Nothing, ObjectSlim}
 end
 
+JSON2.@format VueNode begin
+    children => (omitempty=true,)
+    mates => (omitempty=true,)
+end
+
 function to_vue_branch(node::RPKI.RPKINode)
     nodes = reverse(to_root(node))
     root = VueNode([], [], "root", nothing)

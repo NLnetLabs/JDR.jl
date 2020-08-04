@@ -96,6 +96,11 @@ function split_rsync_url(url::String) :: Tuple{String, String}
     (hostname, cer_fn) = m.captures
     (hostname, cer_fn)
 end
+function split_rrdp_path(url::String) :: Tuple{String, String}
+    m = match(r"https://([^/]+)(/.*)", url)
+    (hostname, cer_fn) = m.captures
+    (hostname, cer_fn)
+end
 
 struct AutSysNum
     asn::UInt32
@@ -109,9 +114,10 @@ struct Lookup
     ASNs::Dict{AutSysNum}{Vector{RPKINode}}
     filenames::Dict{String}{Vector{RPKINode}}
     prefix_tree::PrefixTree{RPKINode}
+    pubpoints::Dict{String}{RPKINode}
     too_specific::Set{RPKINode}
 end
-Lookup() = Lookup(Dict(), Dict(), PrefixTree{RPKINode}(), Set())
+Lookup() = Lookup(Dict(), Dict(), PrefixTree{RPKINode}(), Dict(), Set())
 
 function lookup(l::Lookup, asn::AutSysNum)
     if asn in keys(l.ASNs)
@@ -270,7 +276,7 @@ function process_mft(mft_fn::String, lookup::Lookup) :: RPKINode
     me
 end
 
-TMP_UNIQ_PP = Set()
+#TMP_UNIQ_PP = Set()
 function process_cer(cer_fn::String, lookup::Lookup) :: RPKINode
     # now, for each .cer, get the CA Repo and 'sync' again
     if cer_fn in keys(lookup.filenames)
@@ -292,7 +298,8 @@ function process_cer(cer_fn::String, lookup::Lookup) :: RPKINode
 
     (ca_host, ca_path) = split_rsync_url(o.object.pubpoint)
     ca_dir = joinpath(REPO_DIR, ca_host, ca_path)
-    push!(TMP_UNIQ_PP, ca_host)
+    #push!(TMP_UNIQ_PP, ca_host)
+    
     #@debug ca_dir
     #@assert isdir(ca_dir)
 
@@ -300,6 +307,16 @@ function process_cer(cer_fn::String, lookup::Lookup) :: RPKINode
     mft_fn = joinpath(REPO_DIR, mft_host, mft_path)
     #@assert isfile(mft_fn)
     rpki_node = RPKINode(nothing, [], o)
+
+    if !(ca_host in keys(lookup.pubpoints))
+        lookup.pubpoints[ca_host] = rpki_node
+    end
+    if !(isempty(o.object.rrdp_notify))
+        (rrdp_host, _) = split_rrdp_path(o.object.rrdp_notify)
+        if !(rrdp_host in keys(lookup.pubpoints))
+            lookup.pubpoints[rrdp_host] = rpki_node
+        end
+    end
 
     if !isfile(mft_fn)
         @error "manifest $(basename(mft_fn)) not found"
@@ -364,13 +381,13 @@ function retrieve_all(tal_urls=TAL_URLS) :: Tuple{RPKINode, Lookup}
             @error "error while processing $(ta_cer)"
             @error e
 
-            rethrow(e)
+            #rethrow(e)
             
         end
         
     end
-    @debug "TMP_UNIQ_PP length $(length(TMP_UNIQ_PP))"
-    [@debug pp for pp in TMP_UNIQ_PP]
+    #@debug "TMP_UNIQ_PP length $(length(TMP_UNIQ_PP))"
+    #[@debug pp for pp in TMP_UNIQ_PP]
     (root, lookup)
 end
 

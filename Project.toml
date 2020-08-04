@@ -4,6 +4,7 @@ authors = ["Luuk Hendriks <mail@luukhendriks.eu>"]
 version = "0.1.0"
 
 [deps]
+Atlas = "fffdd0fa-cd2d-464f-a959-2e2d5749a296"
 Coverage = "a2441757-f6aa-5fb2-8edb-039e3f45d037"
 Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"
 Glob = "c27321d9-0574-5035-807b-f59d2c89b15c"
@@ -12,5 +13,6 @@ IPNets = "66763231-799b-5fff-8662-389acfc33a85"
 JSON2 = "2535ab7d-5cd8-5a07-80ac-9b1792aadce3"
 Jive = "ba5e3d4b-8524-549f-bc71-e76ad9e9deed"
 Mmap = "a63ad114-7e13-5084-954f-fe012c677804"
+Mustache = "ffc61752-8dc7-55ee-8c37-f3e9cdd09e70"
 OwnTime = "18732c20-e27e-497f-aa49-3bf01a8fc721"
 Revise = "295af30f-e4ad-537b-8983-00126c2a3abe"

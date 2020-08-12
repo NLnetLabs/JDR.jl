@@ -59,10 +59,10 @@ function check_subject_information_access(o::RPKIObject{CER}, subtree::Node)
         end
     end
     if !carepo_present
-        remark!(subtree, "missing essential caRepository")
+        err!(subtree, "missing essential caRepository")
     end
     if !manifest_present
-        remark!(subtree, "missing essential rpkiManifest")
+        err!(subtree, "missing essential rpkiManifest")
     end
 end
 
@@ -296,7 +296,7 @@ function checkTbsCertificate(o::RPKIObject{CER}, tbscert::Node)
                 #@error "implement inherit for ipAdressBlocks"
                 o.object.inherit_prefixes = true
             else
-                remark!(ipaddrblock[2], "expected either SEQUENCE OF or NULL here")
+                warn!(ipaddrblock[2], "expected either SEQUENCE OF or NULL here")
             end
         end
         #IP
@@ -335,17 +335,17 @@ function checkTbsCertificate(o::RPKIObject{CER}, tbscert::Node)
                             asid_or_range[1].validated = true
                             asid_or_range[2].validated = true
                         else
-                            remark!(asid_or_range[1], "unexpected tag number $(asid_or_range[1].tag.number)")
+                            warn!(asid_or_range[1], "unexpected tag number $(asid_or_range[1].tag.number)")
                         end
                     end #for-loop asid_or_range
                 else
-                    remark!(asidentifierchoice[1], "expected either a SEQUENCE OF or a NULL here")
+                    warn!(asidentifierchoice[1], "expected either a SEQUENCE OF or a NULL here")
                 end
 
             elseif asidentifierchoice.tag.number == 1
                 throw("implement rdi for ASIdentifierChoice")
             else
-                remark!(asidentifierchoice, "Unknown Context-Specific tag number, expecting 0 or 1")
+                warn!(asidentifierchoice, "Unknown Context-Specific tag number, expecting 0 or 1")
             end
         end
         

@@ -51,7 +51,7 @@ function check_signed_data(o::RPKIObject{MFT}, sd::Node) :: RPKIObject{MFT}
     
     if length(sd[2,1].children) == 2 
         tagisa(sd[2,1,2], ASN.NULL)
-        remark!(sd[2,1,2], "this NULL SHOULD be absent (RFC4055)")
+        info!(sd[2,1,2], "this NULL SHOULD be absent (RFC4055)")
     end
 
     # EncapsulatedContentInfo
@@ -72,7 +72,7 @@ function check_signed_data(o::RPKIObject{MFT}, sd::Node) :: RPKIObject{MFT}
     else
         # already parsed, but can we spot the chunked OCTETSTRING case?
         if length(eContent[1].children) > 1
-            remark!(eContent[1], "chunked OCTETSTRINGs ? TODO doublecheck me")
+            warn!(eContent[1], "chunked OCTETSTRINGs ? TODO doublecheck me")
             #@debug "found multiple children in eContent[1]"
             concatted = collect(Iterators.flatten([n.tag.value for n in eContent[1].children]))
             buf = DER.Buf(concatted)
@@ -86,14 +86,14 @@ function check_signed_data(o::RPKIObject{MFT}, sd::Node) :: RPKIObject{MFT}
      
     checkchildren(eContent[1], 1)
     manifest = if eContent[1,1].tag isa Tag{ASN.OCTETSTRING} #TODO make a function for this
-        remark!(eContent[1,1], "nested OCTETSTRING, BER instead of DER")
+        warn!(eContent[1,1], "nested OCTETSTRING, BER instead of DER")
         # we need to do a second pass on this then
         DER.parse_append!(DER.Buf(eContent[1,1].tag.value), eContent[1,1])
         eContent[1,1,1]
     elseif eContent[1,1].tag isa Tag{ASN.SEQUENCE}
         eContent[1,1]
     else
-        remark!(eContent[1,1], "unexpected tag $(tagtype(eContent[1,1]))")
+        err!(eContent[1,1], "unexpected tag $(tagtype(eContent[1,1]))")
         return o
     end
     o = check_manifest(o, manifest)
@@ -137,7 +137,7 @@ function check_signerinfo(o::RPKIObject{MFT}, sis::Node) :: RPKIObject{MFT}
 
     if length(si[3,1].children) == 2 
         tagisa(si[3,1,2], ASN.NULL)
-        remark!(si[3,1,2], "this NULL SHOULD be absent (RFC4055)")
+        info!(si[3,1,2], "this NULL SHOULD be absent (RFC4055)")
     end
     #tagisa(si[3, 2], ASN.NULL)
 
@@ -160,13 +160,13 @@ function check_signerinfo(o::RPKIObject{MFT}, sis::Node) :: RPKIObject{MFT}
 
     # SignatureAlgorithmIdentifier
     tagisa(si[5], ASN.SEQUENCE)
-    tag_OID(si[5, 1], @oid("1.2.840.113549.1.1.1"))
+    tag_OID(si[5, 1], @oid("1.2.840.113549.1.1.1")) # check why RIPE MFTs have an oid .11 here
     tagisa(si[5, 2], ASN.NULL)
 
     # SignatureValue
     tagisa(si[6], ASN.OCTETSTRING)
     if si[6].tag.len != 256
-        remark!(si[6], "expected 256 bytes instead of $(si[6].tag.len)")
+        err!(si[6], "expected 256 bytes instead of $(si[6].tag.len)")
     end
     
     o
@@ -186,7 +186,7 @@ function check_manifest(o::RPKIObject{MFT}, m::Node) :: RPKIObject{MFT}
         checkchildren(m[1], 1)
         tagisa(m[1, 1], ASN.INTEGER)
         if value(m[1, 1].tag) == 0
-            remark!(m[1, 1], "version explicitly set to 0 while that is the default")
+            info!(m[1, 1], "version explicitly set to 0 while that is the default")
         end
     end
 

@@ -31,7 +31,7 @@ function rawv4_to_roa(o::RPKIObject{ROA}, roa_ipaddress::Node) :: RPKIObject{ROA
         @assert roa_ipaddress[2].tag.len == 1
         #if ASN.value(roa_ipaddress[2].tag) == maxlength
         if roa_ipaddress[2].tag.value[1] == maxlength
-            remark!(roa_ipaddress[2], "redundant maxLength")
+            info!(roa_ipaddress[2], "redundant maxLength")
         else
             maxlength = roa_ipaddress[2].tag.value[1]
         end
@@ -58,7 +58,7 @@ function rawv6_to_roa(o::RPKIObject{ROA}, roa_ipaddress::Node) :: RPKIObject{ROA
             value(roa_ipaddress[2].tag)
         end
         if explicit_len == maxlength
-            remark!(roa_ipaddress[2], "redundant maxLength")
+            info!(roa_ipaddress[2], "redundant maxLength")
         else
             maxlength = explicit_len
         end
@@ -71,7 +71,7 @@ end
 function check_ipaddrblocks(o::RPKIObject{ROA}, ipaddrblocks::Node) :: RPKIObject{ROA}
     tagisa(ipaddrblocks, ASN.SEQUENCE)
     if length(ipaddrblocks.children) == 0
-        remark!(ipaddrblocks, "there should be at least one ROAIPAddressFamily here")
+        err!(ipaddrblocks, "there should be at least one ROAIPAddressFamily here")
     end
     for roa_afi in ipaddrblocks.children
         tagisa(roa_afi, ASN.SEQUENCE)
@@ -80,12 +80,12 @@ function check_ipaddrblocks(o::RPKIObject{ROA}, ipaddrblocks::Node) :: RPKIObjec
         afi = reinterpret(UInt16, reverse(roa_afi[1].tag.value))[1]
         if ! (afi in [1,2])
             @error "invalid AFI in ROA"
-            remark!(roa_afi[1], "addressFamily MUST be either 0002 for IPv6 or 0001 for IPv4")
+            err!(roa_afi[1], "addressFamily MUST be either 0002 for IPv6 or 0001 for IPv4")
         end
         addresses = roa_afi[2]
         tagisa(addresses, ASN.SEQUENCE)
         if length(addresses.children) == 0
-            remark!(addresses, "there should be at least one ROAIPAddress here")
+            err!(addresses, "there should be at least one ROAIPAddress here")
         end
         if afi == 1 # IPv4
             for roa_ipaddress in addresses.children
@@ -117,14 +117,13 @@ function check_route_origin_attestation(o::RPKIObject{ROA}, roa::Node) :: RPKIOb
         checkchildren(roa[1], 1)
         tagisa(roa[1, 1], ASN.INTEGER)
         if value(roa[1, 1].tag) == 0
-            remark!(roa[1, 1], "version explicitly set to 0 while that is the default")
+            info!(roa[1, 1], "version explicitly set to 0 while that is the default")
         else
-            remark!(roa[1, 1], "version MUST be 0, found $(value(roa[1,1].tag))")
+            err!(roa[1, 1], "version MUST be 0, found $(value(roa[1,1].tag))")
         end
     else
         @assert length(roa.children) == 2
-        # TODO: should we have different levels (INFO/WARN/ERR) of remarks?
-        #remark!(roa, "no version, assuming default 0")
+        #info!(roa, "no version, assuming default 0")
     end
     # --- till here ---
 
@@ -163,7 +162,7 @@ function check_signed_data(o::RPKIObject{ROA}, sd::Node) :: RPKIObject{ROA}
     #TODO D-R-Y with MFT.jl
     if length(sd[2,1].children) == 2 
         tagisa(sd[2,1,2], ASN.NULL)
-        remark!(sd[2,1,2], "this NULL SHOULD be absent (RFC4055)")
+        info!(sd[2,1,2], "this NULL SHOULD be absent (RFC4055)")
     end
 
     # ----- here things are different for .roa compared to .mft
@@ -198,7 +197,7 @@ function check_signed_data(o::RPKIObject{ROA}, sd::Node) :: RPKIObject{ROA}
         # already parsed, but can we spot the chunked OCTETSTRING case?
         if length(eContent[1].children) > 1
             #TODO check on the 1000 byte limit of CER
-            remark!(eContent[1], "looks like CER instead of DER")
+            warn!(eContent[1], "looks like CER instead of DER")
             #@debug "found multiple children in eContent[1]"
             concatted = collect(Iterators.flatten([n.tag.value for n in eContent[1].children]))
             buf = DER.Buf(concatted)

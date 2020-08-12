@@ -61,7 +61,7 @@ function check_signature(o::RPKIObject{CRL}, node::Node)
     #TODO double check whether 4055 mentions CRLs specifically
     if length(node.children) == 2 
         tagisa(node[2], ASN.NULL)
-        remark!(node[2], "this NULL SHOULD be absent (RFC4055)")
+        info!(node[2], "this NULL SHOULD be absent (RFC4055)")
     end
 end
 

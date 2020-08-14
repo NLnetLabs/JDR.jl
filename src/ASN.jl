@@ -48,46 +48,47 @@ struct Tag{AbstractTag}
     len::Int32
     len_indef::Bool
     value::Union{Nothing, Array{UInt8, 1}}
+    offset_in_file::Integer
 end
 
 
-Tag(class::UInt8, constructed::Bool, number::Integer, len::Int32, len_indef::Bool, value) = begin
+Tag(class::UInt8, constructed::Bool, number::Integer, len::Int32, len_indef::Bool, value, offset_in_file::Integer) = begin
     if class == 0x02 # Context-specific
-        Tag{CONTEXT_SPECIFIC}(class, constructed, number, len, len_indef, value)
+        Tag{CONTEXT_SPECIFIC}(class, constructed, number, len, len_indef, value, offset_in_file)
     elseif number   == UInt8(0)    
-        Tag{RESERVED_ENC}(class, constructed, number, len, len_indef, value)
+        Tag{RESERVED_ENC}(class, constructed, number, len, len_indef, value, offset_in_file)
     elseif number   == UInt8(1)
-        Tag{BOOLEAN}(class, constructed, number, len, len_indef, value)
+        Tag{BOOLEAN}(class, constructed, number, len, len_indef, value, offset_in_file)
     elseif number   == UInt8(2)
-        Tag{INTEGER}(class, constructed, number, len, len_indef, value)
+        Tag{INTEGER}(class, constructed, number, len, len_indef, value, offset_in_file)
     elseif number   == UInt8(3)
-        Tag{BITSTRING}(class, constructed, number, len, len_indef, value)
+        Tag{BITSTRING}(class, constructed, number, len, len_indef, value, offset_in_file)
     elseif number   == UInt8(4)  
-        Tag{OCTETSTRING}(class, constructed, number, len, len_indef, value)
+        Tag{OCTETSTRING}(class, constructed, number, len, len_indef, value, offset_in_file)
     elseif number   == UInt8(5)  
-        Tag{NULL}(class, constructed, number, len, len_indef, value)
+        Tag{NULL}(class, constructed, number, len, len_indef, value, offset_in_file)
     elseif number   == UInt8(6)  
-        Tag{OID}(class, constructed, number, len, len_indef, value)
+        Tag{OID}(class, constructed, number, len, len_indef, value, offset_in_file)
     elseif number   == UInt8(12) 
-        Tag{UTF8STRING}(class, constructed, number, len, len_indef, value)
+        Tag{UTF8STRING}(class, constructed, number, len, len_indef, value, offset_in_file)
     elseif number   == UInt8(16) 
-        Tag{SEQUENCE}(class, constructed, number, len, len_indef, value)
+        Tag{SEQUENCE}(class, constructed, number, len, len_indef, value, offset_in_file)
     elseif number   == UInt8(17) 
-        Tag{SET}(class, constructed, number, len, len_indef, value)
+        Tag{SET}(class, constructed, number, len, len_indef, value, offset_in_file)
     elseif number   == UInt8(22) 
-        Tag{IA5STRING}(class, constructed, number, len, len_indef, value)
+        Tag{IA5STRING}(class, constructed, number, len, len_indef, value, offset_in_file)
     elseif number   == UInt8(23) 
-        Tag{UTCTIME}(class, constructed, number, len, len_indef, value)
+        Tag{UTCTIME}(class, constructed, number, len, len_indef, value, offset_in_file)
     elseif number   == UInt8(24) 
-        Tag{GENTIME}(class, constructed, number, len, len_indef, value)
+        Tag{GENTIME}(class, constructed, number, len, len_indef, value, offset_in_file)
     elseif number   == UInt(19)  
-        Tag{PRINTABLESTRING}(class, constructed, number, len, len_indef, value)
+        Tag{PRINTABLESTRING}(class, constructed, number, len, len_indef, value, offset_in_file)
     else
-        Tag{Unimplemented}(class, constructed, number, len, len_indef, value)
+        Tag{Unimplemented}(class, constructed, number, len, len_indef, value, offset_in_file)
     end 
 end
 
-Tag{InvalidTag}() = Tag{InvalidTag}(0, 0, 0, 0, false, [])
+Tag{InvalidTag}() = Tag{InvalidTag}(0, 0, 0, 0, false, [], 0)
 
 
 function Base.show(io::IO, t::Tag{T}) where {T<:AbstractTag}

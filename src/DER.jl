@@ -52,6 +52,8 @@ function next!(buf::Buf) #:: Tag{<:AbstractTag} #:: Union{Tag{<:AbstractTag}, No
     #_tmp = Vector{UInt8}(undef, 1) 
     #readbytes!(buf.iob, _tmp, 1) 
     #first_byte = _tmp[1] 
+
+    offset_in_file = buf.iob.ptr
     first_byte = lookahead(buf)
 
     tagclass    = first_byte  >> 6; # bit 8-7
@@ -113,7 +115,7 @@ function next!(buf::Buf) #:: Tag{<:AbstractTag} #:: Union{Tag{<:AbstractTag}, No
     else
         nothing
     end
-    return Tag(tagclass, constructed, tagnumber, len, len_indef, value)
+    return Tag(tagclass, constructed, tagnumber, len, len_indef, value, offset_in_file)
 end
 
 mutable struct Stack

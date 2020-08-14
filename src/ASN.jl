@@ -152,20 +152,12 @@ function value(t::Tag{BITSTRING}) where {T}
 end
 
 function value(t::Tag{OCTETSTRING}) where {T} 
-    if t.constructed
-        #@warn "constructed OCTETSTRING, not allowed in DER"
-        #error("constructed OCTETSTRING, not allowed in DER")
+    if t.constructed 
         return nothing
-    end
-
-    if t.len <= 4 #TODO this is... horrible?
-        # all octetstrings must be primitive (in DER), so how do we know whether we should look for
-        # another (leaf) tag inside of this octetstring? for now, check the length..
-        #@debug "horrible return"
+    elseif t.len <= 8
         return t.value
     end
-
-    return ""
+    return "*blob*"
 end
 
 

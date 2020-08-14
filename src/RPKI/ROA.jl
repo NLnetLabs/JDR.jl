@@ -12,6 +12,10 @@ mutable struct ROA
 end
 ROA() = ROA(0, [], 0, 0, "EMPTY_LOCAL_HASH")
 
+mutable struct TmpParseInfo
+    subjectKeyIdentifier::Vector{UInt8}
+end
+TmpParseInfo() = TmpParseInfo([])
 
 function Base.show(io::IO, roa::ROA)
     print(io, "  ASID: ", roa.asid, "\n")
@@ -145,7 +149,7 @@ function check_route_origin_attestation(o::RPKIObject{ROA}, roa::Node) :: RPKIOb
     o
 end
 
-function check_SignerInfos(o::RPKIObject{ROA}, si::Node) :: RPKIObject{ROA}
+function check_SignerInfos(o::RPKIObject{ROA}, tpi::TmpParseInfo, si::Node) :: RPKIObject{ROA}
     tagisa(si, ASN.SET) 
 	# checkchildren?
 
@@ -160,6 +164,9 @@ function check_SignerInfos(o::RPKIObject{ROA}, si::Node) :: RPKIObject{ROA}
 
 	# SignerIdentifier == SubjectKeyIdentifier [0]
 	tagis_contextspecific(si[1, 2], 0x00)
+    if si[1, 2].tag.value != tpi.subjectKeyIdentifier
+        err!(si[1, 2], "SignerIdentifier does not match SubjectKeyIdentifier")
+    end
 
 	# DigestAlgorithmIdentifier
     tagisa(si[1,3], ASN.SEQUENCE)
@@ -212,11 +219,19 @@ function check_SignerInfos(o::RPKIObject{ROA}, si::Node) :: RPKIObject{ROA}
     o
 end
 
-function check_certificates(o::RPKIObject{ROA}, sd::Node) :: RPKIObject{ROA}
+function check_certificates(o::RPKIObject{ROA}, tpi::TmpParseInfo, certs::Node) :: RPKIObject{ROA}
     #TODO: this is likely similar (identical?) to what is going on in CER.jl
     #D-R-Y and put this in X509.jl or something
-    tagis_contextspecific(sd, 0x00)
-    tbscert = sd[1,1]
+    tagis_contextspecific(certs, 0x00)
+
+    # "contains one EE certificate"
+    checkchildren(certs, 1)
+   
+    
+    tbscert = certs[1,1]
+    
+
+    # extract RSA modulus and exponent
     
     tagisa(tbscert[7, 2], ASN.BITSTRING)
     # here we go for a second pass:
@@ -236,10 +251,35 @@ function check_certificates(o::RPKIObject{ROA}, sd::Node) :: RPKIObject{ROA}
     o.object.rsa_modulus   = to_bigint(encaps_modulus.tag.value[2:end])
     o.object.rsa_exp       = ASN.value(encaps_exponent.tag)
 
+
+    # Check the extensions [3]
+    #
+    mandatory_extensions = Vector{Vector{UInt8}}()
+
+    # Subject Key Identifier, MUST appear
+    #check_extension(extensions, "2.5.29.14") # non-critical, 160bit SHA-1
+    push!(mandatory_extensions, @oid "2.5.29.14")
+
+    # Check all mandatory extensions are present
+    # After that, we will validate their actual contents
+    extensions = tbscert[8]
+    check_extensions(extensions, mandatory_extensions)
+    all_extensions = get_extensions(extensions)
+
+
+    # Check contents of mandatory / available extensions
+
+    encaps_subjectKeyIdentifier = all_extensions[@oid "2.5.29.14"]
+    DER.parse_append!(DER.Buf(encaps_subjectKeyIdentifier.tag.value), encaps_subjectKeyIdentifier)
+    #subjectKeyIdentifier = bytes2hex(encaps_subjectKeyIdentifier[1].tag.value)
+    tpi.subjectKeyIdentifier = encaps_subjectKeyIdentifier[1].tag.value
+
+    # must match the sid field in the SignerInfo
+
     o
 end
 
-function check_signed_data(o::RPKIObject{ROA}, sd::Node) :: RPKIObject{ROA}
+function check_signed_data(o::RPKIObject{ROA}, tpi::TmpParseInfo, sd::Node) :: RPKIObject{ROA}
     # TODO refactor: first part overlaps with check_signed_data for MFT
 
     # Signed-Data as defined in RFC 5652 (CMS) can contain up to 6 children
@@ -279,7 +319,6 @@ function check_signed_data(o::RPKIObject{ROA}, sd::Node) :: RPKIObject{ROA}
     # TODO partly copied from MFT.jl, D-R-Y
     roa = if ! eContent[1].tag.len_indef
         DER.parse_append!(DER.Buf(eContent[1].tag.value), eContent[1])
-        #o.object.local_eContent_hash =  bytes2hex(sha256(ASN.value(eContent[1].tag, force_constructed=true)[1:end]))
         o.object.local_eContent_hash =  bytes2hex(sha256(eContent[1].tag.value))
         eContent[1, 1]
     else
@@ -300,12 +339,12 @@ function check_signed_data(o::RPKIObject{ROA}, sd::Node) :: RPKIObject{ROA}
     end
 
     o = check_route_origin_attestation(o, roa)
-    o = check_certificates(o, sd[4])
-    o = check_SignerInfos(o, sd[5])
+    o = check_certificates(o, tpi, sd[4])
+    o = check_SignerInfos(o, tpi, sd[5])
     o
 end
 
-function check(o::RPKIObject{ROA}) :: RPKIObject{ROA}
+function check(o::RPKIObject{ROA}, tpi::TmpParseInfo=TmpParseInfo()) :: RPKIObject{ROA}
     cmsobject = o.tree
     #CMS, RFC5652
     tagisa(o.tree, ASN.SEQUENCE)
@@ -314,7 +353,7 @@ function check(o::RPKIObject{ROA}) :: RPKIObject{ROA}
 
     ## 6488:
     tagisa(o.tree[2, 1], ASN.SEQUENCE)
-    o = check_signed_data(o, o.tree[2, 1])
+    o = check_signed_data(o, tpi, o.tree[2, 1])
     
     o
 end

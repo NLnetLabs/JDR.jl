@@ -6,8 +6,11 @@ end
 mutable struct ROA
     asid::Integer
     vrps::Vector{VRP}
+    rsa_modulus::BigInt
+    rsa_exp::Int
+    local_eContent_hash::String
 end
-ROA() = ROA(0, [])
+ROA() = ROA(0, [], 0, 0, "EMPTY_LOCAL_HASH")
 
 
 function Base.show(io::IO, roa::ROA)
@@ -131,7 +134,7 @@ function check_route_origin_attestation(o::RPKIObject{ROA}, roa::Node) :: RPKIOb
     #return o
     
     # ASID
-    asid = roa[offset + 1] # TODO attach to o
+    asid = roa[offset + 1]
     tagisa(asid, ASN.INTEGER)
     o.object.asid = value(asid.tag)
 
@@ -142,12 +145,106 @@ function check_route_origin_attestation(o::RPKIObject{ROA}, roa::Node) :: RPKIOb
     o
 end
 
+function check_SignerInfos(o::RPKIObject{ROA}, si::Node) :: RPKIObject{ROA}
+    tagisa(si, ASN.SET) 
+	# checkchildren?
+
+    tagisa(si[1], ASN.SEQUENCE) 
+    # CMSVersion, MUST be 3
+    tagvalue(si[1, 1], ASN.INTEGER, 0x03)
+
+    # TODO:
+    #   For RPKI signed objects, the sid MUST be the SubjectKeyIdentifier
+    #   that appears in the EE certificate carried in the CMS certificates
+    #   field.
+
+	# SignerIdentifier == SubjectKeyIdentifier [0]
+	tagis_contextspecific(si[1, 2], 0x00)
+
+	# DigestAlgorithmIdentifier
+    tagisa(si[1,3], ASN.SEQUENCE)
+    # MUST be SHA-256
+    tag_OID(si[1,3,1], @oid "2.16.840.1.101.3.4.2.1")
+    ##TODO D-R-Y with MFT.jl
+    if length(si[1,3].children) == 2 
+        tagisa(si[1,3,2], ASN.NULL)
+        info!(si[1,3,2], "this NULL SHOULD be absent (RFC4055)")
+    end
+
+	# signedAttrs [0]
+	# The signedAttrs element MUST be present and MUST include the content-
+    # type and message-digest attributes [RFC5652].
+    sa = si[1,4]
+
+    # contentType MUST match the eContentType in the EncapsulatedContentInfo
+    # in this case, it must be a "routeOriginAttest"
+    contentType = containAttributeTypeAndValue(sa, @oid("1.2.840.113549.1.9.3"), ASN.SET)
+    tag_OID(contentType[1], @oid "1.2.840.113549.1.9.16.1.24")
+
+    messageDigest = containAttributeTypeAndValue(sa, @oid("1.2.840.113549.1.9.4"), ASN.SET)
+    messageDigestValue = bytes2hex(messageDigest[1].tag.value)
+
+    if messageDigestValue != o.object.local_eContent_hash
+        @error "message-digest invalid" o.filename messageDigestValue o.object.local_eContent_hash
+        err!(messageDigest[1], "invalid digest, expecting $(o.object.local_eContent_hash)")
+    end
+
+    # TODO implement get_attributes similarly to get_extensions (see
+    # validation_common)
+    # Signing-Time MAY be present
+    #sa_attributes = get_attributes(sa)
+    #if @oid("1.2.840.113549.1.9.5") in keys(sa_attributes)
+    #    @debug "found signing_time"
+    #end
+
+	# signatureAlgorithm
+	tagisa(si[1,5], ASN.SEQUENCE)
+    # MUST be 1.2.840.113549.1.1.11
+    checkchildren(si[1,5], 2)
+    tag_OID(si[1,5,1], @oid "1.2.840.113549.1.1.11")
+    # and here we MUST have a NULL for it's parameters
+    tagisa(si[1,5,2], ASN.NULL)
+
+    # skip check here, and do it in check_signature
+	# signature
+	# tagisa(si[1,6], ASN.OCTETSTRING)
+    
+    o
+end
+
+function check_certificates(o::RPKIObject{ROA}, sd::Node) :: RPKIObject{ROA}
+    #TODO: this is likely similar (identical?) to what is going on in CER.jl
+    #D-R-Y and put this in X509.jl or something
+    tagis_contextspecific(sd, 0x00)
+    tbscert = sd[1,1]
+    
+    tagisa(tbscert[7, 2], ASN.BITSTRING)
+    # here we go for a second pass:
+    # skip the first byte as it will be 0,
+    #   indicating the number if unused bits in the last byte
+    
+    encaps_buf = DER.Buf(tbscert[7, 2].tag.value[2:end])
+    DER.parse_append!(encaps_buf, tbscert[7, 2])
+   
+    encaps_modulus  = tbscert[7, 2, 1, 1]
+    encaps_exponent = tbscert[7, 2, 1, 2]
+    # RFC6485:the exponent MUST be 65537
+    tagvalue(encaps_exponent, ASN.INTEGER, 65_537)
+
+    # TODO: (why) is this always 257?
+    @assert encaps_modulus.tag.len == 257
+    o.object.rsa_modulus   = to_bigint(encaps_modulus.tag.value[2:end])
+    o.object.rsa_exp       = ASN.value(encaps_exponent.tag)
+
+    o
+end
+
 function check_signed_data(o::RPKIObject{ROA}, sd::Node) :: RPKIObject{ROA}
     # TODO refactor: first part overlaps with check_signed_data for MFT
 
     # Signed-Data as defined in RFC 5652 (CMS) can contain up to 6 children
-    # but for RPKI Manifests, we MUST have the CertificateSet and MUST NOT have
-    # the RevocationInfoChoices
+    # but for RPKI Manifests/ROAs, we MUST have the CertificateSet and MUST NOT
+    # have the RevocationInfoChoices
     checkchildren(sd, 5)
 
     # CMSVersion
@@ -156,7 +253,6 @@ function check_signed_data(o::RPKIObject{ROA}, sd::Node) :: RPKIObject{ROA}
     # DigestAlgorithmIdentifiers
     tagisa(sd[2], ASN.SET) 
     tagisa(sd[2,1], ASN.SEQUENCE)
-    #tagvalue(sd[2,1,1], ASN.OID, "2.16.840.1.101.3.4.2.1")
     tag_OID(sd[2,1,1], @oid "2.16.840.1.101.3.4.2.1")
     #tagisa(sd[2,1,2], ASN.NULL)
     #TODO D-R-Y with MFT.jl
@@ -172,7 +268,6 @@ function check_signed_data(o::RPKIObject{ROA}, sd::Node) :: RPKIObject{ROA}
     eContentType = sd[3,1]
     eContent = sd[3,2]
 
-    #tagvalue(eContentType, ASN.OID, "1.2.840.113549.1.9.16.1.24")
     tag_OID(eContentType, @oid "1.2.840.113549.1.9.16.1.24")
     tagis_contextspecific(eContent, 0x00)
     tagisa(eContent[1], ASN.OCTETSTRING)
@@ -180,37 +275,33 @@ function check_signed_data(o::RPKIObject{ROA}, sd::Node) :: RPKIObject{ROA}
     # to the second pass over the OCTETSTRING in the eContent
     # Here, in case of BER(?), an indefinite tag might already be parsed so we
     # do NOT need the second pass
-    
-   # roa = if ! eContent[1].tag.len_indef
-   #     DER.parse_append!(DER.Buf(eContent[1].tag.value), eContent[1])
-   #     eContent[1, 1]
-   # else
-   #     DER.parse_append!(DER.Buf(eContent[1, 1].tag.value), eContent[1, 1])
-   #     eContent[1, 1, 1]
-   # end
 
-   # from MFT.jl:
+    # TODO partly copied from MFT.jl, D-R-Y
     roa = if ! eContent[1].tag.len_indef
         DER.parse_append!(DER.Buf(eContent[1].tag.value), eContent[1])
+        #o.object.local_eContent_hash =  bytes2hex(sha256(ASN.value(eContent[1].tag, force_constructed=true)[1:end]))
+        o.object.local_eContent_hash =  bytes2hex(sha256(eContent[1].tag.value))
         eContent[1, 1]
     else
         # already parsed, but can we spot the chunked OCTETSTRING case?
         if length(eContent[1].children) > 1
             #TODO check on the 1000 byte limit of CER
             warn!(eContent[1], "looks like CER instead of DER")
-            #@debug "found multiple children in eContent[1]"
             concatted = collect(Iterators.flatten([n.tag.value for n in eContent[1].children]))
             buf = DER.Buf(concatted)
             DER.parse_replace_children!(buf, eContent[1])
+            o.object.local_eContent_hash = bytes2hex(sha256(concatted))
             eContent[1, 1]
         else
             DER.parse_append!(DER.Buf(eContent[1, 1].tag.value), eContent[1, 1])
+            o.object.local_eContent_hash = bytes2hex(sha256(eContent[1,1].tag.value))
             eContent[1, 1, 1]
         end
     end
 
-
     o = check_route_origin_attestation(o, roa)
+    o = check_certificates(o, sd[4])
+    o = check_SignerInfos(o, sd[5])
     o
 end
 
@@ -218,7 +309,6 @@ function check(o::RPKIObject{ROA}) :: RPKIObject{ROA}
     cmsobject = o.tree
     #CMS, RFC5652
     tagisa(o.tree, ASN.SEQUENCE)
-    #tagvalue(o.tree[1], ASN.OID, "1.2.840.113549.1.7.2") # contentType
     tag_OID(o.tree[1], @oid "1.2.840.113549.1.7.2") # contentType
     tagis_contextspecific(o.tree[2], 0x00) # content
 
@@ -229,3 +319,31 @@ function check(o::RPKIObject{ROA}) :: RPKIObject{ROA}
     o
 end
 
+function check_signature(o::RPKIObject{ROA}, parent::RPKINode, lookup::Lookup) :: RPKIObject{ROA}
+    sig = o.tree[2, 1, 5, 1, 6]
+    signature = to_bigint(sig.tag.value)
+
+
+    # Decrypt signature using the EE certificate in the ROA 
+    v = powermod(signature, o.object.rsa_exp, o.object.rsa_modulus)
+    v.size = 4
+    v_str = string(v, base=16, pad=64)
+
+    # Locally hash the signedAttrs so we can compare it to v_str
+    signedAttrs = o.tree[2,1,5,1,4]
+    sa_raw = read(o.filename, signedAttrs.tag.offset_in_file - 1 + signedAttrs.tag.len + 2 )[signedAttrs.tag.offset_in_file:end]
+
+    # the hash is calculated based on the DER EXPLICIT SET OF tag, not the
+    # IMPLICIT [0], so we overwrite the first byte:
+    sa_raw[1] = 0x11 | 0b00100000
+
+    local_hash = bytes2hex(sha256(sa_raw))
+
+    if v_str != local_hash
+        push!(lookup.invalid_signatures, o)
+        @error "signature invalid" o.filename
+    else
+        sig.validated = true
+    end
+    o
+end

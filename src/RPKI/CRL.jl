@@ -125,3 +125,9 @@ function check(o::RPKIObject{CRL}) :: RPKIObject{CRL}
     
     o
 end
+
+
+function check_signature(o::RPKIObject{CRL}, parent::RPKINode, lookup::Lookup) :: RPKIObject{CRL}
+    @warn "in check_signature for CRL, not implemented yet" maxlog=5
+    o
+end

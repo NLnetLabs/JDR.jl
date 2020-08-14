@@ -251,3 +251,9 @@ function check(o::RPKIObject{MFT}) :: RPKIObject{MFT}
     o
 end
 
+function check_signature(o::RPKIObject{MFT}, parent::RPKINode, lookup::Lookup) :: RPKIObject{MFT}
+    @warn "in check_signature for MFT, not implemented yet" maxlog=3
+    o
+end
+
+

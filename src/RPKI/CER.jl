@@ -3,12 +3,16 @@ mutable struct CER
     pubpoint::String
     manifest::String
     rrdp_notify::String
+    selfsigned::Union{Nothing, Bool}
+    validsig::Union{Nothing, Bool}
+    rsa_modulus::BigInt
+    rsa_exp::Int
     inherit_prefixes::Bool
     prefixes::Vector{Union{IPNet, Tuple{IPNet, IPNet}}}
     inherit_ASNs::Bool
     ASNs::Vector{Union{Tuple{UInt32, UInt32}, UInt32}}
 end
-CER() = CER(0, "", "", "", false, [], false, [])
+CER() = CER(0, "", "", "", nothing, nothing, 0, 0, false, [], false, [])
 
 function Base.show(io::IO, cer::CER)
     print(io, "  pubpoint: ", cer.pubpoint, '\n')
@@ -104,7 +108,8 @@ function checkTbsCertificate(o::RPKIObject{CER}, tbscert::Node)
     # If the issuer contains the serialNumber as well,
     # the set should contain 1 child, the RECOMMENDED set
     # TODO check this interpretation
-    containAttributeTypeAndValue(issuer_set, @oid("2.5.4.3"), ASN.PRINTABLESTRING)
+    issuer = containAttributeTypeAndValue(issuer_set, @oid("2.5.4.3"), ASN.PRINTABLESTRING)
+
 	if length(issuer_set.children) > 1
 	    # if size == 2, the second thing must be a CertificateSerialNumber
         @error "TODO: serialNumber in Issuer"
@@ -123,7 +128,8 @@ function checkTbsCertificate(o::RPKIObject{CER}, tbscert::Node)
     #  EE certified by the issuer MUST be identified using a subject name
     #  that is unique per issuer.
     #  TODO can we check on this? not here, but in a later stage?
-    containAttributeTypeAndValue(tbscert[6, 1], @oid("2.5.4.3"), ASN.PRINTABLESTRING)
+    subject = containAttributeTypeAndValue(tbscert[6, 1], @oid("2.5.4.3"), ASN.PRINTABLESTRING)
+    o.object.selfsigned = ASN.value(issuer.tag) == ASN.value(subject.tag)
 
     # SubjectPublicKeyInfo
     # AlgorithmIdentifier + BITSTRING
@@ -145,6 +151,10 @@ function checkTbsCertificate(o::RPKIObject{CER}, tbscert::Node)
     # RFC6485:the exponent MUST be 65537
     tagvalue(encaps_exponent, ASN.INTEGER, 65_537)
 
+    # TODO check if/why this is always 257
+    @assert encaps_modulus.tag.len == 257
+    o.object.rsa_modulus   = to_bigint(encaps_modulus.tag.value[2:end])
+    o.object.rsa_exp       = ASN.value(encaps_exponent.tag)
 
     # issuerUniqueID [1]
     # TODO
@@ -214,8 +224,8 @@ function checkTbsCertificate(o::RPKIObject{CER}, tbscert::Node)
     # MUST contain one policy, RFC6484
 
     # IP + AS resources
-    # one or both MUST be present+critical
-    # RFC 3779
+    # RFC6487: one or both MUST be present+critical
+    # see RFC 3779 for these specific X.509 Extensions
     #
     # ipAddrBlocks
     # SEQUENCE OF IPAddressFamily
@@ -354,6 +364,33 @@ function checkTbsCertificate(o::RPKIObject{CER}, tbscert::Node)
     # or:
     # get all extensions (so return the OIDs)
     # and create a check_extension(OID{TypeBasedOnOIDString})
+end
+
+function check_signature(o::RPKIObject{CER}, parent::RPKINode, lookup::RPKI.Lookup) :: RPKI.RPKIObject{CER}
+    sig = o.tree.children[3]
+    # TODO: is this a BITSTRING length 257 (ARIN), or a 
+    #@debug sig.tag
+    #@assert sig.tag.len == 257
+    signature = to_bigint(sig.tag.value[2:end])
+    @assert !isnothing(o.object.selfsigned)
+    v = if o.object.selfsigned
+        powermod(signature, o.object.rsa_exp, o.object.rsa_modulus)
+    else
+        # parentnode is MFT, next parent is the CER we are looking for
+        #@debug "taking RSA exp/mod from parent.parent::RPKINode)"
+        powermod(signature, parent.parent.obj.object.rsa_exp, parent.parent.obj.object.rsa_modulus)
+    end
+    v.size = 4
+    v_str = string(v, base=16)
+
+    tbs_raw = read(o.filename, o.tree[2].tag.offset_in_file-1)[4+1:end]
+    my_hash = bytes2hex(sha256(tbs_raw))
+
+    #if v_str == my_hash
+    #    @debug "test:", v_str == my_hash
+    #    @debug o.filename
+    #end
+    o
 end
 
 function check(o::RPKIObject{CER}) :: RPKIObject{CER}

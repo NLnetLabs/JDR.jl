@@ -6,7 +6,7 @@ using ..PrefixTrees
 
 using IPNets
 using Dates
-
+using SHA
 
 export retrieve_all, CER, MFT, CRL, ROA
 
@@ -30,6 +30,23 @@ function RPKIObject{T}(filename::String, tree::Node) where T
     RPKIObject{T}(filename, tree, T(), nothing)
 end
 
+# TODO:
+# - can (do we need to) we further optimize/parametrize RPKINode on .obj?
+mutable struct RPKINode
+    parent::Union{Nothing, RPKINode}
+    children::Vector{RPKINode}
+    obj::Union{Nothing, RPKIObject, String}
+    # remark_counts_me could be a wrapper to the obj.remark_counts_me 
+    remark_counts_me::RemarkCounts_t
+    remark_counts_children::RemarkCounts_t
+end
+
+struct AutSysNum
+    asn::UInt32
+end
+Base.show(a::AutSysNum) = print(io, "AS", a.asn)
+
+include("Lookup.jl")
 include("RPKI/CER.jl")
 include("RPKI/MFT.jl")
 include("RPKI/ROA.jl")
@@ -49,14 +66,6 @@ function RPKIObject(filename::String)::RPKIObject
 end
 
 
-mutable struct RPKINode
-    parent::Union{Nothing, RPKINode}
-    children::Vector{RPKINode}
-    obj::Union{Nothing, RPKIObject, String}
-    # remark_counts_me could be a wrapper to the obj.remark_counts_me 
-    remark_counts_me::RemarkCounts_t
-    remark_counts_children::RemarkCounts_t
-end
 # FIXME: check how we actually use RPKINode() throughout the codebase
 RPKINode(p, c, o) = RPKINode(p, c, o, RemarkCounts(), RemarkCounts())
 
@@ -72,7 +81,7 @@ function add(p::RPKINode, c::Vector{RPKINode})
 end
 
 function check(::RPKIObject{T}) where {T}
-    @warn "unknown RPKIObject type"
+    @warn "unknown RPKIObject type $(T)"
 end
 
 
@@ -102,50 +111,6 @@ function split_rrdp_path(url::String) :: Tuple{String, String}
     (hostname, cer_fn)
 end
 
-struct AutSysNum
-    asn::UInt32
-end
-Base.show(a::AutSysNum) = print(io, "AS", a.asn)
-
-# TODO:
-# - can (do we need to) we further optimize/parametrize RPKINode on .obj?
-# - incorporate PrefixTree.jl
-struct Lookup
-    ASNs::Dict{AutSysNum}{Vector{RPKINode}}
-    filenames::Dict{String}{Vector{RPKINode}}
-    prefix_tree::PrefixTree{RPKINode}
-    pubpoints::Dict{String}{RPKINode}
-    too_specific::Set{RPKINode}
-end
-Lookup() = Lookup(Dict(), Dict(), PrefixTree{RPKINode}(), Dict(), Set())
-
-function lookup(l::Lookup, asn::AutSysNum)
-    if asn in keys(l.ASNs)
-        l.ASNs[asn]
-    else
-        []
-    end
-end
-
-# FIXME: do we need separate lookup trees for v6 and v4?
-function lookup(l::Lookup, prefix::IPv4Net)
-    values(firstparent(l.prefix_tree, prefix))
-end
-
-function lookup(l::Lookup, prefix::IPv6Net)
-    values(firstparent(l.prefix_tree, prefix))
-end
-
-# TODO make a struct, e.g. ObjectFilename, for this?
-function lookup(l::Lookup, filename::String)
-    if filename in keys(l.filenames)
-        res = l.filenames[filename]
-        @assert length(res) == 1
-        first(res)
-    else
-        nothing
-    end
-end
 
 function add_roa!(lookup::Lookup, roanode::RPKINode)
     # add ASN
@@ -180,7 +145,7 @@ function process_roa(roa_fn::String, lookup::Lookup) :: RPKINode
     roa_node.remark_counts_me = count_remarks(o) + count_remarks(o.tree)
 
     # now strip the ASN tree
-    o.tree = nothing
+    # o.tree = nothing # TODO see comment in process_cer
     roa_node
 end
 
@@ -266,7 +231,9 @@ function process_mft(mft_fn::String, lookup::Lookup) :: RPKINode
     # returning:
     me = RPKINode(nothing, [], m)
     me.remark_counts_me = count_remarks(m) + count_remarks(m.tree)
-    m.tree = nothing
+    #m.tree = nothing #FIXME where/do we want to set this to nothing? the idea
+    #was to clear up memory and reparse the .tree on demand when a /object/ API
+    #call is served, but RPKI.check_signatures needs the .tree's
     add(me, listed_files)
     if mft_fn in keys(lookup.filenames) 
         push!(lookup.filenames[mft_fn], me)
@@ -349,7 +316,7 @@ function process_cer(cer_fn::String, lookup::Lookup) :: RPKINode
     lookup.filenames[cer_fn] = [rpki_node]
 
     rpki_node.remark_counts_me = count_remarks(o) + count_remarks(o.tree)
-    o.tree = nothing
+    #o.tree = nothing #FIXME see other comment where we set .tree to nothing
     rpki_node
 end
 
@@ -391,6 +358,16 @@ function retrieve_all(tal_urls=TAL_URLS) :: Tuple{RPKINode, Lookup}
     (root, lookup)
 end
 
+function check_signatures(root::RPKINode, lookup::Lookup)
+    # iterate from root to leaves
+    for c in root.children
+        #@debug "Calling check_signature on $(c.obj)"
+        check_signature(c.obj, root, lookup)
+        if !isempty(c.children)
+            check_signatures(c, lookup)
+        end
+    end
+end
 
 #function flatten_to_pubpoints!(tree::RPKINode)
 #    for c in tree.children

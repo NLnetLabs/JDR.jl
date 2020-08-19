@@ -16,6 +16,7 @@ mutable struct RPKIObject{T}
     tree::Union{Nothing, Node}
     object::T
     remarks::Union{Nothing, Vector{Remark}}
+    remarks_tree::Union{Nothing, Vector{Remark}}
 end
 
 
@@ -27,7 +28,7 @@ end
 
 
 function RPKIObject{T}(filename::String, tree::Node) where T 
-    RPKIObject{T}(filename, tree, T(), nothing)
+    RPKIObject{T}(filename, tree, T(), nothing, nothing)
 end
 
 # TODO:

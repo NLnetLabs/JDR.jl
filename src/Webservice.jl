@@ -215,6 +215,10 @@ end
 
 function update()
     @info "update()"
+    @info "resetting Common.remarkTID"
+    Common.resetRemarkTID()
+    @assert Common.remarkTID == 0
+
     (tree, lookup) = fetch(Threads.@spawn(RPKI.retrieve_all(TAL_URLS)))
     #(tree, lookup) = RPKI.retrieve_all(TAL_URLS)
     TREE[] = tree

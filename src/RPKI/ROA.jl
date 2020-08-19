@@ -344,7 +344,27 @@ function check_signed_data(o::RPKIObject{ROA}, tpi::TmpParseInfo, sd::Node) :: R
     o
 end
 
+
+# attempt at collecting the remarks from o.tree so we can form a quicklist at
+# the RPKIObject level
+# because we have many helpers (validation_common.jl) that are unaware of the
+# RPKIObject when they are called, we need to collect the remarks from the ASN1
+# tree after fully check()ing the object/tree
+# TODO move this function to Common.jl or similar, so CER/MFT/CRL can use it as
+# well
+function collect_remarks!(o::RPKIObject{ROA}, node::Node)
+    if !isnothing(node.remarks)
+        Base.append!(o.remarks_tree, node.remarks)
+    end
+    if !isnothing(node.children)
+        for c in node.children
+            collect_remarks!(o, c)
+        end
+    end
+end
+
 function check(o::RPKIObject{ROA}, tpi::TmpParseInfo=TmpParseInfo()) :: RPKIObject{ROA}
+    o.remarks_tree = []
     cmsobject = o.tree
     #CMS, RFC5652
     tagisa(o.tree, ASN.SEQUENCE)
@@ -355,6 +375,7 @@ function check(o::RPKIObject{ROA}, tpi::TmpParseInfo=TmpParseInfo()) :: RPKIObje
     tagisa(o.tree[2, 1], ASN.SEQUENCE)
     o = check_signed_data(o, tpi, o.tree[2, 1])
     
+    collect_remarks!(o, o.tree)
     o
 end
 

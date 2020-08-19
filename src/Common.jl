@@ -4,10 +4,14 @@ export remark!, dbg!, info!, warn!, err!
 
 @enum RemarkLevel DBG INFO WARN ERR
 
+remarkTID = 0
+resetRemarkTID() = global remarkTID = 0
 struct Remark
     lvl::RemarkLevel
     msg::String
+    tid::Int
 end
+Remark(lvl, msg) = Remark(lvl, msg, global remarkTID += 1)
 
 ## Example:
 #struct MyObject
@@ -37,14 +41,6 @@ err!(o::Any, msg::String)  	= remark!(o, ERR, msg)
 function remark!(o::Any, msg::String)
     @warn "common.jl: remark!() is deprecated! defaulting to info!()" maxlog=10
     info!(o, msg)
-end
-
-function _count_remarks!(o::Any)
-	@assert reduce(+, values(o.remarks)) == 0
-    for r in o.remarks
-        o.remark_counts[r.lvl] += 1
-    end
-    o.remark_counts
 end
 
 function count_remarks(o::T) where {T<:Any}

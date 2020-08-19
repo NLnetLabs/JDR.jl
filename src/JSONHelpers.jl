@@ -28,6 +28,7 @@ struct ObjectDetails{T}
     objecttype::String
     remarks::Union{Nothing, Vector{RPKI.Remark}}
     remark_counts_me::Union{Nothing, RemarkCounts_t}
+    remarks_tree::Union{Nothing, Vector{RPKI.Remark}}
 end
 
 function ObjectDetails(r::RPKI.RPKIObject, rc::RemarkCounts_t) 
@@ -40,7 +41,8 @@ function ObjectDetails(r::RPKI.RPKIObject, rc::RemarkCounts_t)
                       r.object,
                       string(nameof(typeof(r.object))),
                       r.remarks,
-                      rc # FIXME assert r.remarks ==~ rc
+                      rc, # FIXME assert r.remarks ==~ rc
+                      tmp.remarks_tree
                     )
     return d
 end

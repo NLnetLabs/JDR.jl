@@ -231,11 +231,5 @@ end
 
 function to_bigint(raw::Vector{UInt8}) :: BigInt
     @assert length(raw) % 16 == 0
-    parts = [BigInt(reinterpret(UInt128, reverse(u128))[1]) for u128 in Iterators.partition(raw, 16)]
-    sum = parts[1]
-    for p in parts[2:end]
-        sum <<= 128 
-        sum += p
-    end
-    sum
+    parse(BigInt, bytes2hex(raw), base=16)
 end

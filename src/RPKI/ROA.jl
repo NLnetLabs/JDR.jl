@@ -160,7 +160,7 @@ function check_SignerInfos(o::RPKIObject{ROA}, tpi::TmpParseInfo, si::Node) :: R
     # TODO:
     #   For RPKI signed objects, the sid MUST be the SubjectKeyIdentifier
     #   that appears in the EE certificate carried in the CMS certificates
-    #   field.
+    #   field. This is also true for MFTs
 
 	# SignerIdentifier == SubjectKeyIdentifier [0]
 	tagis_contextspecific(si[1, 2], 0x00)
@@ -376,6 +376,36 @@ function check(o::RPKIObject{ROA}, tpi::TmpParseInfo=TmpParseInfo()) :: RPKIObje
     o = check_signed_data(o, tpi, o.tree[2, 1])
     
     collect_remarks!(o, o.tree)
+    o
+end
+
+function check_cert_chain(o::RPKIObject{ROA}, parent::RPKINode, lookup::Lookup) ::RPKIObject{ROA}
+    tbscert = o.tree[2, 1, 4, 1, 1]
+    issuer  = tbscert[4, 1, 1, 2]
+    subject = tbscert[6, 1, 1, 2]
+
+    if ASN.value(issuer.tag) != parent.parent.obj.object.subject
+        @error "issuer/subject mismatch" o.filename
+    end
+
+    #TODO: subject must match signer_info SKI
+    # so the signature of the embedded cert can be verified using the
+    # parent.parent RSA modulus/exp (TODO: D-R-Y ..)
+
+    sig = o.tree[2, 1, 4, 1, 3]
+    signature = to_bigint(sig.tag.value[2:end])
+
+    v = powermod(signature, parent.parent.obj.object.rsa_exp, parent.parent.obj.object.rsa_modulus)
+    v.size = 4
+    v_str = string(v, base=16, pad=64)
+
+    tbs_raw = read(o.filename, tbscert.tag.offset_in_file + tbscert.tag.len + 4 - 1)[tbscert.tag.offset_in_file+0:end]
+    my_hash = bytes2hex(sha256(tbs_raw))
+
+    if v_str != my_hash
+        @error "invalid hash for" o.filename parent.parent.obj.filename
+    end
+    
     o
 end
 

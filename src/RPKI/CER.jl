@@ -7,12 +7,17 @@ mutable struct CER
     validsig::Union{Nothing, Bool}
     rsa_modulus::BigInt
     rsa_exp::Int
+
+    issuer::String
+    subject::String
+
     inherit_prefixes::Bool
     prefixes::Vector{Union{IPNet, Tuple{IPNet, IPNet}}}
     inherit_ASNs::Bool
     ASNs::Vector{Union{Tuple{UInt32, UInt32}, UInt32}}
 end
-CER() = CER(0, "", "", "", nothing, nothing, 0, 0, false, [], false, [])
+CER() = CER(0, "", "", "", nothing, nothing, 0, 0, "", "",
+            false, [], false, [])
 
 function Base.show(io::IO, cer::CER)
     print(io, "  pubpoint: ", cer.pubpoint, '\n')
@@ -129,7 +134,11 @@ function checkTbsCertificate(o::RPKIObject{CER}, tbscert::Node)
     #  that is unique per issuer.
     #  TODO can we check on this? not here, but in a later stage?
     subject = containAttributeTypeAndValue(tbscert[6, 1], @oid("2.5.4.3"), ASN.PRINTABLESTRING)
-    o.object.selfsigned = ASN.value(issuer.tag) == ASN.value(subject.tag)
+    #@debug "CER, subject:" ASN.value(subject.tag)
+
+    o.object.issuer = ASN.value(issuer.tag)
+    o.object.subject = ASN.value(subject.tag)
+    o.object.selfsigned = o.object.issuer == o.object.subject
 
     # SubjectPublicKeyInfo
     # AlgorithmIdentifier + BITSTRING
@@ -408,3 +417,19 @@ function check(o::RPKIObject{CER}) :: RPKIObject{CER}
     
     o
 end
+
+
+function check_cert_chain(o::RPKIObject{CER}, parent::RPKINode, lookup::Lookup) ::RPKIObject{CER}
+    #TODO
+    
+    # TODO find right [i,j,x], make exception for self-signed CERs
+    #
+    #issuer = tbscert[4, 1, 1, 2]
+    #subject = tbscert[6, 1, 1, 2]
+    #if ASN.value(issuer.tag) != parent.obj.object.subject
+    #    @error "issuer/subject mismatch" o.filename
+    #end
+    
+    o
+end
+

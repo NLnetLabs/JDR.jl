@@ -369,6 +369,20 @@ function check_signatures(root::RPKINode, lookup::Lookup)
         end
     end
 end
+function check_parent_certs(node::RPKINode, lookup::Lookup)
+    # iterate from node to leaves
+    for c in node.children
+        #@debug "Calling check_signature on $(c.obj)"
+        if c.obj.object isa ROA
+            check_cert_chain(c.obj, node, lookup)
+        elseif c.obj.object isa MFT
+            check_cert_chain(c.obj, node, lookup)
+        end
+        if !isempty(c.children)
+            check_parent_certs(c, lookup)
+        end
+    end
+end
 
 #function flatten_to_pubpoints!(tree::RPKINode)
 #    for c in tree.children

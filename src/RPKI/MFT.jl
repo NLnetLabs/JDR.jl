@@ -256,4 +256,30 @@ function check_signature(o::RPKIObject{MFT}, parent::RPKINode, lookup::Lookup) :
     o
 end
 
+# TODO one-to-one copy (almost parent vs parent.parent) from ROA, D-R-Y
+function check_cert_chain(o::RPKIObject{MFT}, parent::RPKINode, lookup::Lookup) ::RPKIObject{MFT}
+    tbscert = o.tree[2,1,4,1,1]
+    issuer = tbscert[4, 1, 1, 2]
+    subject = tbscert[6, 1, 1, 2]
+
+    if ASN.value(issuer.tag) != parent.obj.object.subject
+        @error "issuer/subject mismatch" o.filename
+    end
+
+    sig = o.tree[2,1,4, 1, 3]
+    signature = to_bigint(sig.tag.value[2:end])
+
+    v = powermod(signature, parent.obj.object.rsa_exp, parent.obj.object.rsa_modulus)
+    v.size = 4
+    v_str = string(v, base=16, pad=64)
+
+    tbs_raw = read(o.filename, tbscert.tag.offset_in_file + tbscert.tag.len + 4 - 1)[tbscert.tag.offset_in_file+0:end]
+    my_hash = bytes2hex(sha256(tbs_raw))
+
+    if v_str != my_hash
+        @error "invalid hash for" o.filename parent.obj.filename
+    end
+    
+    o
+end
 

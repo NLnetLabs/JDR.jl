@@ -396,14 +396,14 @@ end
 # validation helpers
 ####################
 
-function iter(tree::Node) 
-    result = [tree]
+function iter(tree::Node, res::Vector{Node}=Vector{Node}([])) :: Vector{Node}
+    Base.push!(res, tree)
     if !isnothing(tree.children)
-        for (i, c) in enumerate(tree.children)
-            Base.append!(result, iter(c))
+        for c in tree.children
+            iter(c, res)
         end
     end
-    result
+    res
 end
 
 lazy_iter(tree::Node) = Channel(ctype=Node) do c

@@ -237,7 +237,7 @@ function check_manifest(o::RPKIObject{MFT}, m::Node) :: RPKIObject{MFT}
     o
 end
 
-function check(o::RPKIObject{MFT}) :: RPKIObject{MFT}
+function check(o::RPKIObject{MFT}, tpi::TmpParseInfo=TmpParseInfo()) :: RPKIObject{MFT}
     cmsobject = o.tree
     # CMS, RFC5652
     tagisa(o.tree, ASN.SEQUENCE)
@@ -248,6 +248,9 @@ function check(o::RPKIObject{MFT}) :: RPKIObject{MFT}
     tagisa(o.tree[2, 1], ASN.SEQUENCE)
     o = check_signed_data(o, o.tree[2, 1])
     
+    if tpi.setNicenames
+        o.tree.nicename = "Testing nicename"
+    end
     o
 end
 

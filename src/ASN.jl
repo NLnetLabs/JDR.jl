@@ -240,6 +240,7 @@ mutable struct Node <: AbstractNode
     tag #FIXME make this a DER.AbstractTag and benchmark
     validated::Bool
 	remarks::Union{Nothing, Vector{Remark}}
+    nicename::Union{Nothing, String}
 end
 
 isleaf(n::Node) :: Bool = isnothing(n.children)
@@ -272,7 +273,7 @@ function count_remarks(tree::Node) :: RemarkCounts_t
 end
 
 #Node(t::T) where {T <: Any } = Node(nothing, nothing, t, false, nothing)
-Node(t::T) where {T <: Any } = Node(nothing, t, false, nothing)
+Node(t::T) where {T <: Any } = Node(nothing, t, false, nothing, nothing)
 
 function child(node::Node, indices...) :: Node
     current = node
@@ -291,6 +292,7 @@ Base.getindex(node::Node, indices...) = child(node, indices...)
 
 function Base.show(io::IO, n::Node)
     if !isnothing(n.tag)
+        if !isnothing(n.nicename) printstyled(io, n.nicename, color=:cyan) end
         if n.validated
             printstyled(io, n.tag, color=:green)
         else

@@ -47,7 +47,16 @@ struct AutSysNum
 end
 Base.show(a::AutSysNum) = print(io, "AS", a.asn)
 
+mutable struct TmpParseInfo
+    setNicenames::Bool
+    subjectKeyIdentifier::Vector{UInt8}
+end
+TmpParseInfo() = TmpParseInfo(false, [])
+TmpParseInfo(;nicenames::Bool=false) = TmpParseInfo(nicenames, [])
+
+
 include("Lookup.jl")
+include("X509.jl")
 include("RPKI/CER.jl")
 include("RPKI/MFT.jl")
 include("RPKI/ROA.jl")
@@ -57,6 +66,15 @@ include("RPKI/validation_common.jl")
 
 
 function RPKIObject(filename::String)::RPKIObject
+    tree = DER.parse_file_recursive(filename)
+    ext = lowercase(filename[end-3:end])
+    if      ext == ".cer" RPKIObject{CER}(filename, tree)
+    elseif  ext == ".mft" RPKIObject{MFT}(filename, tree)
+    elseif  ext == ".roa" RPKIObject{ROA}(filename, tree)
+    elseif  ext == ".crl" RPKIObject{CRL}(filename, tree)
+    end
+end
+function RPKIObject{T}(filename::String)::RPKIObject{T} where T
     tree = DER.parse_file_recursive(filename)
     ext = lowercase(filename[end-3:end])
     if      ext == ".cer" RPKIObject{CER}(filename, tree)
@@ -135,7 +153,7 @@ function add_roa!(lookup::Lookup, roanode::RPKINode)
 end
 
 function process_roa(roa_fn::String, lookup::Lookup) :: RPKINode
-    o::RPKIObject{ROA} = check(RPKIObject(roa_fn))
+    o::RPKIObject{ROA} = check(RPKIObject{ROA}(roa_fn))
     roa_node = RPKINode(nothing, [], o)
     if roa_fn in keys(lookup.filenames) 
         push!(lookup.filenames[roa_fn], roa_node)
@@ -146,7 +164,7 @@ function process_roa(roa_fn::String, lookup::Lookup) :: RPKINode
     roa_node.remark_counts_me = count_remarks(o) + count_remarks(o.tree)
 
     # now strip the ASN tree
-    # o.tree = nothing # TODO see comment in process_cer
+    o.tree = nothing # TODO see comment in process_cer
     roa_node
 end
 
@@ -230,9 +248,7 @@ function process_mft(mft_fn::String, lookup::Lookup) :: RPKINode
     end
 
     # returning:
-    me = RPKINode(nothing, [], m)
-    me.remark_counts_me = count_remarks(m) + count_remarks(m.tree)
-    #m.tree = nothing #FIXME where/do we want to set this to nothing? the idea
+    me.remark_counts_me += count_remarks(m) 
     #was to clear up memory and reparse the .tree on demand when a /object/ API
     #call is served, but RPKI.check_signatures needs the .tree's
     add(me, listed_files)
@@ -261,7 +277,7 @@ function process_cer(cer_fn::String, lookup::Lookup) :: RPKINode
         lookup.filenames[cer_fn] = [RPKINode(nothing, [], nothing)]
     end
 
-    o::RPKIObject{CER} = check(RPKIObject(cer_fn))
+    o::RPKIObject{CER} = check_ASN1(RPKIObject(cer_fn))
     #@debug o.object.pubpoint
 
     (ca_host, ca_path) = split_rsync_url(o.object.pubpoint)
@@ -286,6 +302,11 @@ function process_cer(cer_fn::String, lookup::Lookup) :: RPKINode
         end
     end
 
+    rpki_node.remark_counts_me = count_remarks(o) + count_remarks(o.tree)
+    o.tree = nothing #FIXME see other comment where we set .tree to nothing
+
+    #TODO: should we still process through the directory, even though there was
+    #no manifest?
     if !isfile(mft_fn)
         @error "manifest $(basename(mft_fn)) not found"
         err!(o, "Manifest file $(basename(mft_fn)) not in repo")
@@ -316,8 +337,6 @@ function process_cer(cer_fn::String, lookup::Lookup) :: RPKINode
     
     lookup.filenames[cer_fn] = [rpki_node]
 
-    rpki_node.remark_counts_me = count_remarks(o) + count_remarks(o.tree)
-    #o.tree = nothing #FIXME see other comment where we set .tree to nothing
     rpki_node
 end
 
@@ -466,6 +485,18 @@ function pubpoints(tree::RPKINode) :: RPKINode
     pp_tree
 end
 
+
+function collect_remarks_from_asn1!(o::RPKIObject{T}, node::Node) where T
+    if !isnothing(node.remarks)
+        o.remarks_tree = node.remarks
+        #Base.append!(o.remarks_tree, node.remarks)
+    end
+    if !isnothing(node.children)
+        for c in node.children
+            collect_remarks_from_asn1!(o, c)
+        end
+    end
+end
 
 function _html(tree::RPKINode, io::IOStream)
     if !isnothing(tree.obj)

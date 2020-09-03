@@ -12,11 +12,6 @@ mutable struct ROA
 end
 ROA() = ROA(0, [], 0, 0, "EMPTY_LOCAL_HASH")
 
-mutable struct TmpParseInfo
-    subjectKeyIdentifier::Vector{UInt8}
-end
-TmpParseInfo() = TmpParseInfo([])
-
 function Base.show(io::IO, roa::ROA)
     print(io, "  ASID: ", roa.asid, "\n")
     print(io, "  VRPs:\n")
@@ -352,16 +347,17 @@ end
 # tree after fully check()ing the object/tree
 # TODO move this function to Common.jl or similar, so CER/MFT/CRL can use it as
 # well
-function collect_remarks!(o::RPKIObject{ROA}, node::Node)
-    if !isnothing(node.remarks)
-        Base.append!(o.remarks_tree, node.remarks)
-    end
-    if !isnothing(node.children)
-        for c in node.children
-            collect_remarks!(o, c)
-        end
-    end
-end
+#function collect_remarks!(o::RPKIObject{ROA}, node::Node)
+#    if !isnothing(node.remarks)
+#        Base.append!(o.remarks_tree, node.remarks)
+#    end
+#    if !isnothing(node.children)
+#        for c in node.children
+#            collect_remarks!(o, c)
+#        end
+#    end
+#end
+# MOVED TO RPKI.jl
 
 function check(o::RPKIObject{ROA}, tpi::TmpParseInfo=TmpParseInfo()) :: RPKIObject{ROA}
     o.remarks_tree = []
@@ -375,7 +371,7 @@ function check(o::RPKIObject{ROA}, tpi::TmpParseInfo=TmpParseInfo()) :: RPKIObje
     tagisa(o.tree[2, 1], ASN.SEQUENCE)
     o = check_signed_data(o, tpi, o.tree[2, 1])
     
-    collect_remarks!(o, o.tree)
+    #collect_remarks!(o, o.tree)
     o
 end
 

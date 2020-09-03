@@ -1,102 +1,42 @@
-mutable struct CER 
-    serial::Integer
-    pubpoint::String
-    manifest::String
-    rrdp_notify::String
-    selfsigned::Union{Nothing, Bool}
-    validsig::Union{Nothing, Bool}
-    rsa_modulus::BigInt
-    rsa_exp::Int
+#module X509
 
-    issuer::String
-    subject::String
-
-    inherit_prefixes::Bool
-    prefixes::Vector{Union{IPNet, Tuple{IPNet, IPNet}}}
-    inherit_ASNs::Bool
-    ASNs::Vector{Union{Tuple{UInt32, UInt32}, UInt32}}
-end
-CER() = CER(0, "", "", "", nothing, nothing, 0, 0, "", "",
-            false, [], false, [])
-
-function Base.show(io::IO, cer::CER)
-    print(io, "  pubpoint: ", cer.pubpoint, '\n')
-    print(io, "  manifest: ", cer.manifest, '\n')
-    print(io, "  rrdp: ", cer.rrdp_notify, '\n')
-    printstyled(io, "  ASNs: \n")
-    for a in cer.ASNs
-        print(io, "    ", a, '\n')
-    end
-    printstyled(io, "  prefixes: \n")
-    for p in cer.prefixes
-        print(io, "    ", p, '\n')
-    end
+macro check(name, block)
+    fnname = Symbol("check_$(name)")
+    eval(quote
+            function $fnname(o::RPKIObject{T}, node::Node, tpi::TmpParseInfo) where T
+            if tpi.setNicenames
+                node.nicename = $name
+            end
+            $block
+            end
+        end
+    )
 end
 
-function check_subject_information_access(o::RPKIObject{CER}, subtree::Node)
-    tagisa(subtree, ASN.OCTETSTRING)
-    # second pass on the encapsulated  OCTETSTRING
-    DER.parse_append!(DER.Buf(subtree.tag.value), subtree)
-
-    # MUST be present:
-    # 1.3.6.1.5.5.7.48.5 caRepository
-    # 1.3.6.1.5.5.7.48.10 rpkiManifest
-    # could be present:
-    # 1.3.6.1.5.5.7.48.13 RRDP notification URL
-    
-    tagisa(subtree[1], ASN.SEQUENCE)
-    carepo_present = false
-    manifest_present = false
-    for access_description in subtree[1].children
-        tagisa(access_description, ASN.SEQUENCE)
-        checkchildren(access_description, 2)
-        tagisa(access_description[1], ASN.OID)
-        # [6] is a uniformResourceIdentifier, RFC5280
-        tagis_contextspecific(access_description[2], 0x06)
-
-        #now check for the MUST-be presents:
-        if access_description[1].tag.value == @oid "1.3.6.1.5.5.7.48.5"
-            carepo_present = true
-            o.object.pubpoint = String(copy(access_description[2].tag.value))
-        end
-        if access_description[1].tag.value == @oid "1.3.6.1.5.5.7.48.10"
-            manifest_present = true
-            o.object.manifest = String(copy(access_description[2].tag.value))
-        end
-        if access_description[1].tag.value == @oid "1.3.6.1.5.5.7.48.13"
-            o.object.rrdp_notify = String(copy(access_description[2].tag.value))
-        end
-    end
-    if !carepo_present
-        err!(subtree, "missing essential caRepository")
-    end
-    if !manifest_present
-        err!(subtree, "missing essential rpkiManifest")
-    end
-end
-
-function checkTbsCertificate(o::RPKIObject{CER}, tbscert::Node)
+@check "version"  begin
     # Version == 0x02? (meaning version 3)
-    tagis_contextspecific(tbscert[1], 0x0)
-    #DER.parse_value!(tbscert[1])
-    tagvalue(tbscert[1, 1], ASN.INTEGER, 0x02)
+    tagis_contextspecific(node, 0x0)
+    tagvalue(node[1], ASN.INTEGER, 0x02)
+end
 
-    # Serial number
-    tagisa(tbscert[2], ASN.INTEGER)
-    o.object.serial = ASN.value(tbscert[2].tag, force_reinterpret=true)
+@check "serialNumber" begin
+    tagisa(node, ASN.INTEGER)
+    o.object.serial = ASN.value(node.tag, force_reinterpret=true)
+end
 
-    # Signature AlgorithmIdentifier
-    # SEQ / OID / NULL
-    tagisa(tbscert[3], ASN.SEQUENCE)
+@check "signature" begin
+    tagisa(node, ASN.SEQUENCE)
 
-    tag_OID(tbscert[3, 1], @oid "1.2.840.113549.1.1.11")
-    if checkchildren(tbscert[3], 2)
-        tagisa(tbscert[3, 2], ASN.NULL) # TODO be more explicit in the remark
+    tag_OID(node[1], @oid "1.2.840.113549.1.1.11")
+    if checkchildren(node, 2)
+        tagisa(node[2], ASN.NULL) # TODO be more explicit in the remark
     end
+end
 
+@check "issuer" begin
     # Issuer = Name = RDNSequence = SEQUENCE OF RelativeDistinguishedName
-    tagisa(tbscert[4], ASN.SEQUENCE)
-    issuer_set = tbscert[4, 1]
+    tagisa(node, ASN.SEQUENCE)
+    issuer_set = node[1]
     tagisa(issuer_set, ASN.SET)
         # it's a SET of AttributeTypeAndValue 
         # which is a SEQUENCE of type (OID) + value (ANY)
@@ -114,49 +54,57 @@ function checkTbsCertificate(o::RPKIObject{CER}, tbscert::Node)
     # the set should contain 1 child, the RECOMMENDED set
     # TODO check this interpretation
     issuer = containAttributeTypeAndValue(issuer_set, @oid("2.5.4.3"), ASN.PRINTABLESTRING)
+    o.object.issuer = ASN.value(issuer.tag)
 
 	if length(issuer_set.children) > 1
 	    # if size == 2, the second thing must be a CertificateSerialNumber
         @error "TODO: serialNumber in Issuer"
     end
-    
-    # Validity
+end
+
+@check "validity" begin
     # SEQUENCE of 2x Time, which is a CHOICE of utcTime/generalTime
-    tagisa(tbscert[5], ASN.SEQUENCE)
-    tagisa(tbscert[5, 1], [ASN.UTCTIME, ASN.GENTIME])
-    tagisa(tbscert[5, 2], [ASN.UTCTIME, ASN.GENTIME])
+    tagisa(node, ASN.SEQUENCE)
+    tagisa(node[1], [ASN.UTCTIME, ASN.GENTIME])
+    tagisa(node[2], [ASN.UTCTIME, ASN.GENTIME])
+end
 
-
-    # Subject
+@check "subject" begin
+    tagisa(node, ASN.SEQUENCE)
     # RFC6487:
     #  Each distinct subordinate CA and
     #  EE certified by the issuer MUST be identified using a subject name
     #  that is unique per issuer.
     #  TODO can we check on this? not here, but in a later stage?
-    subject = containAttributeTypeAndValue(tbscert[6, 1], @oid("2.5.4.3"), ASN.PRINTABLESTRING)
+    subject = containAttributeTypeAndValue(node[1], @oid("2.5.4.3"), ASN.PRINTABLESTRING)
     #@debug "CER, subject:" ASN.value(subject.tag)
 
-    o.object.issuer = ASN.value(issuer.tag)
     o.object.subject = ASN.value(subject.tag)
     o.object.selfsigned = o.object.issuer == o.object.subject
+end
 
-    # SubjectPublicKeyInfo
-    # AlgorithmIdentifier + BITSTRING
-    tagisa(tbscert[7], ASN.SEQUENCE)
-    tagisa(tbscert[7, 1], ASN.SEQUENCE)
+@check "algorithm" begin
+    tagisa(node, ASN.SEQUENCE)
     # FIXME: RFC6485 is not quite clear on which OID we should expect here..
-    tag_OID(tbscert[7, 1, 1], @oid "1.2.840.113549.1.1.1")
-    tagisa(tbscert[7, 1, 2], ASN.NULL)
-    tagisa(tbscert[7, 2], ASN.BITSTRING)
-    # here we go for a second pass:
-    # skip the first byte as it will be 0,
-    #   indicating the number if unused bits in the last byte
+    tag_OID(node[1], @oid "1.2.840.113549.1.1.1")
+    tagisa(node[2], ASN.NULL)
+end
+
+@check "subjectPublicKey" begin
+    tagisa(node, ASN.BITSTRING)
+
+    # Now we go for a second pass:
+    # skip the first byte as it will be 0, TODO check this
+    # indicating the number if unused bits in the last byte
     
-    encaps_buf = DER.Buf(tbscert[7, 2].tag.value[2:end])
-    DER.parse_append!(encaps_buf, tbscert[7, 2])
+    encaps_buf = DER.Buf(node.tag.value[2:end])
+    DER.parse_append!(encaps_buf, node)
+
+    tagisa(node[1], ASN.SEQUENCE)
+    tagisa(node[1,1], ASN.INTEGER)
    
-    encaps_modulus  = tbscert[7, 2, 1, 1]
-    encaps_exponent = tbscert[7, 2, 1, 2]
+    encaps_modulus  = node[1, 1]
+    encaps_exponent = node[1, 2]
     # RFC6485:the exponent MUST be 65537
     tagvalue(encaps_exponent, ASN.INTEGER, 65_537)
 
@@ -164,29 +112,36 @@ function checkTbsCertificate(o::RPKIObject{CER}, tbscert::Node)
     @assert encaps_modulus.tag.len == 257
     o.object.rsa_modulus   = to_bigint(encaps_modulus.tag.value[2:end])
     o.object.rsa_exp       = ASN.value(encaps_exponent.tag)
+end
 
-    # issuerUniqueID [1]
-    # TODO
+@check "subjectPublicKeyInfo" begin
+    # AlgorithmIdentifier + BITSTRING
+    tagisa(node, ASN.SEQUENCE)
+    check_algorithm(o, node[1], tpi)
+    check_subjectPublicKey(o, node[2], tpi)
+end
 
-    # subjectUniqueID [2]
-    # TODO
-
-    # extensions [3]
-    # MUST be present
-    extensions = tbscert[8]
-    tagis_contextspecific(extensions, 0x3)
-    #DER.parse_value!(extensions)
+const MANDATORY_EXTENSIONS = Vector{Vector{UInt8}}([
+                                                    @oid("2.5.29.14"), #basicConstraints
+                                                    @oid("2.5.29.15") #keyUsage
+                                                   ])
+@check "extensions" begin
+    tagis_contextspecific(node, 0x3)
 
     mandatory_extensions = Vector{Vector{UInt8}}()
 
+    # in order as listed in RFC6487:
+    # 2.5.29.19 basicConstraints
+    # MUST appear if subject == CA, otherwise MUST NOT be here
     # RFC 6487 4.8.1 unclear:
     #   'The issuer determines whether the "cA" boolean is set.'
     # if this extension is here, the value is always true?
     # so the boolean is actually sort of redundant?
     # because when the subject is not a CA, this extension MUST NOT be here
+    # TODO: store whether or not this CER is a CA CER?
     
+
     # Subject Key Identifier, MUST appear
-    #check_extension(extensions, "2.5.29.14") # non-critical, 160bit SHA-1
     push!(mandatory_extensions, @oid "2.5.29.14")
 
     # Authority Key Identifier
@@ -195,7 +150,10 @@ function checkTbsCertificate(o::RPKIObject{CER}, tbscert::Node)
 	#  exception of a CA who issues a "self-signed" certificate.  In a self-
 	#  signed certificate, a CA MAY include this extension, and set it equal
 	#  to the Subject Key Identifier.
-	#  check_extension(extensions, 
+    #  2.5.29.35 authorityKeyIdentifier
+    #TODO:
+    #check self_signed
+    #if/else on that
 
 	# Key Usage, MUST appear
 	# RFC 6487:
@@ -205,7 +163,7 @@ function checkTbsCertificate(o::RPKIObject{CER}, tbscert::Node)
 	#
 	#  In EE certificates, the digitalSignature bit MUST be set to TRUE and
 	#  MUST be the only bit set to TRUE.
-	#check_extension(extensions, "2.5.29.15") # critical, 1byte BITSTRING
+    #2.5.29.15 keyUsage
     push!(mandatory_extensions, @oid "2.5.29.15")
 
 	# Extended Key Usage
@@ -215,11 +173,16 @@ function checkTbsCertificate(o::RPKIObject{CER}, tbscert::Node)
     # CRL Distribution Points
     # MUST be present, except in self-signed
     # TODO so are the RIR TA .cers all self-signed?
+    # 2.5.29.31 cRLDistributionPoints
 
     # Authority Information Access
+    # 1.3.6.1.5.5.7.1.1 authorityInfoAccess
     # non critical
+    # MUST be present in non-selfsigned certs
+    # must have an 1.3.6.1.5.5.7.48.2 caIssuers containing an rsync URI
 
     # Subject Information Access, MUST be present
+    # 1.3.6.1.5.5.7.1.11 subjectInfoAccess
     ## SIA for CA Certificates MUST be present, MUST be non-critical
     push!(mandatory_extensions, @oid "1.3.6.1.5.5.7.1.11")
     ### MUST have an caRepository (OID 1.3.6.1.5.5.7.48.5)
@@ -227,10 +190,14 @@ function checkTbsCertificate(o::RPKIObject{CER}, tbscert::Node)
     # TODO rrdp stuff is in another RFC
     
     ## SIA for EE Certificates MUST be present, MUST be non-critical
-    #TODO set up test with EE cert 
+    # MUST contain 1.3.6.1.5.5.7.48.11 signedObject pointing to rsync uri
+    # for the signedObject
 
     # Certificate Policies MUST present+critical
     # MUST contain one policy, RFC6484
+    # 2.5.29.32 certificatePolicies
+    push!(mandatory_extensions, @oid "2.5.29.32")
+    # MUST contain exactly one, 1.3.6.1.5.5.7.14.2 resourceCertificatePolicy
 
     # IP + AS resources
     # RFC6487: one or both MUST be present+critical
@@ -245,11 +212,24 @@ function checkTbsCertificate(o::RPKIObject{CER}, tbscert::Node)
     #
 
 
-    check_extensions(extensions, mandatory_extensions)
-    all_extensions = get_extensions(extensions)
+    # get all extensions, check presence of mandatory extensions
+    # make sure we do not mark the extension as 'checked' in the ASN tree here
+    # yet, we mark it in the check_ functions/macros
+
+    check_extensions(node, mandatory_extensions)
+    all_extensions = get_extensions(node)
+
+    # Resource certificate MUST have either or both of the IP and ASN Resources
+    # extensions:
+    # TODO check this
+
+    # now check all extensions based on their type:
+    # TODO iterate over all_extensions, call check_$nicename
+    # hardcode a macro/dict with OID<-->nicename?
+    # @warn on OIDs for which we have no function
 
 
-    # SIA checks
+    # SIA checks # TODO rewrite / split up check_subject_information_access
     check_subject_information_access(o, all_extensions[@oid "1.3.6.1.5.5.7.1.11"])
 
     # IP and/or ASN checks:
@@ -375,66 +355,22 @@ function checkTbsCertificate(o::RPKIObject{CER}, tbscert::Node)
     # and create a check_extension(OID{TypeBasedOnOIDString})
 end
 
-function check_signature(o::RPKIObject{CER}, parent::RPKINode, lookup::RPKI.Lookup) :: RPKI.RPKIObject{CER}
-    sig = o.tree.children[3]
-    # TODO: is this a BITSTRING length 257 (ARIN), or a 
-    #@debug sig.tag
-    #@assert sig.tag.len == 257
-    signature = to_bigint(sig.tag.value[2:end])
-    @assert !isnothing(o.object.selfsigned)
-    v = if o.object.selfsigned
-        powermod(signature, o.object.rsa_exp, o.object.rsa_modulus)
-    else
-        # parentnode is MFT, next parent is the CER we are looking for
-        #@debug "taking RSA exp/mod from parent.parent::RPKINode)"
-        powermod(signature, parent.parent.obj.object.rsa_exp, parent.parent.obj.object.rsa_modulus)
+function check_tbsCertificate(o::RPKIObject{T}, tbscert::Node, tpi::TmpParseInfo) :: RPKIObject{T} where T 
+    if tpi.setNicenames
+        tbscert.nicename = "tbsCertificate"
     end
-    v.size = 4
-    v_str = string(v, base=16)
 
-    tbs_raw = read(o.filename, o.tree[2].tag.offset_in_file-1)[4+1:end]
-    my_hash = bytes2hex(sha256(tbs_raw))
+    check_version(o, tbscert[1], tpi)
+    check_serialNumber(o, tbscert[2], tpi)
+    check_signature(o, tbscert[3], tpi)
+    check_issuer(o, tbscert[4], tpi)
+    check_validity(o, tbscert[5], tpi)
+    check_subject(o, tbscert[6], tpi)
+    check_subjectPublicKeyInfo(o, tbscert[7], tpi)
+    check_extensions(o, tbscert[8], tpi)
 
-    #if v_str == my_hash
-    #    @debug "test:", v_str == my_hash
-    #    @debug o.filename
-    #end
-    o
+    o 
 end
 
-function check_ASN1(o::RPKIObject{CER}, tpi::TmpParseInfo=TmpParseInfo()) :: RPKIObject{CER}
-    # The certificate should consist of three parts: (RFC5280)
-	# Certificate  ::=  SEQUENCE  {
-	#      tbsCertificate       TBSCertificate,
-	#      signatureAlgorithm   AlgorithmIdentifier,
-	#      signature            BIT STRING  }
-    
-    #checkchildren(o.tree, 3) # alternative to the popfirst! below
-    checkchildren(o.tree, 3)
-    tbsCertificate = o.tree.children[1]
-    #checkTbsCertificate(o, tbsCertificate)
-    check_tbsCertificate(o, tbsCertificate, tpi)
 
-    
-    o
-end
-
-function check(o::RPKIObject{CER}, tpi::TmpParseInfo=TmpParseInfo())
-    @warn "DEPRECATED CER.check(), use CER.check_ASN1()" maxlog=3
-    check_ASN1(o, tpi)
-end
-
-function check_cert_chain(o::RPKIObject{CER}, parent::RPKINode, lookup::Lookup) ::RPKIObject{CER}
-    #TODO
-    
-    # TODO find right [i,j,x], make exception for self-signed CERs
-    #
-    #issuer = tbscert[4, 1, 1, 2]
-    #subject = tbscert[6, 1, 1, 2]
-    #if ASN.value(issuer.tag) != parent.obj.object.subject
-    #    @error "issuer/subject mismatch" o.filename
-    #end
-    
-    o
-end
-
+#end # end module

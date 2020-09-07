@@ -153,7 +153,7 @@ function add_roa!(lookup::Lookup, roanode::RPKINode)
 end
 
 function process_roa(roa_fn::String, lookup::Lookup) :: RPKINode
-    o::RPKIObject{ROA} = check(RPKIObject{ROA}(roa_fn))
+    o::RPKIObject{ROA} = check_ASN1(RPKIObject{ROA}(roa_fn))
     roa_node = RPKINode(nothing, [], o)
     if roa_fn in keys(lookup.filenames) 
         push!(lookup.filenames[roa_fn], roa_node)
@@ -181,7 +181,7 @@ function process_mft(mft_fn::String, lookup::Lookup) :: RPKINode
     #    throw("possible loop in $(mft_fn)" )
     #end
     m::RPKIObject{MFT} = try 
-        check(RPKIObject(mft_fn))
+        check_ASN1(RPKIObject(mft_fn))
     catch e 
         showerror(stderr, e, catch_backtrace())
         @error "MFT: error with $(mft_fn)"

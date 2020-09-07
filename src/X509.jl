@@ -121,10 +121,22 @@ end
     check_subjectPublicKey(o, node[2], tpi)
 end
 
-const MANDATORY_EXTENSIONS = Vector{Vector{UInt8}}([
-                                                    @oid("2.5.29.14"), #basicConstraints
-                                                    @oid("2.5.29.15") #keyUsage
+const MANDATORY_EXTENSIONS = Vector{Pair{Vector{UInt8}, String}}([
+                                                    @oid("2.5.29.14") => "basicConstraints",
+                                                    @oid("2.5.29.15") =>  "keyUsage",
+                                                    @oid("1.3.6.1.5.5.7.1.11") =>  "subjectInfoAccess",
+                                                    @oid("2.5.29.32") =>  "certificatePolicies",
                                                    ])
+
+const MANDATORY_EXTENSIONS_SS = Vector{Vector{UInt8}}([
+                                                   ])
+
+const MANDATORY_EXTENSIONS_CA = Vector{Vector{UInt8}}([
+                                                   ])
+
+const MANDATORY_EXTENSIONS_EE = Vector{Vector{UInt8}}([
+                                                   ])
+
 @check "extensions" begin
     tagis_contextspecific(node, 0x3)
 
@@ -216,7 +228,8 @@ const MANDATORY_EXTENSIONS = Vector{Vector{UInt8}}([
     # make sure we do not mark the extension as 'checked' in the ASN tree here
     # yet, we mark it in the check_ functions/macros
 
-    check_extensions(node, mandatory_extensions)
+    #check_extensions(node, mandatory_extensions)
+    check_extensions(node, MANDATORY_EXTENSIONS)
     all_extensions = get_extensions(node)
 
     # Resource certificate MUST have either or both of the IP and ASN Resources

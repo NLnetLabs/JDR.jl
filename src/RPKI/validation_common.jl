@@ -103,8 +103,16 @@ function containAttributeTypeAndValue(node::Node, oid::Vector{UInt8}, t::Type) :
     warn!(node, "expected child node OID $(oid)")
 end
 
-#function check_extensions(tree::Node, oids::Vector{String}) 
-function check_extensions(tree::Node, oids::Vector{Vector{UInt8}}) 
+function check_extensions(tree::Node, oids::Vector{Pair{Vector{UInt8},String}}) 
+    oids_found = get_extension_oids(tree)
+    for (oid, nicename) in oids
+        if !(oid in oids_found)
+            warn!(tree, "expected Extension '$(nicename)' with OID $(oid)")
+        end
+    end
+end
+
+function depr_check_extensions(tree::Node, oids::Vector{Vector{UInt8}}) 
     oids_found = get_extension_oids(tree)
     for o in oids
         if !(o in oids_found)

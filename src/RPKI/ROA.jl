@@ -258,7 +258,7 @@ function check_certificates(o::RPKIObject{ROA}, tpi::TmpParseInfo, certs::Node) 
     # Check all mandatory extensions are present
     # After that, we will validate their actual contents
     extensions = tbscert[8]
-    check_extensions(extensions, mandatory_extensions)
+    depr_check_extensions(extensions, mandatory_extensions)
     all_extensions = get_extensions(extensions)
 
 
@@ -359,7 +359,7 @@ end
 #end
 # MOVED TO RPKI.jl
 
-function check(o::RPKIObject{ROA}, tpi::TmpParseInfo=TmpParseInfo()) :: RPKIObject{ROA}
+function check_ASN1(o::RPKIObject{ROA}, tpi::TmpParseInfo=TmpParseInfo()) :: RPKIObject{ROA}
     o.remarks_tree = []
     cmsobject = o.tree
     #CMS, RFC5652

@@ -237,7 +237,7 @@ function check_manifest(o::RPKIObject{MFT}, m::Node) :: RPKIObject{MFT}
     o
 end
 
-function check(o::RPKIObject{MFT}, tpi::TmpParseInfo=TmpParseInfo()) :: RPKIObject{MFT}
+function check_ASN1(o::RPKIObject{MFT}, tpi::TmpParseInfo=TmpParseInfo()) :: RPKIObject{MFT}
     cmsobject = o.tree
     # CMS, RFC5652
     tagisa(o.tree, ASN.SEQUENCE)

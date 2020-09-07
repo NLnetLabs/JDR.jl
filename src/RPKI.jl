@@ -189,6 +189,13 @@ function process_mft(mft_fn::String, lookup::Lookup) :: RPKINode
     end
     mft_dir = dirname(mft_fn)
     listed_files = Vector{RPKINode}()
+	crl_count = 0
+    crl_node = nothing
+
+    me = RPKINode(nothing, [], m)
+    me.remark_counts_me = count_remarks(m.tree)
+    m.tree = nothing #FIXME where/do we want to set this to nothing? the idea
+
     for f in m.object.files
         # check for .cer
         if !isfile(joinpath(mft_dir, f))

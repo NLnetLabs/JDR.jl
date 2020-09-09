@@ -276,6 +276,4 @@ function to_vue_tree(branches::Vector)
     left
 end
 
-
-
 end # module

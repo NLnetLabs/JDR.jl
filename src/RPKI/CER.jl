@@ -409,12 +409,9 @@ function check_ASN1(o::RPKIObject{CER}, tpi::TmpParseInfo=TmpParseInfo()) :: RPK
 	#      signatureAlgorithm   AlgorithmIdentifier,
 	#      signature            BIT STRING  }
     
-    #checkchildren(o.tree, 3) # alternative to the popfirst! below
-    checkchildren(o.tree, 3)
+    checkchildren(o.tree, 3) # this one marks the SEQUENCE as checked!
     tbsCertificate = o.tree.children[1]
-    #checkTbsCertificate(o, tbsCertificate)
-    check_tbsCertificate(o, tbsCertificate, tpi)
-
+    RPKI.X509.check_ASN1_tbsCertificate(o, tbsCertificate, tpi)
     
     o
 end

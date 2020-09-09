@@ -237,20 +237,30 @@ function check_manifest(o::RPKIObject{MFT}, m::Node) :: RPKIObject{MFT}
     o
 end
 
+
 function check_ASN1(o::RPKIObject{MFT}, tpi::TmpParseInfo=TmpParseInfo()) :: RPKIObject{MFT}
     cmsobject = o.tree
-    # CMS, RFC5652
-    tagisa(o.tree, ASN.SEQUENCE)
-    tag_OID(o.tree[1], @oid "1.2.840.113549.1.7.2") # contentType
-    tagis_contextspecific(o.tree[2], 0x00) # content
-
-    # 6488:
-    tagisa(o.tree[2, 1], ASN.SEQUENCE)
-    o = check_signed_data(o, o.tree[2, 1])
+    # CMS, RFC5652:
+    #       ContentInfo ::= SEQUENCE {
+    #           contentType ContentType,
+    #           content [0] EXPLICIT ANY DEFINED BY contentType }
     
-    if tpi.setNicenames
-        o.tree.nicename = "Testing nicename"
-    end
+    tagisa(cmsobject, ASN.SEQUENCE)
+    checkchildren(cmsobject, 2)
+
+    CMS.check_ASN1_contentType(o, cmsobject[1], tpi)
+    CMS.check_ASN1_content(o, cmsobject[2], tpi)
+    @debug(tpi.eContent)
+    # now use tpi.eContent to do MFT specific checks, from MFT.jl
+
+    # old, to refactor:
+    ##tag_OID(o.tree[1], @oid "1.2.840.113549.1.7.2") # contentType
+    ##tagis_contextspecific(o.tree[2], 0x00) # content
+
+    ### 6488:
+    ##tagisa(o.tree[2, 1], ASN.SEQUENCE)
+    ##o = check_signed_data(o, o.tree[2, 1])
+    
     o
 end
 

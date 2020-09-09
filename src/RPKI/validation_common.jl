@@ -1,3 +1,8 @@
+using IPNets
+export tagvalue, tagisa, tag_OID, checkchildren, containAttributeTypeAndValue
+export tagis_contextspecific, check_extensions, get_extensions
+export to_bigint, bitstring_to_v4prefix, bitstring_to_v6prefix
+
 # TODO implement optional custom remark::String
 function tagisa(node::Node, t::Type)
     if !(node.tag isa Tag{t})

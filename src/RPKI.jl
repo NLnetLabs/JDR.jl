@@ -8,7 +8,8 @@ using IPNets
 using Dates
 using SHA
 
-export retrieve_all, CER, MFT, CRL, ROA
+export retrieve_all, RPKIObject, CER, MFT, CRL, ROA
+export TmpParseInfo
 
 #abstract type RPKIObject <: AbstractNode end
 mutable struct RPKIObject{T}
@@ -50,19 +51,23 @@ Base.show(a::AutSysNum) = print(io, "AS", a.asn)
 mutable struct TmpParseInfo
     setNicenames::Bool
     subjectKeyIdentifier::Vector{UInt8}
+    eContent::Union{Nothing,ASN.Node}
 end
 TmpParseInfo() = TmpParseInfo(false, [])
-TmpParseInfo(;nicenames::Bool=false) = TmpParseInfo(nicenames, [])
+TmpParseInfo(;nicenames::Bool=false) = TmpParseInfo(nicenames, [], nothing)
 
+
+#export X509
+include("X509.jl")
+#export CMS
+include("CMS.jl")
 
 include("Lookup.jl")
-include("X509.jl")
 include("RPKI/CER.jl")
 include("RPKI/MFT.jl")
 include("RPKI/ROA.jl")
 include("RPKI/CRL.jl")
 
-include("RPKI/validation_common.jl")
 
 
 function RPKIObject(filename::String)::RPKIObject

@@ -224,7 +224,6 @@ function check_certificates(o::RPKIObject{ROA}, tpi::TmpParseInfo, certs::Node) 
    
     
     tbscert = certs[1,1]
-    
 
     # extract RSA modulus and exponent
     

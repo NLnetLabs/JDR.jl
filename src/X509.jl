@@ -1,16 +1,18 @@
-#module X509
+module X509
+using ..RPKI
+using ..ASN
+using ..DER
 
 macro check(name, block)
-    fnname = Symbol("check_$(name)")
-    eval(quote
-            function $fnname(o::RPKIObject{T}, node::Node, tpi::TmpParseInfo) where T
-            if tpi.setNicenames
-                node.nicename = $name
-            end
-            $block
-            end
-        end
-    )
+    fnname = Symbol("check_ASN1_$(name)")
+    :(
+      function $fnname(o::RPKIObject{T}, node::Node, tpi::TmpParseInfo) where T
+          if tpi.setNicenames
+              node.nicename = $name
+          end
+          $block
+      end
+     )
 end
 
 @check "version"  begin
@@ -21,7 +23,10 @@ end
 
 @check "serialNumber" begin
     tagisa(node, ASN.INTEGER)
-    o.object.serial = ASN.value(node.tag, force_reinterpret=true)
+    # do we need the serial? 
+    if o.object isa CER
+        o.object.serial = ASN.value(node.tag, force_reinterpret=true)
+    end
 end
 
 @check "signature" begin
@@ -54,7 +59,9 @@ end
     # the set should contain 1 child, the RECOMMENDED set
     # TODO check this interpretation
     issuer = containAttributeTypeAndValue(issuer_set, @oid("2.5.4.3"), ASN.PRINTABLESTRING)
-    o.object.issuer = ASN.value(issuer.tag)
+    if o.object isa CER
+        o.object.issuer = ASN.value(issuer.tag)
+    end
 
 	if length(issuer_set.children) > 1
 	    # if size == 2, the second thing must be a CertificateSerialNumber
@@ -79,8 +86,10 @@ end
     subject = containAttributeTypeAndValue(node[1], @oid("2.5.4.3"), ASN.PRINTABLESTRING)
     #@debug "CER, subject:" ASN.value(subject.tag)
 
-    o.object.subject = ASN.value(subject.tag)
-    o.object.selfsigned = o.object.issuer == o.object.subject
+    if o.object isa CER
+        o.object.subject = ASN.value(subject.tag)
+        o.object.selfsigned = o.object.issuer == o.object.subject
+    end
 end
 
 @check "algorithm" begin
@@ -110,15 +119,17 @@ end
 
     # TODO check if/why this is always 257
     @assert encaps_modulus.tag.len == 257
-    o.object.rsa_modulus   = to_bigint(encaps_modulus.tag.value[2:end])
-    o.object.rsa_exp       = ASN.value(encaps_exponent.tag)
+    if o.object isa CER
+        o.object.rsa_modulus   = to_bigint(encaps_modulus.tag.value[2:end])
+        o.object.rsa_exp       = ASN.value(encaps_exponent.tag)
+    end
 end
 
 @check "subjectPublicKeyInfo" begin
     # AlgorithmIdentifier + BITSTRING
     tagisa(node, ASN.SEQUENCE)
-    check_algorithm(o, node[1], tpi)
-    check_subjectPublicKey(o, node[2], tpi)
+    check_ASN1_algorithm(o, node[1], tpi)
+    check_ASN1_subjectPublicKey(o, node[2], tpi)
 end
 
 const MANDATORY_EXTENSIONS = Vector{Pair{Vector{UInt8}, String}}([
@@ -226,7 +237,7 @@ const MANDATORY_EXTENSIONS_EE = Vector{Vector{UInt8}}([
 
     # get all extensions, check presence of mandatory extensions
     # make sure we do not mark the extension as 'checked' in the ASN tree here
-    # yet, we mark it in the check_ functions/macros
+    # yet, we mark it in the check_ASN1_ functions/macros
 
     #check_extensions(node, mandatory_extensions)
     check_extensions(node, MANDATORY_EXTENSIONS)
@@ -237,13 +248,13 @@ const MANDATORY_EXTENSIONS_EE = Vector{Vector{UInt8}}([
     # TODO check this
 
     # now check all extensions based on their type:
-    # TODO iterate over all_extensions, call check_$nicename
+    # TODO iterate over all_extensions, call check_ASN1_$nicename
     # hardcode a macro/dict with OID<-->nicename?
     # @warn on OIDs for which we have no function
 
 
     # SIA checks # TODO rewrite / split up check_subject_information_access
-    check_subject_information_access(o, all_extensions[@oid "1.3.6.1.5.5.7.1.11"])
+    #RPKI.check_subject_information_access(o, all_extensions[@oid "1.3.6.1.5.5.7.1.11"])
 
     # IP and/or ASN checks:
     
@@ -306,7 +317,9 @@ const MANDATORY_EXTENSIONS_EE = Vector{Vector{UInt8}}([
             elseif ipaddrblock[2].tag isa Tag{ASN.NULL}
                 #throw("implement inherit for ipAdressBlocks")
                 #@error "implement inherit for ipAdressBlocks"
-                o.object.inherit_prefixes = true
+                if o.object isa CER
+                    o.object.inherit_prefixes = true
+                end
             else
                 warn!(ipaddrblock[2], "expected either SEQUENCE OF or NULL here")
             end
@@ -329,7 +342,9 @@ const MANDATORY_EXTENSIONS_EE = Vector{Vector{UInt8}}([
                 #DER.parse_append!(DER.Buf(asidentifierchoice.tag.value), asidentifierchoice)
                 # or NULL (inherit) or SEQUENCE OF ASIdOrRange
                 if asidentifierchoice[1].tag isa Tag{ASN.NULL}
-                    o.object.inherit_ASNs = true
+                    if o.object isa CER
+                        o.object.inherit_ASNs = true
+                    end
                     #throw("implement inherit for ASIdentifierChoice")
                 elseif asidentifierchoice[1].tag isa Tag{ASN.SEQUENCE}
                     # now it can be or a single INTEGER, or again a SEQUENCE
@@ -368,22 +383,16 @@ const MANDATORY_EXTENSIONS_EE = Vector{Vector{UInt8}}([
     # and create a check_extension(OID{TypeBasedOnOIDString})
 end
 
-function check_tbsCertificate(o::RPKIObject{T}, tbscert::Node, tpi::TmpParseInfo) :: RPKIObject{T} where T 
-    if tpi.setNicenames
-        tbscert.nicename = "tbsCertificate"
-    end
-
-    check_version(o, tbscert[1], tpi)
-    check_serialNumber(o, tbscert[2], tpi)
-    check_signature(o, tbscert[3], tpi)
-    check_issuer(o, tbscert[4], tpi)
-    check_validity(o, tbscert[5], tpi)
-    check_subject(o, tbscert[6], tpi)
-    check_subjectPublicKeyInfo(o, tbscert[7], tpi)
-    check_extensions(o, tbscert[8], tpi)
-
-    o 
+@check "tbsCertificate" begin
+    check_ASN1_version(o, node[1], tpi)
+    check_ASN1_serialNumber(o, node[2], tpi)
+    check_ASN1_signature(o, node[3], tpi)
+    check_ASN1_issuer(o, node[4], tpi)
+    check_ASN1_validity(o, node[5], tpi)
+    check_ASN1_subject(o, node[6], tpi)
+    check_ASN1_subjectPublicKeyInfo(o, node[7], tpi)
+    check_ASN1_extensions(o, node[8], tpi)
 end
 
 
-#end # end module
+end # end module

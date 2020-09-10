@@ -10,6 +10,7 @@ using SHA
 
 export retrieve_all, RPKIObject, CER, MFT, CRL, ROA
 export TmpParseInfo
+export print_ASN1
 
 #abstract type RPKIObject <: AbstractNode end
 mutable struct RPKIObject{T}
@@ -25,6 +26,10 @@ function Base.show(io::IO, obj::RPKIObject{T}) where T
     print(io, "RPKIObject type: ", nameof(typeof(obj).parameters[1]), '\n')
     print(io, "filename: ", basename(obj.filename), '\n')
     print(io, obj.object)
+end
+
+function print_ASN1(o::RPKIObject{T}; max_lines=0) where T
+    ASN.print_node(o.tree; traverse=true, max_lines)
 end
 
 
@@ -53,7 +58,6 @@ mutable struct TmpParseInfo
     subjectKeyIdentifier::Vector{UInt8}
     eContent::Union{Nothing,ASN.Node}
 end
-TmpParseInfo() = TmpParseInfo(false, [])
 TmpParseInfo(;nicenames::Bool=false) = TmpParseInfo(nicenames, [], nothing)
 
 

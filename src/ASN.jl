@@ -318,7 +318,7 @@ inc(p::PrintState) = p.printed_lines += 1
 done(p::PrintState) = p.max_lines > 0 && p.printed_lines == p.max_lines
 
 
-function print_node(n::Node, ps::PrintState=PrintState())
+function print_node(n::Node, ps::PrintState)
     if done(ps)
         return
     end
@@ -335,7 +335,7 @@ function print_node(n::Node, ps::PrintState=PrintState())
         ps.indent -= 1
     end
 end
-function print_node(n::Node; traverse::Bool, max_lines::Integer=0)  
+function print_node(n::Node; traverse::Bool=true, max_lines::Integer=0)  
     print_node(n, PrintState(traverse, 0, max_lines, 0))
     if max_lines > 0
         printstyled("\r---- max-lines was $(max_lines) ----\n", color=:red)

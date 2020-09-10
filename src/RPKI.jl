@@ -56,9 +56,15 @@ Base.show(a::AutSysNum) = print(io, "AS", a.asn)
 mutable struct TmpParseInfo
     setNicenames::Bool
     subjectKeyIdentifier::Vector{UInt8}
+    signerIdentifier::Vector{UInt8}
     eContent::Union{Nothing,ASN.Node}
+    signedAttrs::Union{Nothing,ASN.Node}
 end
-TmpParseInfo(;nicenames::Bool=false) = TmpParseInfo(nicenames, [], nothing)
+TmpParseInfo(;nicenames::Bool=false) = TmpParseInfo(nicenames,
+                                                    [],
+                                                    [],
+                                                    nothing,
+                                                    nothing)
 
 
 #export X509

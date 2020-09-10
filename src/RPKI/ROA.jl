@@ -6,11 +6,12 @@ end
 mutable struct ROA
     asid::Integer
     vrps::Vector{VRP}
+    prefixes::Vector{Union{IPNet, Tuple{IPNet, IPNet}}}
     rsa_modulus::BigInt
     rsa_exp::Int
     local_eContent_hash::String
 end
-ROA() = ROA(0, [], 0, 0, "EMPTY_LOCAL_HASH")
+ROA() = ROA(0, [], [], 0, 0, "EMPTY_LOCAL_HASH")
 
 function Base.show(io::IO, roa::ROA)
     print(io, "  ASID: ", roa.asid, "\n")
@@ -359,19 +360,35 @@ end
 # MOVED TO RPKI.jl
 
 function check_ASN1(o::RPKIObject{ROA}, tpi::TmpParseInfo=TmpParseInfo()) :: RPKIObject{ROA}
-    o.remarks_tree = []
     cmsobject = o.tree
-    #CMS, RFC5652
-    tagisa(o.tree, ASN.SEQUENCE)
-    tag_OID(o.tree[1], @oid "1.2.840.113549.1.7.2") # contentType
-    tagis_contextspecific(o.tree[2], 0x00) # content
-
-    ## 6488:
-    tagisa(o.tree[2, 1], ASN.SEQUENCE)
-    o = check_signed_data(o, tpi, o.tree[2, 1])
+    # CMS, RFC5652:
+    #       ContentInfo ::= SEQUENCE {
+    #           contentType ContentType,
+    #           content [0] EXPLICIT ANY DEFINED BY contentType }
     
-    #collect_remarks!(o, o.tree)
+    tagisa(cmsobject, ASN.SEQUENCE)
+    checkchildren(cmsobject, 2)
+
+    CMS.check_ASN1_contentType(o, cmsobject[1], tpi)
+    CMS.check_ASN1_content(o, cmsobject[2], tpi)
+    @debug(tpi.eContent)
+
     o
+
+    # pre-refactor:
+    #o.remarks_tree = []
+    #cmsobject = o.tree
+    ##CMS, RFC5652
+    #tagisa(o.tree, ASN.SEQUENCE)
+    #tag_OID(o.tree[1], @oid "1.2.840.113549.1.7.2") # contentType
+    #tagis_contextspecific(o.tree[2], 0x00) # content
+
+    ### 6488:
+    #tagisa(o.tree[2, 1], ASN.SEQUENCE)
+    #o = check_signed_data(o, tpi, o.tree[2, 1])
+    #
+    ##collect_remarks!(o, o.tree)
+    #o
 end
 
 function check_cert_chain(o::RPKIObject{ROA}, parent::RPKINode, lookup::Lookup) ::RPKIObject{ROA}

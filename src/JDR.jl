@@ -15,6 +15,8 @@ include("DER.jl")
 
 export RPKI
 include("RPKI.jl")
+using .RPKI
+export print_ASN1
 
 include("JSONHelpers.jl")
 

@@ -250,7 +250,6 @@ function check_ASN1(o::RPKIObject{MFT}, tpi::TmpParseInfo=TmpParseInfo()) :: RPK
 
     CMS.check_ASN1_contentType(o, cmsobject[1], tpi)
     CMS.check_ASN1_content(o, cmsobject[2], tpi)
-    @debug(tpi.eContent)
     # now use tpi.eContent to do MFT specific checks, from MFT.jl
 
     # old, to refactor:

@@ -371,7 +371,8 @@ function check_ASN1(o::RPKIObject{ROA}, tpi::TmpParseInfo=TmpParseInfo()) :: RPK
 
     CMS.check_ASN1_contentType(o, cmsobject[1], tpi)
     CMS.check_ASN1_content(o, cmsobject[2], tpi)
-    @debug(tpi.eContent)
+    #@debug(tpi.eContent)
+    # now check tpi.eContent
 
     o
 

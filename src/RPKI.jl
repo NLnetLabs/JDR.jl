@@ -167,7 +167,7 @@ function add_roa!(lookup::Lookup, roanode::RPKINode)
     end
 end
 
-function process_roa(roa_fn::String, lookup::Lookup) :: RPKINode
+function process_roa(roa_fn::String, lookup::Lookup, tpi::TmpParseInfo) :: RPKINode
     o::RPKIObject{ROA} = check_ASN1(RPKIObject{ROA}(roa_fn))
     roa_node = RPKINode(nothing, [], o)
     if roa_fn in keys(lookup.filenames) 
@@ -190,7 +190,7 @@ end
 LoopError(file1::String) = LoopError(file1, "")
 Base.showerror(io::IO, e::LoopError) = print(io, "loop between ", e.file1, " and ", e.file2)
 
-function process_mft(mft_fn::String, lookup::Lookup) :: RPKINode
+function process_mft(mft_fn::String, lookup::Lookup, tpi::TmpParseInfo) :: RPKINode
     #if mft_fn in keys(lookup.filenames)
     #    @warn "$(mft_fn) already seen, loop?"
     #    throw("possible loop in $(mft_fn)" )
@@ -234,7 +234,7 @@ function process_mft(mft_fn::String, lookup::Lookup) :: RPKINode
                 #    @warn "$(subcer_fn) already seen, loop?"
                 #    throw("possible loop in $(subcer_fn)" )
                 #end
-                cer = process_cer(subcer_fn, lookup)
+                cer = process_cer(subcer_fn, lookup, tpi)
                 push!(listed_files, cer)
             catch e
                 if e isa LoopError
@@ -256,7 +256,7 @@ function process_mft(mft_fn::String, lookup::Lookup) :: RPKINode
         elseif ext == ".roa"
             roa_fn = joinpath(mft_dir, f)
             try
-                roanode = process_roa(roa_fn, lookup)
+                roanode = process_roa(roa_fn, lookup, tpi)
                 #roanode = RPKINode(nothing, [], roa)
                 #push!(roas, RPKINode(nothing, [], roa))
                 push!(listed_files, roanode)
@@ -282,16 +282,11 @@ function process_mft(mft_fn::String, lookup::Lookup) :: RPKINode
     me
 end
 
-#TMP_UNIQ_PP = Set()
-function process_cer(cer_fn::String, lookup::Lookup) :: RPKINode
+function process_cer(cer_fn::String, lookup::Lookup, tpi::TmpParseInfo) :: RPKINode
     # now, for each .cer, get the CA Repo and 'sync' again
     if cer_fn in keys(lookup.filenames)
         @warn "$(basename(cer_fn)) already seen, loop?"
         throw(LoopError(cer_fn))
-        #return nothing
-        #node = lookup.filenames[cer_fn]
-        #@warn node
-        #throw("possible loop in $(cer_fn)" )
     else
         # placeholder: we need to put something in because when a loop appears
         # in the RPKI repo, this call will never finish so adding it at the end
@@ -299,19 +294,13 @@ function process_cer(cer_fn::String, lookup::Lookup) :: RPKINode
         lookup.filenames[cer_fn] = [RPKINode(nothing, [], nothing)]
     end
 
-    o::RPKIObject{CER} = check_ASN1(RPKIObject(cer_fn))
-    #@debug o.object.pubpoint
+    o::RPKIObject{CER} = check_ASN1(RPKIObject(cer_fn), tpi)
 
     (ca_host, ca_path) = split_rsync_url(o.object.pubpoint)
     ca_dir = joinpath(REPO_DIR, ca_host, ca_path)
-    #push!(TMP_UNIQ_PP, ca_host)
     
-    #@debug ca_dir
-    #@assert isdir(ca_dir)
-
     mft_host, mft_path = split_rsync_url(o.object.manifest)
     mft_fn = joinpath(REPO_DIR, mft_host, mft_path)
-    #@assert isfile(mft_fn)
     rpki_node = RPKINode(nothing, [], o)
 
     if !(ca_host in keys(lookup.pubpoints))
@@ -334,11 +323,9 @@ function process_cer(cer_fn::String, lookup::Lookup) :: RPKINode
         err!(o, "Manifest file $(basename(mft_fn)) not in repo")
         return rpki_node
     end
-    #@debug mft_fn
-    #m = nothing
     
     try
-        mft = process_mft(mft_fn, lookup)
+        mft = process_mft(mft_fn, lookup, tpi)
         add(rpki_node, mft)
     catch e
         if e isa LoopError
@@ -380,7 +367,7 @@ function retrieve_all(tal_urls=TAL_URLS) :: Tuple{RPKINode, Lookup}
 
         # start recursing
         try
-            add(root, process_cer(ta_cer, lookup))
+            add(root, process_cer(ta_cer, lookup, TmpParseInfo()))
         catch e
             # TODO: what is a proper way to record the error, but continue with
             # the rest of the repo?

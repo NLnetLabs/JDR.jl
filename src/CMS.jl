@@ -2,6 +2,8 @@ module CMS
 using ...JDR.Common
 using ..RPKI
 using ..ASN
+using ..DER
+using SHA
 
 macro check(name, block)
     fnname = Symbol("check_ASN1_$(name)")
@@ -42,6 +44,60 @@ end
 end
 
 
+@check "eContent" begin
+    tagis_contextspecific(node, 0x00)
+    # optional second pass on the EXPLICIT OCTETSTRING:
+    # if the manifest is BER encoded (instead of DER), the encapsulated ASN1
+    # nodes have already been parsed
+    # in case of BER, the 'first' OCTETSTRING has indef length
+    if ! node[1].tag.len_indef
+        DER.parse_append!(DER.Buf(node[1].tag.value), node[1])
+    else
+        # already parsed, but can we spot the chunked OCTETSTRING case?
+        if length(node[1].children) > 1
+            warn!(node[1], "chunked OCTETSTRINGs ? TODO doublecheck me")
+            #@debug "found multiple children in node[1]"
+            concatted = collect(Iterators.flatten([n.tag.value for n in node[1].children]))
+            buf = DER.Buf(concatted)
+            DER.parse_replace_children!(buf, node[1])
+        end
+
+    end
+    # now, be flexible: for BER mft's, there will be another OCTETSTRING
+    # either way, the eContent only has 1 child
+     
+    checkchildren(node[1], 1)
+    eContent = if node[1,1].tag isa Tag{ASN.OCTETSTRING} 
+        warn!(node[1,1], "nested OCTETSTRING, BER instead of DER")
+        # we need to do a second pass on this then
+        DER.parse_append!(DER.Buf(node[1,1].tag.value), node[1,1])
+        node[1,1,1]
+    elseif node[1,1].tag isa Tag{ASN.SEQUENCE}
+        node[1,1]
+    else
+        @error("unexpected tag $(tagtype(node[1,1])) in $(o.filename)")
+        err!(node[1,1], "unexpected tag $(tagtype(node[1,1]))")
+        return
+    end
+    tpi.eContent = eContent
+end
+
+@check "eContentType" begin
+    # this can only be either a manifest or a ROA, so:
+    if o.object isa MFT
+        tag_OID(node, @oid("1.2.840.113549.1.9.16.1.26"))
+        if tpi.setNicenames
+            node.nicename *= " (MFT)"
+        end
+    elseif o.object isa ROA
+        tag_OID(node, @oid("1.2.840.113549.1.9.16.1.24"))
+        if tpi.setNicenames
+            node.nicename *= " (ROA)"
+        end
+    else
+        err!(node, "unexpected OID for this file")
+    end
+end
 @check "encapContentInfo" begin
 	# EncapsulatedContentInfo ::= SEQUENCE {
 	#  eContentType ContentType,
@@ -49,8 +105,8 @@ end
 
 	tagisa(node, ASN.SEQUENCE)    
 	checkchildren(node, 2)
-
-    tpi.eContent = node[2]
+    check_ASN1_eContentType(o, node[1], tpi)
+    check_ASN1_eContent(o, node[2], tpi)
 end
 
 @check "certificates" begin
@@ -59,6 +115,7 @@ end
         @info "More than one certificate in $(o.filename)?"
     end
     RPKI.X509.check_ASN1_tbsCertificate(o, node[1,1], tpi)
+    tpi.eeSig = node[1,3]
 end
 
 @check "sid" begin
@@ -71,8 +128,41 @@ end
     #end
 end
 
+@check "sa_contentType" begin
+    tagisa(node, ASN.SET)
+    tagisa(node[1], ASN.OID)
+    if o.object isa ROA
+        tag_OID(node[1], @oid("1.2.840.113549.1.9.16.1.24"))
+        if tpi.setNicenames
+            node[1].nicename = "routeOriginAuthz"
+        end
+    elseif o.object isa MFT
+        tag_OID(node[1], @oid("1.2.840.113549.1.9.16.1.26"))
+        if tpi.setNicenames
+            node[1].nicename = "rpkiManifest"
+        end
+    end
+end
+
+@check "messageDigest" begin
+    tagisa(node, ASN.SET)
+end
+
+@check "signingTime" begin
+end
+
 @check "attribute" begin
     tagisa(node, ASN.SEQUENCE)
+    tagisa(node[1], ASN.OID)
+    if node[1].tag.value == @oid("1.2.840.113549.1.9.3")
+        check_ASN1_sa_contentType(o, node[2], tpi)
+    elseif node[1].tag.value == @oid("1.2.840.113549.1.9.4")
+        check_ASN1_messageDigest(o, node[2], tpi)
+    elseif node[1].tag.value == @oid("1.2.840.113549.1.9.5")
+        check_ASN1_signingTime(o, node[2], tpi)
+    else
+        @warn "unknown signedAttribute in $(o.filename)"
+    end
 end
 @check "signedAttrs" begin
     tagis_contextspecific(node, 0x0)
@@ -84,6 +174,14 @@ end
         check_ASN1_attribute(o, attr, tpi)
     end
     # RFC6488: MUST include the content-type and message-digest attributes
+
+    # now hash the signedAttrs for the signature check later on
+    sa_raw = read(o.filename, node.tag.offset_in_file - 1 + node.tag.len + 2 )[node.tag.offset_in_file:end]
+
+    # the hash is calculated based on the DER EXPLICIT SET OF tag, not the
+    # IMPLICIT [0], so we overwrite the first byte:
+    sa_raw[1] = 0x11 | 0b00100000
+    tpi.saHash = bytes2hex(sha256(sa_raw))
 end
 
 @check "signatureAlgorithm" begin
@@ -94,6 +192,19 @@ end
     tagisa(node[2], ASN.NULL)
 end
 
+@check "signature" begin
+    # Decrypt signature using the EE certificate in the ROA 
+    v = powermod(to_bigint(node.tag.value), ASN.value(tpi.ee_rsaExponent.tag), to_bigint(tpi.ee_rsaModulus.tag.value[2:end]))
+    v.size = 4
+    v_str = string(v, base=16, pad=64)
+    if tpi.saHash == v_str
+        node.validated = true
+    else
+        @error "invalid signature for $(o.filename)"
+        err!(o, "Signature invalid")
+        push!(tpi.lookup.invalid_signatures, o)
+    end
+end
 @check "signerInfo" begin
   #  SignerInfo ::= SEQUENCE {
   #	   version CMSVersion,
@@ -110,6 +221,7 @@ end
 	check_ASN1_digestAlgorithm(o, node[3], tpi)
     check_ASN1_signedAttrs(o, node[4], tpi)
     check_ASN1_signatureAlgorithm(o, node[5], tpi)
+    check_ASN1_signature(o, node[6], tpi)
 end
 
 @check "signerInfos" begin
@@ -144,7 +256,6 @@ end
     # eContent specific checks happen in MFT.jl or ROA.jl via the TmpParseInfo
     check_ASN1_certificates(o, node[4], tpi)
     check_ASN1_signerInfos(o, node[5], tpi)
-
 
 end
 

@@ -12,6 +12,7 @@ export retrieve_all, RPKIObject, CER, MFT, CRL, ROA
 export TmpParseInfo
 export print_ASN1
 export AutSysNum, AutSysNumRange, AsIdsOrRanges, covered
+export IPPrefix, IPRange, IPPrefixesOrRanges
 
 #abstract type RPKIObject <: AbstractNode end
 mutable struct RPKIObject{T}
@@ -86,8 +87,22 @@ function covered(aior_a::AsIdsOrRanges, aior_b::AsIdsOrRanges)
    true 
 end
 
-#function issubset(aior_a::AsIdsOrRanges, aior_b::AsIdsOrRanges)
-#end
+const IPPrefix = IPNet
+struct IPRange{T<:IPNet}
+    first::T
+    last::T
+end
+
+const IPPrefixesOrRanges = Vector{Union{IPPrefix, IPRange}}
+covered(p::IPPrefix, p2::IPPrefix) = issubset(p, p2)
+covered(p::IPPrefix, r::IPRange) = p >= r.first && p <= r.last
+covered(::IPv4Net, ::IPv6Net) = false
+covered(::IPv6Net, ::IPv4Net) = false
+covered(::IPv4Net, ::IPRange{IPv6Net}) = false
+covered(::IPv6Net, ::IPRange{IPv4Net}) = false
+function covered(p::IPPrefix, pors::IPPrefixesOrRanges) :: Bool
+    any(covered(p, por) for por in pors)
+end
 
 
 include("Lookup.jl")

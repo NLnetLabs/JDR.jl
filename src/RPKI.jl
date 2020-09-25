@@ -11,6 +11,7 @@ using SHA
 export retrieve_all, RPKIObject, CER, MFT, CRL, ROA
 export TmpParseInfo
 export print_ASN1
+export AutSysNum, AutSysNumRange, AsIdsOrRanges, covered
 
 #abstract type RPKIObject <: AbstractNode end
 mutable struct RPKIObject{T}
@@ -51,20 +52,91 @@ end
 struct AutSysNum
     asn::UInt32
 end
-Base.show(a::AutSysNum) = print(io, "AS", a.asn)
+struct AutSysNumRange
+    first::AutSysNum
+    last::AutSysNum
+end
+const AsIdsOrRanges = Vector{Union{AutSysNum,AutSysNumRange}}
 
+AutSysNumRange(f::Integer, l::Integer) = AutSysNumRange(AutSysNum(f), AutSysNum(l))
+covered(a::AutSysNum, b::AutSysNum) = a.asn == b.asn
+covered(a::AutSysNum, r::AutSysNumRange) = a >= r.first && a <= r.last
+covered(r1::AutSysNumRange, r2::AutSysNumRange) = r1.first >= r2.first && r1.last <= r2.last
+covered(r::AutSysNumRange, a::AutSysNum) = r.first == a.asn == r.last 
+
+import Base.isless
+isless(a::AutSysNum, b::AutSysNum) = a.asn < b.asn
+Base.show(io::IO, a::AutSysNum) = print(io, "AS", a.asn)
+Base.show(io::IO, r::AutSysNumRange) = print(io, "$(r.first)..$(r.last)")
+function covered(a::Union{AutSysNum,AutSysNumRange}, aior::AsIdsOrRanges) 
+    for aor in aior
+        if covered(a, aor)
+            return true
+        end
+    end
+    false
+end
+function covered(aior_a::AsIdsOrRanges, aior_b::AsIdsOrRanges)
+    for aor in aior_a
+        if !(covered(aor, aior_b))
+             return false
+         end
+    end
+
+   true 
+end
+
+#function issubset(aior_a::AsIdsOrRanges, aior_b::AsIdsOrRanges)
+#end
+
+
+include("Lookup.jl")
 mutable struct TmpParseInfo
+    lookup::Lookup
     setNicenames::Bool
+    stripTree::Bool
     subjectKeyIdentifier::Vector{UInt8}
     signerIdentifier::Vector{UInt8}
     eContent::Union{Nothing,ASN.Node}
     signedAttrs::Union{Nothing,ASN.Node}
+    saHash::String
+
+    caCert::Union{Nothing,ASN.Node}
+    ca_rsaExponent::Vector{Integer} # stack
+    ca_rsaModulus::Vector{BigInt} # stack
+    issuer::Vector{String} # stack
+
+    eeCert::Union{Nothing,ASN.Node}
+    ee_rsaExponent::Union{Nothing,ASN.Node}
+    ee_rsaModulus::Union{Nothing,ASN.Node}
+
+    eeSig::Union{Nothing,ASN.Node}
+    #certStack::Vector{RPKI.CER} # to replace all the other separate fields here
+    certStack::Vector{Any} # TODO rearrange include/modules so we can actually use type RPKI.CER here
+    certValid::Union{Nothing,Bool}
+
+    # for ROA:
+    afi::UInt32
 end
-TmpParseInfo(;nicenames::Bool=false) = TmpParseInfo(nicenames,
+TmpParseInfo(;lookup=Lookup(),nicenames::Bool=true,stripTree=false) = TmpParseInfo(lookup, nicenames, stripTree,
                                                     [],
                                                     [],
                                                     nothing,
-                                                    nothing)
+                                                    nothing,
+                                                    "",
+
+                                                    nothing,
+                                                    [],
+                                                    [],
+                                                    [],
+
+                                                    nothing,
+                                                    nothing,
+                                                    nothing,
+                                                    nothing,
+                                                    [],
+                                                    nothing,
+                                                    0x0)
 
 
 #export X509
@@ -72,12 +144,10 @@ include("X509.jl")
 #export CMS
 include("CMS.jl")
 
-include("Lookup.jl")
 include("RPKI/CER.jl")
 include("RPKI/MFT.jl")
 include("RPKI/ROA.jl")
 include("RPKI/CRL.jl")
-
 
 
 function RPKIObject(filename::String)::RPKIObject
@@ -128,8 +198,8 @@ const TAL_URLS = Dict(
     :arin       => "rsync://rpki.arin.net/repository/arin-rpki-ta.cer",
     :lacnic     => "rsync://repository.lacnic.net/rpki/lacnic/rta-lacnic-rpki.cer",
     :ripe       => "rsync://rpki.ripe.net/ta/ripe-ncc-ta.cer",
-    :ripetest   => "rsync://localcert.ripe.net/ta/RIPE-NCC-TA-TEST.cer",
-    :apnictest  => "rsync://rpki-testbed.apnic.net/repository/apnic-rpki-root-iana-origin-test.cer"
+    #:ripetest   => "rsync://localcert.ripe.net/ta/ripe-ncc-pilot.cer",
+    #:apnictest  => "rsync://rpki-testbed.apnic.net/repository/apnic-rpki-root-iana-origin-test.cer"
 )
 REPO_DIR = joinpath(homedir(), ".rpki-cache/repository/rsync")
 
@@ -148,9 +218,11 @@ end
 
 function add_roa!(lookup::Lookup, roanode::RPKINode)
     # add ASN
+    # TODO do we also want to add CERs here?
     @assert roanode.obj isa RPKIObject{ROA}
     roa = roanode.obj.object
     asn = AutSysNum(roa.asid)
+    #@assert asn > 0
     if asn in keys(lookup.ASNs)
         push!(lookup.ASNs[asn], roanode) 
     else
@@ -168,7 +240,7 @@ function add_roa!(lookup::Lookup, roanode::RPKINode)
 end
 
 function process_roa(roa_fn::String, lookup::Lookup, tpi::TmpParseInfo) :: RPKINode
-    o::RPKIObject{ROA} = check_ASN1(RPKIObject{ROA}(roa_fn))
+    o::RPKIObject{ROA} = check_ASN1(RPKIObject{ROA}(roa_fn), tpi)
     roa_node = RPKINode(nothing, [], o)
     if roa_fn in keys(lookup.filenames) 
         push!(lookup.filenames[roa_fn], roa_node)
@@ -178,8 +250,14 @@ function process_roa(roa_fn::String, lookup::Lookup, tpi::TmpParseInfo) :: RPKIN
 
     roa_node.remark_counts_me = count_remarks(o) + count_remarks(o.tree)
 
-    # now strip the ASN tree
-    o.tree = nothing # TODO see comment in process_cer
+    @assert !isnothing(tpi.caCert)
+    @assert !isnothing(tpi.eeCert)
+    check_cert(o, tpi)
+
+    # optionally strip the tree to save memory
+    if tpi.stripTree
+        o.tree = nothing
+    end
     roa_node
 end
 
@@ -196,7 +274,7 @@ function process_mft(mft_fn::String, lookup::Lookup, tpi::TmpParseInfo) :: RPKIN
     #    throw("possible loop in $(mft_fn)" )
     #end
     m::RPKIObject{MFT} = try 
-        check_ASN1(RPKIObject(mft_fn))
+        check_ASN1(RPKIObject{MFT}(mft_fn), tpi)
     catch e 
         showerror(stderr, e, catch_backtrace())
         @error "MFT: error with $(mft_fn)"
@@ -207,9 +285,13 @@ function process_mft(mft_fn::String, lookup::Lookup, tpi::TmpParseInfo) :: RPKIN
 	crl_count = 0
     crl_node = nothing
 
+    check_cert(m, tpi)
+
     me = RPKINode(nothing, [], m)
     me.remark_counts_me = count_remarks(m.tree)
-    m.tree = nothing #FIXME where/do we want to set this to nothing? the idea
+    if tpi.stripTree
+        m.tree = nothing 
+    end
 
     for f in m.object.files
         # check for .cer
@@ -234,6 +316,7 @@ function process_mft(mft_fn::String, lookup::Lookup, tpi::TmpParseInfo) :: RPKIN
                 #    @warn "$(subcer_fn) already seen, loop?"
                 #    throw("possible loop in $(subcer_fn)" )
                 #end
+                #@debug "process_cer from _mft for $(basename(subcer_fn))"
                 cer = process_cer(subcer_fn, lookup, tpi)
                 push!(listed_files, cer)
             catch e
@@ -250,7 +333,8 @@ function process_mft(mft_fn::String, lookup::Lookup, tpi::TmpParseInfo) :: RPKIN
                     #@warn "so now it is $(m.object.loops)"
                 else
                     #throw("MFT->.cer: error with $(subcer_fn): \n $(e)")
-                    throw(e)
+                    rethrow(e)
+                    #showerror(stderr, e, catch_backtrace())
                 end
             end
         elseif ext == ".roa"
@@ -263,7 +347,8 @@ function process_mft(mft_fn::String, lookup::Lookup, tpi::TmpParseInfo) :: RPKIN
                 add_roa!(lookup, roanode)
             catch e
                 #showerror(stderr, e, catch_backtrace())
-                throw("MFT->.roa: error with $(roa_fn): \n $(e)")
+                #throw("MFT->.roa: error with $(roa_fn): \n $(e)")
+                rethrow(e)
             end
         end
 
@@ -271,8 +356,6 @@ function process_mft(mft_fn::String, lookup::Lookup, tpi::TmpParseInfo) :: RPKIN
 
     # returning:
     me.remark_counts_me += count_remarks(m) 
-    #was to clear up memory and reparse the .tree on demand when a /object/ API
-    #call is served, but RPKI.check_signatures needs the .tree's
     add(me, listed_files)
     if mft_fn in keys(lookup.filenames) 
         push!(lookup.filenames[mft_fn], me)
@@ -283,6 +366,7 @@ function process_mft(mft_fn::String, lookup::Lookup, tpi::TmpParseInfo) :: RPKIN
 end
 
 function process_cer(cer_fn::String, lookup::Lookup, tpi::TmpParseInfo) :: RPKINode
+    #@debug "process_cer for $(basename(cer_fn))"
     # now, for each .cer, get the CA Repo and 'sync' again
     if cer_fn in keys(lookup.filenames)
         @warn "$(basename(cer_fn)) already seen, loop?"
@@ -295,6 +379,9 @@ function process_cer(cer_fn::String, lookup::Lookup, tpi::TmpParseInfo) :: RPKIN
     end
 
     o::RPKIObject{CER} = check_ASN1(RPKIObject(cer_fn), tpi)
+    push!(tpi.certStack, o.object)
+    check_cert(o, tpi)
+    check_resources(o, tpi)
 
     (ca_host, ca_path) = split_rsync_url(o.object.pubpoint)
     ca_dir = joinpath(REPO_DIR, ca_host, ca_path)
@@ -302,6 +389,13 @@ function process_cer(cer_fn::String, lookup::Lookup, tpi::TmpParseInfo) :: RPKIN
     mft_host, mft_path = split_rsync_url(o.object.manifest)
     mft_fn = joinpath(REPO_DIR, mft_host, mft_path)
     rpki_node = RPKINode(nothing, [], o)
+
+    if tpi.certValid
+        push!(lookup.valid_certs, rpki_node)
+    else
+        push!(lookup.invalid_certs, rpki_node)
+    end
+    tpi.certValid = nothing
 
     if !(ca_host in keys(lookup.pubpoints))
         lookup.pubpoints[ca_host] = rpki_node
@@ -314,46 +408,53 @@ function process_cer(cer_fn::String, lookup::Lookup, tpi::TmpParseInfo) :: RPKIN
     end
 
     rpki_node.remark_counts_me = count_remarks(o) + count_remarks(o.tree)
-    o.tree = nothing #FIXME see other comment where we set .tree to nothing
+    if tpi.stripTree
+        o.tree = nothing
+    end
 
     #TODO: should we still process through the directory, even though there was
     #no manifest?
     if !isfile(mft_fn)
         @error "manifest $(basename(mft_fn)) not found"
         err!(o, "Manifest file $(basename(mft_fn)) not in repo")
-        return rpki_node
-    end
-    
-    try
-        mft = process_mft(mft_fn, lookup, tpi)
-        add(rpki_node, mft)
-    catch e
-        if e isa LoopError
-            @warn "Loop! between $(basename(e.file1)) and $(basename(e.file2))"
-            #throw(e)
-        else
-            #print(e)
-            throw(e)
+        #return rpki_node
+    else
+
+        try
+            mft = process_mft(mft_fn, lookup, tpi)
+            add(rpki_node, mft)
+        catch e
+            if e isa LoopError
+                @warn "Loop! between $(basename(e.file1)) and $(basename(e.file2))"
+                #throw(e)
+            else
+                #showerror(stderr, e, catch_backtrace())
+                #print(e)
+                rethrow(e)
+            end
         end
+
+        # TODO check RFC on directory structures: do the .mft and .cer have to
+        # reside in the same dir?
+
+        # ireturning:
+        #rpki_node = RPKINode(nothing, [], o)
+        #@debug "process_cer add() on", rpki_node, "\n", mft
+
+        lookup.filenames[cer_fn] = [rpki_node]
     end
-
-    # TODO check RFC on directory structures: do the .mft and .cer have to
-    # reside in the same dir?
-
-    # ireturning:
-    #rpki_node = RPKINode(nothing, [], o)
-    #@debug "process_cer add() on", rpki_node, "\n", mft
-    
-    lookup.filenames[cer_fn] = [rpki_node]
-
+    #@debug "end of process_cer, popping rsaModulus, $(length(tpi.ca_rsaModulus)) left on stack"
+    pop!(tpi.ca_rsaModulus)
+    pop!(tpi.ca_rsaExponent)
+    pop!(tpi.issuer)
+    pop!(tpi.certStack)
     rpki_node
 end
 
-function retrieve_all(tal_urls=TAL_URLS) :: Tuple{RPKINode, Lookup}
+function retrieve_all(tal_urls=TAL_URLS; stripTree::Bool=false, nicenames=true) :: Tuple{RPKINode, Lookup}
     lookup = Lookup()
     root = RPKINode(nothing, [], nothing)
     for (rir, rsync_url) in tal_urls
-        @debug rir
         (hostname, cer_fn) = split_rsync_url(rsync_url)  
         rir_dir = joinpath(REPO_DIR, hostname)
 
@@ -363,11 +464,12 @@ function retrieve_all(tal_urls=TAL_URLS) :: Tuple{RPKINode, Lookup}
 
         # 'rsync' the .cer from the TAL
         ta_cer = joinpath(rir_dir, cer_fn)
+        @debug ta_cer
         @assert isfile(ta_cer)
 
         # start recursing
         try
-            add(root, process_cer(ta_cer, lookup, TmpParseInfo()))
+            add(root, process_cer(ta_cer, lookup, TmpParseInfo(;lookup,stripTree,nicenames)))
         catch e
             # TODO: what is a proper way to record the error, but continue with
             # the rest of the repo?
@@ -376,40 +478,13 @@ function retrieve_all(tal_urls=TAL_URLS) :: Tuple{RPKINode, Lookup}
             
             @error "error while processing $(ta_cer)"
             @error e
+            display(stacktrace(catch_backtrace()))
 
-            #rethrow(e)
-            
+            rethrow(e)
         end
         
     end
-    #@debug "TMP_UNIQ_PP length $(length(TMP_UNIQ_PP))"
-    #[@debug pp for pp in TMP_UNIQ_PP]
     (root, lookup)
-end
-
-function check_signatures(root::RPKINode, lookup::Lookup)
-    # iterate from root to leaves
-    for c in root.children
-        #@debug "Calling check_signature on $(c.obj)"
-        check_signature(c.obj, root, lookup)
-        if !isempty(c.children)
-            check_signatures(c, lookup)
-        end
-    end
-end
-function check_parent_certs(node::RPKINode, lookup::Lookup)
-    # iterate from node to leaves
-    for c in node.children
-        #@debug "Calling check_signature on $(c.obj)"
-        if c.obj.object isa ROA
-            check_cert_chain(c.obj, node, lookup)
-        elseif c.obj.object isa MFT
-            check_cert_chain(c.obj, node, lookup)
-        end
-        if !isempty(c.children)
-            check_parent_certs(c, lookup)
-        end
-    end
 end
 
 #function flatten_to_pubpoints!(tree::RPKINode)
@@ -454,7 +529,7 @@ function _pubpoints!(pp_tree::RPKINode, tree::RPKINode, current_pp::String)
             if this_pp != current_pp
                 # FIXME check if this_pp exists on the same level
                 if this_pp in [c2.obj for c2 in pp_tree.children]
-                    @debug "new but duplicate: $(this_pp)"
+                    #@debug "new but duplicate: $(this_pp)"
                     _pubpoints!(pp_tree, c, this_pp)
                 else
                     new_pp = RPKINode(nothing, [], this_pp)

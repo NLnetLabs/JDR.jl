@@ -111,7 +111,7 @@ function check_tbsCertList(o::RPKIObject{CRL}, node::Node)
 end
 
 
-function check_ASN1(o::RPKIObject{CRL}, tpi::TmpParseInfo=TmpParseInfo()) :: RPKIObject{CRL}
+function check_ASN1(o::RPKIObject{CRL}, tpi::TmpParseInfo) :: RPKIObject{CRL}
     # The certificate should consist of three parts: (RFC5280)
 	# Certificate  ::=  SEQUENCE  {
 	#      tbsCertificate       TBSCertificate,

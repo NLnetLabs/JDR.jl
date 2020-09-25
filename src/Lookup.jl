@@ -5,8 +5,10 @@ struct Lookup
     pubpoints::Dict{String}{RPKINode}
     too_specific::Set{RPKINode}
     invalid_signatures::Set{RPKIObject{T} where T}
+    invalid_certs::Set{RPKINode}
+    valid_certs::Set{RPKINode}
 end
-Lookup() = Lookup(Dict(), Dict(), PrefixTree{RPKINode}(), Dict(), Set(), Set())
+Lookup() = Lookup(Dict(), Dict(), PrefixTree{RPKINode}(), Dict(), Set(), Set(), Set(), Set())
 
 function lookup(l::Lookup, asn::AutSysNum)
     if asn in keys(l.ASNs)
@@ -34,4 +36,14 @@ function lookup(l::Lookup, filename::String)
     else
         nothing
     end
+end
+
+function Base.show(io::IO, l::Lookup)
+    println(io, "filenames: ", length(l.filenames))
+    println(io, "ASNs: ", length(keys(l.ASNs)))
+    println(io, "pubpoints: ", length(l.pubpoints))
+    println(io, "too_specific: ", length(l.too_specific))
+    println(io, "invalid_signatures: ", length(l.invalid_signatures))
+    println(io, "invalid_certs: ", length(l.invalid_certs))
+    println(io, "valid_certs: ", length(l.valid_certs))
 end

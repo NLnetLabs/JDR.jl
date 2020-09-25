@@ -2,13 +2,15 @@ using IPNets
 export tagvalue, tagisa, tag_OID, checkchildren, containAttributeTypeAndValue
 export tagis_contextspecific, check_extensions, get_extensions
 export to_bigint, bitstring_to_v4prefix, bitstring_to_v6prefix
+export bitstrings_to_v4range, bitstrings_to_v6range
 
 # TODO implement optional custom remark::String
 function tagisa(node::Node, t::Type)
     if !(node.tag isa Tag{t})
         warn!(node, "expected this to be a $(nameof(t))")
+        return false
     else
-        node.validated = true
+        return node.validated = true
     end
 end
 function tagis_contextspecific(node::Node, tagnum::UInt8)

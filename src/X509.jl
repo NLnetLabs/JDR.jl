@@ -2,6 +2,14 @@ module X509
 using ..RPKI
 using ..ASN
 using ..DER
+using ...JDR.Common
+
+const MANDATORY_EXTENSIONS = Vector{Pair{Vector{UInt8}, String}}([
+                                                    @oid("2.5.29.14") => "basicConstraints",
+                                                    @oid("2.5.29.15") =>  "keyUsage",
+                                                    @oid("1.3.6.1.5.5.7.1.11") =>  "subjectInfoAccess",
+                                                    @oid("2.5.29.32") =>  "certificatePolicies",
+                                                   ])
 
 macro check(name, block)
     fnname = Symbol("check_ASN1_$(name)")
@@ -13,6 +21,185 @@ macro check(name, block)
           $block
       end
      )
+end
+
+
+
+
+@check "subjectInfoAccess" begin
+    tagisa(node, ASN.OCTETSTRING)
+    # Need a second pass to decode the OCTETSTRING
+    DER.parse_append!(DER.Buf(node.tag.value), node)
+    # MUST be present:
+    # 1.3.6.1.5.5.7.48.5 caRepository
+    # 1.3.6.1.5.5.7.48.10 rpkiManifest
+    # could be present:
+    # 1.3.6.1.5.5.7.48.13 RRDP notification URL
+    tagisa(node[1], ASN.SEQUENCE)
+    carepo_present = false
+    manifest_present = false
+    for access_description in node[1].children
+        tagisa(access_description, ASN.SEQUENCE)
+        checkchildren(access_description, 2)
+        tagisa(access_description[1], ASN.OID)
+        # [6] is a uniformResourceIdentifier, RFC5280
+        tagis_contextspecific(access_description[2], 0x06)
+
+        #now check for the MUST-be presents:
+        if access_description[1].tag.value == @oid "1.3.6.1.5.5.7.48.5"
+            access_description[1].nicename = "caRepository"
+            carepo_present = true
+            if o.object isa CER
+                o.object.pubpoint = String(copy(access_description[2].tag.value))
+            end
+        end
+        if access_description[1].tag.value == @oid "1.3.6.1.5.5.7.48.10"
+            access_description[1].nicename = "rpkiManifest"
+            manifest_present = true
+            if o.object isa CER
+                o.object.manifest = String(copy(access_description[2].tag.value))
+            end
+        end
+        if access_description[1].tag.value == @oid "1.3.6.1.5.5.7.48.13"
+            access_description[1].nicename = "rpkiNotify"
+            if o.object isa CER
+                o.object.rrdp_notify = String(copy(access_description[2].tag.value))
+            end
+        end
+    end
+    if !carepo_present
+        err!(node, "missing essential caRepository")
+    end
+    if !manifest_present
+        err!(node, "missing essential rpkiManifest")
+    end
+end
+
+@check "ipAddrBlocks" begin
+    DER.parse_append!(DER.Buf(node.tag.value), node)
+    node.validated = true
+    tagisa(node[1], ASN.SEQUENCE)
+    for ipaddrblock in node[1].children 
+        tagisa(ipaddrblock, ASN.SEQUENCE)
+        tagisa(ipaddrblock[1], ASN.OCTETSTRING)
+        afi = reinterpret(UInt16, reverse(ipaddrblock[1].tag.value))[1]
+        @assert afi in [1,2] # 1 == IPv4, 2 == IPv6
+        # now, or a NULL -> inherit
+        # or a SEQUENCE OF IPAddressOrRange
+        if typeof(ipaddrblock[2].tag) == Tag{ASN.SEQUENCE}
+            ipaddrblock[2].validated = true
+            # now loop over children of this SEQUENCE OF IPAddressOrRange 
+            for ipaddress_or_range in ipaddrblock[2].children
+
+                #if typeof(ipaddrblock[2, 1].tag) == Tag{ASN.SEQUENCE}
+                if ipaddress_or_range.tag isa Tag{ASN.SEQUENCE}
+
+                    ipaddress_or_range.validated = true
+                    # if child is another SEQUENCE, we have an IPAddressRange
+                    #throw("check me")
+
+                    # we expect two BITSTRINGs in this SEQUENCE
+                    tagisa(ipaddress_or_range[1], ASN.BITSTRING)
+                    tagisa(ipaddress_or_range[2], ASN.BITSTRING)
+                    if afi == 1
+                        (minaddr, maxaddr) = bitstrings_to_v4range(
+                                                ipaddress_or_range[1].tag.value,
+                                                ipaddress_or_range[2].tag.value
+                                              )
+                        push!(o.object.prefixes, (minaddr, maxaddr))
+                    else
+                        (minaddr, maxaddr) = bitstrings_to_v6range(
+                                                ipaddress_or_range[1].tag.value,
+                                                ipaddress_or_range[2].tag.value
+                                              )
+                        push!(o.object.prefixes, (minaddr, maxaddr))
+                    end
+                #elseif typeof(ipaddrblock[2, 1].tag) == Tag{ASN.BITSTRING}
+                elseif ipaddress_or_range.tag isa Tag{ASN.BITSTRING}
+                    ipaddress_or_range.validated = true
+                    # else if it is a BITSTRING, we have an IPAddress (prefix)
+                    #@debug "IPAddress (prefix)"
+                    bitstring = ipaddress_or_range.tag.value
+                    if afi == 1
+                        push!(o.object.prefixes, bitstring_to_v4prefix(bitstring))
+                    else
+                        push!(o.object.prefixes, bitstring_to_v6prefix(bitstring))
+                    end
+                else
+                    @error "unexpected tag number $(ipaddress_or_range.tag.number)"
+                end
+            end # for-loop over SEQUENCE OF IPAddressOrRange
+        elseif ipaddrblock[2].tag isa Tag{ASN.NULL}
+            #throw("implement inherit for ipAdressBlocks")
+            #@error "implement inherit for ipAdressBlocks"
+            if o.object isa CER
+                o.object.inherit_prefixes = true
+            end
+        else
+            warn!(ipaddrblock[2], "expected either SEQUENCE OF or NULL here")
+        end
+    end
+    #IP
+end
+
+@check "autonomousSysIds" begin
+    DER.parse_append!(DER.Buf(node.tag.value), node)
+    node.validated = true
+    tagisa(node[1], ASN.SEQUENCE)
+    for asidentifierchoice in node[1].children 
+        # expect either a [0] or [1]
+        tagisa(asidentifierchoice, ASN.CONTEXT_SPECIFIC)
+        if asidentifierchoice.tag.number == 0
+            #DER.parse_append!(DER.Buf(asidentifierchoice.tag.value), asidentifierchoice)
+            # or NULL (inherit) or SEQUENCE OF ASIdOrRange
+            if asidentifierchoice[1].tag isa Tag{ASN.NULL}
+                if o.object isa CER
+                    o.object.inherit_ASNs = true
+                end
+                #throw("implement inherit for ASIdentifierChoice")
+            elseif asidentifierchoice[1].tag isa Tag{ASN.SEQUENCE}
+                # now it can be or a single INTEGER, or again a SEQUENCE
+                asidentifierchoice[1].validated = true
+                for asid_or_range in asidentifierchoice[1].children
+                    if asid_or_range.tag isa Tag{ASN.INTEGER}
+                        asid = UInt32(ASN.value(asid_or_range.tag))
+                        push!(o.object.ASNs, AutSysNum(asid))
+                        asid_or_range.validated = true
+                    elseif asid_or_range.tag isa Tag{ASN.SEQUENCE}
+                        asmin = UInt32(ASN.value(asid_or_range[1].tag))
+                        asmax = UInt32(ASN.value(asid_or_range[2].tag))
+                        push!(o.object.ASNs, AutSysNumRange(asmin, asmax))
+                        asid_or_range.validated = true
+                        asid_or_range[1].validated = true
+                        asid_or_range[2].validated = true
+                    else
+                        warn!(asid_or_range[1], "unexpected tag number $(asid_or_range[1].tag.number)")
+                    end
+                end #for-loop asid_or_range
+            else
+                warn!(asidentifierchoice[1], "expected either a SEQUENCE OF or a NULL here")
+            end
+
+        elseif asidentifierchoice.tag.number == 1
+            throw("implement rdi for ASIdentifierChoice")
+        else
+            warn!(asidentifierchoice, "Unknown Context-Specific tag number, expecting 0 or 1")
+        end
+    end
+end
+
+function check_ASN1_extension(oid::Vector{UInt8}, o::RPKIObject{T}, node::Node, tpi::TmpParseInfo) where T
+    if oid == @oid("1.3.6.1.5.5.7.1.11")
+        check_ASN1_subjectInfoAccess(o, node, tpi)
+    elseif oid == @oid("1.3.6.1.5.5.7.1.7")
+        check_ASN1_ipAddrBlocks(o, node, tpi)
+    elseif oid == @oid("1.3.6.1.5.5.7.1.8")
+        check_ASN1_autonomousSysIds(o, node, tpi)
+    else
+        @warn "Unknown oid $(oid) passed to X509::check_extension" maxlog=10
+        warn!(node, "Unknown extension")
+    end
+
 end
 
 @check "version"  begin
@@ -61,6 +248,7 @@ end
     issuer = containAttributeTypeAndValue(issuer_set, @oid("2.5.4.3"), ASN.PRINTABLESTRING)
     if o.object isa CER
         o.object.issuer = ASN.value(issuer.tag)
+        push!(tpi.issuer, ASN.value(issuer.tag))
     end
 
 	if length(issuer_set.children) > 1
@@ -103,7 +291,7 @@ end
     tagisa(node, ASN.BITSTRING)
 
     # Now we go for a second pass:
-    # skip the first byte as it will be 0, TODO check this
+    # skip the first byte as it will be 0, 
     # indicating the number if unused bits in the last byte
     
     encaps_buf = DER.Buf(node.tag.value[2:end])
@@ -117,11 +305,25 @@ end
     # RFC6485:the exponent MUST be 65537
     tagvalue(encaps_exponent, ASN.INTEGER, 65_537)
 
-    # TODO check if/why this is always 257
+    # 256 bytes + the first byte indicating unused bits == 257
     @assert encaps_modulus.tag.len == 257
     if o.object isa CER
+        # OLD, maybe remove:
         o.object.rsa_modulus   = to_bigint(encaps_modulus.tag.value[2:end])
         o.object.rsa_exp       = ASN.value(encaps_exponent.tag)
+        # for use in RPKI::process_cer/mft/roa()
+
+        #tpi.ca_rsaModulus   = to_bigint(encaps_modulus.tag.value[2:end])
+        #tpi.ca_rsaExponent  = encaps_exponent
+
+        # attempt to use a stack
+        #@debug ("push, now $(length(tpi.ca_rsaModulus))")
+        push!(tpi.ca_rsaModulus, to_bigint(encaps_modulus.tag.value[2:end]) )
+        push!(tpi.ca_rsaExponent, ASN.value(encaps_exponent.tag))
+    end
+    if o.object isa ROA || o.object isa MFT
+        tpi.ee_rsaExponent = encaps_exponent
+        tpi.ee_rsaModulus = encaps_modulus
     end
 end
 
@@ -131,13 +333,6 @@ end
     check_ASN1_algorithm(o, node[1], tpi)
     check_ASN1_subjectPublicKey(o, node[2], tpi)
 end
-
-const MANDATORY_EXTENSIONS = Vector{Pair{Vector{UInt8}, String}}([
-                                                    @oid("2.5.29.14") => "basicConstraints",
-                                                    @oid("2.5.29.15") =>  "keyUsage",
-                                                    @oid("1.3.6.1.5.5.7.1.11") =>  "subjectInfoAccess",
-                                                    @oid("2.5.29.32") =>  "certificatePolicies",
-                                                   ])
 
 const MANDATORY_EXTENSIONS_SS = Vector{Vector{UInt8}}([
                                                    ])
@@ -255,128 +450,13 @@ const MANDATORY_EXTENSIONS_EE = Vector{Vector{UInt8}}([
 
     # SIA checks # TODO rewrite / split up check_subject_information_access
     #RPKI.check_subject_information_access(o, all_extensions[@oid "1.3.6.1.5.5.7.1.11"])
+    for (oid,node) in all_extensions
+        check_ASN1_extension(oid, o, node, tpi)
+    end
 
     # IP and/or ASN checks:
+    # TODO: make sure we check either or both of IP and ASN extensions are there
     
-    if @oid("1.3.6.1.5.5.7.1.7") in keys(all_extensions)
-        #@debug "got IP extension"
-        subtree = all_extensions[@oid "1.3.6.1.5.5.7.1.7"]
-        DER.parse_append!(DER.Buf(subtree.tag.value), subtree)
-        subtree.validated = true
-        tagisa(subtree[1], ASN.SEQUENCE)
-        for ipaddrblock in subtree[1].children 
-            tagisa(ipaddrblock, ASN.SEQUENCE)
-            tagisa(ipaddrblock[1], ASN.OCTETSTRING)
-            afi = reinterpret(UInt16, reverse(ipaddrblock[1].tag.value))[1]
-            @assert afi in [1,2] # 1 == IPv4, 2 == IPv6
-            # now, or a NULL -> inherit
-            # or a SEQUENCE OF IPAddressOrRange
-            if typeof(ipaddrblock[2].tag) == Tag{ASN.SEQUENCE}
-                ipaddrblock[2].validated = true
-                # now loop over children of this SEQUENCE OF IPAddressOrRange 
-                for ipaddress_or_range in ipaddrblock[2].children
-
-                    #if typeof(ipaddrblock[2, 1].tag) == Tag{ASN.SEQUENCE}
-                    if ipaddress_or_range.tag isa Tag{ASN.SEQUENCE}
-
-                        ipaddress_or_range.validated = true
-                        # if child is another SEQUENCE, we have an IPAddressRange
-                        #throw("check me")
-
-                        # we expect two BITSTRINGs in this SEQUENCE
-                        tagisa(ipaddress_or_range[1], ASN.BITSTRING)
-                        tagisa(ipaddress_or_range[2], ASN.BITSTRING)
-                        if afi == 1
-                            (minaddr, maxaddr) = bitstrings_to_v4range(
-                                                    ipaddress_or_range[1].tag.value,
-                                                    ipaddress_or_range[2].tag.value
-                                                  )
-                            push!(o.object.prefixes, (minaddr, maxaddr))
-                        else
-                            (minaddr, maxaddr) = bitstrings_to_v6range(
-                                                    ipaddress_or_range[1].tag.value,
-                                                    ipaddress_or_range[2].tag.value
-                                                  )
-                            push!(o.object.prefixes, (minaddr, maxaddr))
-                        end
-                    #elseif typeof(ipaddrblock[2, 1].tag) == Tag{ASN.BITSTRING}
-                    elseif ipaddress_or_range.tag isa Tag{ASN.BITSTRING}
-                        ipaddress_or_range.validated = true
-                        # else if it is a BITSTRING, we have an IPAddress (prefix)
-                        #@debug "IPAddress (prefix)"
-                        bitstring = ipaddress_or_range.tag.value
-                        if afi == 1
-                            push!(o.object.prefixes, bitstring_to_v4prefix(bitstring))
-                        else
-                            push!(o.object.prefixes, bitstring_to_v6prefix(bitstring))
-                        end
-                    else
-                        @error "unexpected tag number $(ipaddress_or_range.tag.number)"
-                    end
-                end # for-loop over SEQUENCE OF IPAddressOrRange
-            elseif ipaddrblock[2].tag isa Tag{ASN.NULL}
-                #throw("implement inherit for ipAdressBlocks")
-                #@error "implement inherit for ipAdressBlocks"
-                if o.object isa CER
-                    o.object.inherit_prefixes = true
-                end
-            else
-                warn!(ipaddrblock[2], "expected either SEQUENCE OF or NULL here")
-            end
-        end
-        #IP
-    else
-        @assert @oid("1.3.6.1.5.5.7.1.8") in keys(all_extensions)
-        # TODO properly add remark if this is missing
-    end
-    if @oid("1.3.6.1.5.5.7.1.8") in keys(all_extensions)
-        #@debug "got ASN extension"
-        subtree = all_extensions[@oid "1.3.6.1.5.5.7.1.8"]
-        DER.parse_append!(DER.Buf(subtree.tag.value), subtree)
-        subtree.validated = true
-        tagisa(subtree[1], ASN.SEQUENCE)
-        for asidentifierchoice in subtree[1].children 
-            # expect either a [0] or [1]
-            tagisa(asidentifierchoice, ASN.CONTEXT_SPECIFIC)
-            if asidentifierchoice.tag.number == 0
-                #DER.parse_append!(DER.Buf(asidentifierchoice.tag.value), asidentifierchoice)
-                # or NULL (inherit) or SEQUENCE OF ASIdOrRange
-                if asidentifierchoice[1].tag isa Tag{ASN.NULL}
-                    if o.object isa CER
-                        o.object.inherit_ASNs = true
-                    end
-                    #throw("implement inherit for ASIdentifierChoice")
-                elseif asidentifierchoice[1].tag isa Tag{ASN.SEQUENCE}
-                    # now it can be or a single INTEGER, or again a SEQUENCE
-                    asidentifierchoice[1].validated = true
-                    for asid_or_range in asidentifierchoice[1].children
-                        if asid_or_range.tag isa Tag{ASN.INTEGER}
-                            asid = UInt32(ASN.value(asid_or_range.tag))
-                            push!(o.object.ASNs, asid)
-                            asid_or_range.validated = true
-                        elseif asid_or_range.tag isa Tag{ASN.SEQUENCE}
-                            asmin = UInt32(ASN.value(asid_or_range[1].tag))
-                            asmax = UInt32(ASN.value(asid_or_range[2].tag))
-                            push!(o.object.ASNs, (asmin, asmax))
-                            asid_or_range.validated = true
-                            asid_or_range[1].validated = true
-                            asid_or_range[2].validated = true
-                        else
-                            warn!(asid_or_range[1], "unexpected tag number $(asid_or_range[1].tag.number)")
-                        end
-                    end #for-loop asid_or_range
-                else
-                    warn!(asidentifierchoice[1], "expected either a SEQUENCE OF or a NULL here")
-                end
-
-            elseif asidentifierchoice.tag.number == 1
-                throw("implement rdi for ASIdentifierChoice")
-            else
-                warn!(asidentifierchoice, "Unknown Context-Specific tag number, expecting 0 or 1")
-            end
-        end
-        
-    end
 
     # or:
     # get all extensions (so return the OIDs)
@@ -392,6 +472,16 @@ end
     check_ASN1_subject(o, node[6], tpi)
     check_ASN1_subjectPublicKeyInfo(o, node[7], tpi)
     check_ASN1_extensions(o, node[8], tpi)
+
+    if o.object isa ROA 
+        tpi.eeCert = node
+    elseif o.object isa MFT
+        tpi.eeCert = node
+    elseif o.object isa CER
+        tpi.caCert = node
+    else
+        throw(ErrorException("what object?"))
+    end
 end
 
 

@@ -1,3 +1,5 @@
+export search
+
 struct Lookup
     ASNs::Dict{AutSysNum}{Vector{RPKINode}}
     filenames::Dict{String}{Vector{RPKINode}}
@@ -10,7 +12,7 @@ struct Lookup
 end
 Lookup() = Lookup(Dict(), Dict(), PrefixTree{RPKINode}(), Dict(), Set(), Set(), Set(), Set())
 
-function lookup(l::Lookup, asn::AutSysNum)
+function search(l::Lookup, asn::AutSysNum)
     if asn in keys(l.ASNs)
         l.ASNs[asn]
     else
@@ -19,23 +21,25 @@ function lookup(l::Lookup, asn::AutSysNum)
 end
 
 # FIXME: do we need separate lookup trees for v6 and v4?
-function lookup(l::Lookup, prefix::IPv4Net)
+function search(l::Lookup, prefix::IPv4Net)
     values(firstparent(l.prefix_tree, prefix))
 end
 
-function lookup(l::Lookup, prefix::IPv6Net)
+function search(l::Lookup, prefix::IPv6Net)
     values(firstparent(l.prefix_tree, prefix))
 end
 
 # TODO make a struct, e.g. ObjectFilename, for this?
-function lookup(l::Lookup, filename::String)
-    if filename in keys(l.filenames)
-        res = l.filenames[filename]
-        @assert length(res) == 1
-        first(res)
-    else
-        nothing
-    end
+function search(l::Lookup, filename::String) :: Dict{String}{Vector{RPKINode}}
+    filter(fn->occursin(filename, first(fn)), l.filenames)
+    #get(l.filenames, filename, 
+    #if filename in keys(l.filenames)
+    #    res = l.filenames[filename]
+    #    @assert length(res) == 1
+    #    first(res)
+    #else
+    #    nothing
+    #end
 end
 
 function Base.show(io::IO, l::Lookup)

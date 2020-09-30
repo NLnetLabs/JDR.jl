@@ -294,11 +294,7 @@ end
 function process_roa(roa_fn::String, lookup::Lookup, tpi::TmpParseInfo) :: RPKINode
     o::RPKIObject{ROA} = check_ASN1(RPKIObject{ROA}(roa_fn), tpi)
     roa_node = RPKINode(nothing, [], o)
-    if roa_fn in keys(lookup.filenames) 
-        push!(lookup.filenames[roa_fn], roa_node)
-    else
-        lookup.filenames[roa_fn] = [roa_node]
-    end
+    add_filename!(lookup, roa_fn, roa_node)
 
     roa_node.remark_counts_me = count_remarks(o) + count_remarks(o.tree)
 
@@ -348,8 +344,9 @@ function process_mft(mft_fn::String, lookup::Lookup, tpi::TmpParseInfo) :: RPKIN
     for f in m.object.files
         # check for .cer
         if !isfile(joinpath(mft_dir, f))
-            @error "Missing file: $(f)"
+            @warn "Missing file: $(f)"
             add_missing_file(m.object, f)
+            add_missing_file!(lookup, joinpath(mft_dir, f), me)
             err!(m, "Files listed in manifest missing on file system")
             continue
         end
@@ -409,11 +406,7 @@ function process_mft(mft_fn::String, lookup::Lookup, tpi::TmpParseInfo) :: RPKIN
     # returning:
     me.remark_counts_me += count_remarks(m) 
     add(me, listed_files)
-    if mft_fn in keys(lookup.filenames) 
-        push!(lookup.filenames[mft_fn], me)
-    else
-        lookup.filenames[mft_fn] = [me]
-    end
+    add_filename!(lookup, mft_fn, me)
     me
 end
 
@@ -427,7 +420,7 @@ function process_cer(cer_fn::String, lookup::Lookup, tpi::TmpParseInfo) :: RPKIN
         # placeholder: we need to put something in because when a loop appears
         # in the RPKI repo, this call will never finish so adding it at the end
         # of this function will never happen.
-        lookup.filenames[cer_fn] = [RPKINode(nothing, [], nothing)]
+        add_filename!(lookup, cer_fn, RPKINode(nothing, [], nothing))
     end
 
     o::RPKIObject{CER} = check_ASN1(RPKIObject(cer_fn), tpi)
@@ -468,8 +461,8 @@ function process_cer(cer_fn::String, lookup::Lookup, tpi::TmpParseInfo) :: RPKIN
     #no manifest?
     if !isfile(mft_fn)
         @error "manifest $(basename(mft_fn)) not found"
+        add_missing_file!(lookup, mft_fn, rpki_node)
         err!(o, "Manifest file $(basename(mft_fn)) not in repo")
-        #return rpki_node
     else
 
         try
@@ -493,7 +486,7 @@ function process_cer(cer_fn::String, lookup::Lookup, tpi::TmpParseInfo) :: RPKIN
         #rpki_node = RPKINode(nothing, [], o)
         #@debug "process_cer add() on", rpki_node, "\n", mft
 
-        lookup.filenames[cer_fn] = [rpki_node]
+        add_filename!(lookup, cer_fn, rpki_node)
     end
     #@debug "end of process_cer, popping rsaModulus, $(length(tpi.ca_rsaModulus)) left on stack"
     pop!(tpi.ca_rsaModulus)

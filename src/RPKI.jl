@@ -50,6 +50,43 @@ mutable struct RPKINode
     remark_counts_children::RemarkCounts_t
 end
 
+function root_to(n::RPKINode)
+    res = [n]
+    cur = n
+    while !(isnothing(cur.parent))
+        push!(res, cur.parent)
+        cur = cur.parent
+    end
+    reverse(res)
+end
+
+function Base.show(io::IO, node::RPKINode) 
+    if !(isnothing(node.obj))
+        print(io, "RPKINode [$(nameof(typeof(node.obj).parameters[1]))] $(node.obj.filename)")
+    else
+        print(io, "RPKINode")
+    end
+end
+
+function Base.show(io::IO, m::MIME"text/html", node::RPKINode) 
+    path = root_to(node) 
+    print(io, "<ul>")
+    for p in path[1:end-1]
+        print(io, "<li>")
+        if !(isnothing(p.obj))
+            print(io, "RPKINode [$(nameof(typeof(p.obj).parameters[1]))] $(p.obj.filename) ")
+        else
+            print(io, "RPKINode")
+        end
+        print(io, "</li><ul>")
+    end
+    print(io, "<li>RPKINode [$(nameof(typeof(node.obj).parameters[1]))] <b>$(node.obj.filename)</b></li>")
+    print(io, "<ul><li>$(length(node.children)) child nodes</li></ul>")
+    for _ in length(path)
+        print(io, "</ul>")
+    end
+end
+
 struct AutSysNum
     asn::UInt32
 end

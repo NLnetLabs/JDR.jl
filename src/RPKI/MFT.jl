@@ -11,7 +11,7 @@ function Base.show(io::IO, mft::MFT)
     print(io, "  num of files: ", length(mft.files), '\n')
     if !isnothing(mft.missing_files)
         printstyled(io, "  missing files: \n")
-        for m in mft.missing
+        for m in mft.missing_files
             print(io, "    ", m, '\n')
         end
     end
@@ -75,7 +75,7 @@ end
 @check "nextUpdate" begin
     tagisa(node, ASN.GENTIME)
     try
-        o.object.this_update = gentime_to_ts(node.tag.value)
+        o.object.next_update = gentime_to_ts(node.tag.value)
     catch e
         if e isa ArgumentError
             err!(o, "Could not parase GENTIME in nextUpdate field")

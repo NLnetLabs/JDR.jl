@@ -8,11 +8,10 @@ using IPNets
 using Dates
 using SHA
 
-export retrieve_all, RPKIObject, CER, MFT, CRL, ROA
+export retrieve_all, RPKINode, RPKIObject, CER, MFT, CRL, ROA
 export TmpParseInfo
 export print_ASN1
-export AutSysNum, AutSysNumRange, AsIdsOrRanges, covered
-export IPPrefix, IPRange, IPPrefixesOrRanges
+export @check
 
 #abstract type RPKIObject <: AbstractNode end
 mutable struct RPKIObject{T}
@@ -87,61 +86,6 @@ function Base.show(io::IO, m::MIME"text/html", node::RPKINode)
     end
 end
 
-struct AutSysNum
-    asn::UInt32
-end
-struct AutSysNumRange
-    first::AutSysNum
-    last::AutSysNum
-end
-const AsIdsOrRanges = Vector{Union{AutSysNum,AutSysNumRange}}
-
-AutSysNumRange(f::Integer, l::Integer) = AutSysNumRange(AutSysNum(f), AutSysNum(l))
-covered(a::AutSysNum, b::AutSysNum) = a.asn == b.asn
-covered(a::AutSysNum, r::AutSysNumRange) = a >= r.first && a <= r.last
-covered(r1::AutSysNumRange, r2::AutSysNumRange) = r1.first >= r2.first && r1.last <= r2.last
-covered(r::AutSysNumRange, a::AutSysNum) = r.first == a.asn == r.last 
-
-import Base.isless
-isless(a::AutSysNum, b::AutSysNum) = a.asn < b.asn
-Base.show(io::IO, a::AutSysNum) = print(io, "AS", a.asn)
-Base.show(io::IO, r::AutSysNumRange) = print(io, "$(r.first)..$(r.last)")
-function covered(a::Union{AutSysNum,AutSysNumRange}, aior::AsIdsOrRanges) 
-    for aor in aior
-        if covered(a, aor)
-            return true
-        end
-    end
-    false
-end
-function covered(aior_a::AsIdsOrRanges, aior_b::AsIdsOrRanges)
-    for aor in aior_a
-        if !(covered(aor, aior_b))
-             return false
-         end
-    end
-
-   true 
-end
-
-const IPPrefix = IPNet
-struct IPRange{T<:IPNet}
-    first::T
-    last::T
-end
-
-const IPPrefixesOrRanges = Vector{Union{IPPrefix, IPRange}}
-covered(p::IPPrefix, p2::IPPrefix) = issubset(p, p2)
-covered(p::IPPrefix, r::IPRange) = p >= r.first && p <= r.last
-covered(::IPv4Net, ::IPv6Net) = false
-covered(::IPv6Net, ::IPv4Net) = false
-covered(::IPv4Net, ::IPRange{IPv6Net}) = false
-covered(::IPv6Net, ::IPRange{IPv4Net}) = false
-function covered(p::IPPrefix, pors::IPPrefixesOrRanges) :: Bool
-    any(covered(p, por) for por in pors)
-end
-
-
 include("Lookup.jl")
 mutable struct TmpParseInfo
     lookup::Lookup
@@ -191,15 +135,35 @@ TmpParseInfo(;lookup=Lookup(),nicenames::Bool=true,stripTree=false) = TmpParseIn
                                                     0x0)
 
 
-#export X509
+
+
+macro check(name, block)
+    fnname = esc(Symbol("check_ASN1_$(name)"))
+    :(
+      function $fnname(o::RPKI.RPKIObject{T}, node::Node, tpi::TmpParseInfo) where T
+          if tpi.setNicenames
+              node.nicename = $name
+          end
+          $block
+      end
+     )
+end
+
+
 include("X509.jl")
-#export CMS
 include("CMS.jl")
 
+function check_ASN1(::RPKIObject{T}, ::TmpParseInfo) where T end
+function check_cert(::RPKIObject{T}, ::TmpParseInfo) where T end
+
 include("RPKI/CER.jl")
+using .Cer
 include("RPKI/MFT.jl")
+using .Mft
 include("RPKI/ROA.jl")
+using .Roa
 include("RPKI/CRL.jl")
+using .Crl
 
 
 function RPKIObject(filename::String)::RPKIObject
@@ -345,7 +309,7 @@ function process_mft(mft_fn::String, lookup::Lookup, tpi::TmpParseInfo) :: RPKIN
         # check for .cer
         if !isfile(joinpath(mft_dir, f))
             @warn "Missing file: $(f)"
-            add_missing_file(m.object, f)
+            Mft.add_missing_file(m.object, f)
             add_missing_file!(lookup, joinpath(mft_dir, f), me)
             err!(m, "Files listed in manifest missing on file system")
             continue
@@ -423,7 +387,7 @@ function process_cer(cer_fn::String, lookup::Lookup, tpi::TmpParseInfo) :: RPKIN
         add_filename!(lookup, cer_fn, RPKINode(nothing, [], nothing))
     end
 
-    o::RPKIObject{CER} = check_ASN1(RPKIObject(cer_fn), tpi)
+    o::RPKIObject{CER} = check_ASN1(RPKIObject{CER}(cer_fn), tpi)
     push!(tpi.certStack, o.object)
     check_cert(o, tpi)
     check_resources(o, tpi)

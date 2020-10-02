@@ -1,3 +1,12 @@
+module Mft
+using Dates
+using ...RPKI
+using ...ASN
+using ...RPKI.CMS
+using SHA
+
+export MFT, check_ASN1, check_cert
+
 mutable struct MFT
     files::Vector{String}
     loops::Union{Nothing, Vector{String}}
@@ -32,19 +41,7 @@ function gentime_to_ts(raw::Vector{UInt8})
 end
 
 import Base.length
-length(::Nothing) = 0 #TODO where is this used?
-
-macro check(name, block)
-    fnname = Symbol("check_ASN1_$(name)")
-    :(
-      function $fnname(o::RPKIObject{T}, node::Node, tpi::TmpParseInfo) where T
-          if tpi.setNicenames
-              node.nicename = $name
-          end
-          $block
-      end
-     )
-end
+length(::Nothing) = 0 #used in checkchildren from validation_common.jl
 
 @check "version" begin
     tagis_contextspecific(node, 0x00)
@@ -63,7 +60,7 @@ end
 @check "thisUpdate" begin
     tagisa(node, ASN.GENTIME)
     try
-        o.object.this_update = gentime_to_ts(node.tag.value)
+        o.object.this_update = (@__MODULE__).gentime_to_ts(node.tag.value)
     catch e
         if e isa ArgumentError
             err!(o, "Could not parase GENTIME in thisUpdate field")
@@ -75,7 +72,7 @@ end
 @check "nextUpdate" begin
     tagisa(node, ASN.GENTIME)
     try
-        o.object.next_update = gentime_to_ts(node.tag.value)
+        o.object.next_update = (@__MODULE__).gentime_to_ts(node.tag.value)
     catch e
         if e isa ArgumentError
             err!(o, "Could not parase GENTIME in nextUpdate field")
@@ -115,16 +112,17 @@ end
     # the 'version' is optional, defaults to 0
     offset = 0
     if length(node.children) == 6
-		check_ASN1_version(o, node[1], tpi)
+        (@__MODULE__).check_ASN1_version(o, node[1], tpi)
         offset += 1
 	end
-    check_ASN1_manifestNumber(o, node[offset+1], tpi)
-    check_ASN1_thisUpdate(o, node[offset+2], tpi)
-    check_ASN1_nextUpdate(o, node[offset+3], tpi)
-    check_ASN1_fileHashAlg(o, node[offset+4], tpi)
-    check_ASN1_fileList(o, node[offset+5], tpi)
+    (@__MODULE__).check_ASN1_manifestNumber(o, node[offset+1], tpi)
+    (@__MODULE__).check_ASN1_thisUpdate(o, node[offset+2], tpi)
+    (@__MODULE__).check_ASN1_nextUpdate(o, node[offset+3], tpi)
+    (@__MODULE__).check_ASN1_fileHashAlg(o, node[offset+4], tpi)
+    (@__MODULE__).check_ASN1_fileList(o, node[offset+5], tpi)
 end
 
+import .RPKI:check_ASN1
 function check_ASN1(o::RPKIObject{MFT}, tpi::TmpParseInfo) :: RPKIObject{MFT}
     cmsobject = o.tree
     # CMS, RFC5652:
@@ -143,6 +141,7 @@ function check_ASN1(o::RPKIObject{MFT}, tpi::TmpParseInfo) :: RPKIObject{MFT}
     o
 end
 
+import .RPKI:check_cert
 function check_cert(o::RPKIObject{MFT}, tpi::TmpParseInfo)
     # hash tpi.eeCert
     @assert !isnothing(tpi.eeCert)
@@ -161,4 +160,6 @@ function check_cert(o::RPKIObject{MFT}, tpi::TmpParseInfo)
 
     # compare subject with SKI
     # TODO
+end
+
 end

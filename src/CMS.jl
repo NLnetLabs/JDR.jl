@@ -5,18 +5,6 @@ using ..ASN
 using ..DER
 using SHA
 
-macro check(name, block)
-    fnname = Symbol("check_ASN1_$(name)")
-    :(
-      function $fnname(o::RPKIObject{T}, node::Node, tpi::TmpParseInfo) where T
-          if tpi.setNicenames
-              node.nicename = $name
-          end
-          $block
-      end
-     )
-end
-
 @check "contentType" begin
     tag_OID(node, @oid("1.2.840.113549.1.7.2"))
 end
@@ -40,7 +28,7 @@ end
 @check "digestAlgorithms" begin
     tagisa(node, ASN.SET)
     checkchildren(node, 1)
-    check_ASN1_digestAlgorithm(o, node[1], tpi)
+    (@__MODULE__).check_ASN1_digestAlgorithm(o, node[1], tpi)
 end
 
 
@@ -105,8 +93,8 @@ end
 
 	tagisa(node, ASN.SEQUENCE)    
 	checkchildren(node, 2)
-    check_ASN1_eContentType(o, node[1], tpi)
-    check_ASN1_eContent(o, node[2], tpi)
+    (@__MODULE__).check_ASN1_eContentType(o, node[1], tpi)
+    (@__MODULE__).check_ASN1_eContent(o, node[2], tpi)
 end
 
 @check "certificates" begin
@@ -155,11 +143,11 @@ end
     tagisa(node, ASN.SEQUENCE)
     tagisa(node[1], ASN.OID)
     if node[1].tag.value == @oid("1.2.840.113549.1.9.3")
-        check_ASN1_sa_contentType(o, node[2], tpi)
+        (@__MODULE__).check_ASN1_sa_contentType(o, node[2], tpi)
     elseif node[1].tag.value == @oid("1.2.840.113549.1.9.4")
-        check_ASN1_messageDigest(o, node[2], tpi)
+        (@__MODULE__).check_ASN1_messageDigest(o, node[2], tpi)
     elseif node[1].tag.value == @oid("1.2.840.113549.1.9.5")
-        check_ASN1_signingTime(o, node[2], tpi)
+        (@__MODULE__).check_ASN1_signingTime(o, node[2], tpi)
     else
         @warn "unknown signedAttribute in $(o.filename)"
     end
@@ -171,7 +159,7 @@ end
     tpi.signedAttrs = node
     # IMPLICIT SET OF Attributes (1..MAX)
     for attr in node.children
-        check_ASN1_attribute(o, attr, tpi)
+        (@__MODULE__).check_ASN1_attribute(o, attr, tpi)
     end
     # RFC6488: MUST include the content-type and message-digest attributes
 
@@ -216,12 +204,12 @@ end
   #	   unsignedAttrs [1] IMPLICIT UnsignedAttributes OPTIONAL }
 
     tagisa(node, ASN.SEQUENCE)
-	check_ASN1_version(o, node[1], tpi)
-	check_ASN1_sid(o, node[2], tpi)
-	check_ASN1_digestAlgorithm(o, node[3], tpi)
-    check_ASN1_signedAttrs(o, node[4], tpi)
-    check_ASN1_signatureAlgorithm(o, node[5], tpi)
-    check_ASN1_signature(o, node[6], tpi)
+    (@__MODULE__).check_ASN1_version(o, node[1], tpi)
+    (@__MODULE__).check_ASN1_sid(o, node[2], tpi)
+    (@__MODULE__).check_ASN1_digestAlgorithm(o, node[3], tpi)
+    (@__MODULE__).check_ASN1_signedAttrs(o, node[4], tpi)
+    (@__MODULE__).check_ASN1_signatureAlgorithm(o, node[5], tpi)
+    (@__MODULE__).check_ASN1_signature(o, node[6], tpi)
 end
 
 @check "signerInfos" begin
@@ -230,7 +218,7 @@ end
         @info "More than one signerInfo in $(o.filename)"
     end
     for si in node.children
-        check_ASN1_signerInfo(o, si, tpi)
+        (@__MODULE__).check_ASN1_signerInfo(o, si, tpi)
     end
 end
 
@@ -250,19 +238,19 @@ end
     tagisa(node, ASN.SEQUENCE)
     checkchildren(node, 5)
 
-    check_ASN1_version(o, node[1], tpi)
-    check_ASN1_digestAlgorithms(o, node[2], tpi)
-    check_ASN1_encapContentInfo(o, node[3], tpi)
+    (@__MODULE__).check_ASN1_version(o, node[1], tpi)
+    (@__MODULE__).check_ASN1_digestAlgorithms(o, node[2], tpi)
+    (@__MODULE__).check_ASN1_encapContentInfo(o, node[3], tpi)
     # eContent specific checks happen in MFT.jl or ROA.jl via the TmpParseInfo
-    check_ASN1_certificates(o, node[4], tpi)
-    check_ASN1_signerInfos(o, node[5], tpi)
+    (@__MODULE__).check_ASN1_certificates(o, node[4], tpi)
+    (@__MODULE__).check_ASN1_signerInfos(o, node[5], tpi)
 
 end
 
 @check "content" begin
     tagis_contextspecific(node, 0x0)
 	 
-    check_ASN1_signedData(o, node[1], tpi)
+    (@__MODULE__).check_ASN1_signedData(o, node[1], tpi)
 end
 
 end # end module

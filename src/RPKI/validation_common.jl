@@ -206,7 +206,7 @@ function bitstring_to_v6prefix(raw::Vector{UInt8}) :: IPv6Net
     return IPv6Net(addr << (128 - bits), bits)
 end
 
-function bitstrings_to_v4range(raw_min::Vector{UInt8}, raw_max::Vector{UInt8})
+function bitstrings_to_v4range(raw_min::Vector{UInt8}, raw_max::Vector{UInt8}) :: Tuple{IPv4Net, IPv4Net}
     #min_addr:
     unused = raw_min[1]
     numbytes = length(raw_min) - 1 - 1 # -1 unused byte, -1 because we correct for it in `bits =` below
@@ -225,7 +225,7 @@ function bitstrings_to_v4range(raw_min::Vector{UInt8}, raw_max::Vector{UInt8})
     (min_addr, max_addr)
 end
 
-function bitstrings_to_v6range(raw_min::Vector{UInt8}, raw_max::Vector{UInt8})
+function bitstrings_to_v6range(raw_min::Vector{UInt8}, raw_max::Vector{UInt8}) :: Tuple{IPv6Net, IPv6Net}
     #min_addr:
     unused = raw_min[1]
     numbytes = length(raw_min) - 1 - 1 # -1 unused byte, -1 because we correct for it in `bits =` below

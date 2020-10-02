@@ -1,8 +1,9 @@
 module X509
+using ...JDR.Common
 using ..RPKI
 using ..ASN
 using ..DER
-using ...JDR.Common
+using IPNets
 
 const MANDATORY_EXTENSIONS = Vector{Pair{Vector{UInt8}, String}}([
                                                     @oid("2.5.29.14") => "basicConstraints",
@@ -10,20 +11,6 @@ const MANDATORY_EXTENSIONS = Vector{Pair{Vector{UInt8}, String}}([
                                                     @oid("1.3.6.1.5.5.7.1.11") =>  "subjectInfoAccess",
                                                     @oid("2.5.29.32") =>  "certificatePolicies",
                                                    ])
-
-macro check(name, block)
-    fnname = Symbol("check_ASN1_$(name)")
-    :(
-      function $fnname(o::RPKIObject{T}, node::Node, tpi::TmpParseInfo) where T
-          if tpi.setNicenames
-              node.nicename = $name
-          end
-          $block
-      end
-     )
-end
-
-
 
 
 @check "subjectInfoAccess" begin
@@ -106,13 +93,13 @@ end
                                                 ipaddress_or_range[1].tag.value,
                                                 ipaddress_or_range[2].tag.value
                                               )
-                        push!(o.object.prefixes, (minaddr, maxaddr))
+                        push!(o.object.prefixes, IPRange{IPv4Net}(minaddr, maxaddr))
                     else
                         (minaddr, maxaddr) = bitstrings_to_v6range(
                                                 ipaddress_or_range[1].tag.value,
                                                 ipaddress_or_range[2].tag.value
                                               )
-                        push!(o.object.prefixes, (minaddr, maxaddr))
+                        push!(o.object.prefixes, IPRange{IPv6Net}(minaddr, maxaddr))
                     end
                 #elseif typeof(ipaddrblock[2, 1].tag) == Tag{ASN.BITSTRING}
                 elseif ipaddress_or_range.tag isa Tag{ASN.BITSTRING}
@@ -330,8 +317,8 @@ end
 @check "subjectPublicKeyInfo" begin
     # AlgorithmIdentifier + BITSTRING
     tagisa(node, ASN.SEQUENCE)
-    check_ASN1_algorithm(o, node[1], tpi)
-    check_ASN1_subjectPublicKey(o, node[2], tpi)
+    (@__MODULE__).check_ASN1_algorithm(o, node[1], tpi)
+    (@__MODULE__).check_ASN1_subjectPublicKey(o, node[2], tpi)
 end
 
 const MANDATORY_EXTENSIONS_SS = Vector{Vector{UInt8}}([
@@ -435,7 +422,7 @@ const MANDATORY_EXTENSIONS_EE = Vector{Vector{UInt8}}([
     # yet, we mark it in the check_ASN1_ functions/macros
 
     #check_extensions(node, mandatory_extensions)
-    check_extensions(node, MANDATORY_EXTENSIONS)
+    check_extensions(node, (@__MODULE__).MANDATORY_EXTENSIONS)
     all_extensions = get_extensions(node)
 
     # Resource certificate MUST have either or both of the IP and ASN Resources
@@ -451,7 +438,7 @@ const MANDATORY_EXTENSIONS_EE = Vector{Vector{UInt8}}([
     # SIA checks # TODO rewrite / split up check_subject_information_access
     #RPKI.check_subject_information_access(o, all_extensions[@oid "1.3.6.1.5.5.7.1.11"])
     for (oid,node) in all_extensions
-        check_ASN1_extension(oid, o, node, tpi)
+        (@__MODULE__).check_ASN1_extension(oid, o, node, tpi)
     end
 
     # IP and/or ASN checks:
@@ -464,14 +451,14 @@ const MANDATORY_EXTENSIONS_EE = Vector{Vector{UInt8}}([
 end
 
 @check "tbsCertificate" begin
-    check_ASN1_version(o, node[1], tpi)
-    check_ASN1_serialNumber(o, node[2], tpi)
-    check_ASN1_signature(o, node[3], tpi)
-    check_ASN1_issuer(o, node[4], tpi)
-    check_ASN1_validity(o, node[5], tpi)
-    check_ASN1_subject(o, node[6], tpi)
-    check_ASN1_subjectPublicKeyInfo(o, node[7], tpi)
-    check_ASN1_extensions(o, node[8], tpi)
+    (@__MODULE__).check_ASN1_version(o, node[1], tpi)
+    (@__MODULE__).check_ASN1_serialNumber(o, node[2], tpi)
+    (@__MODULE__).check_ASN1_signature(o, node[3], tpi)
+    (@__MODULE__).check_ASN1_issuer(o, node[4], tpi)
+    (@__MODULE__).check_ASN1_validity(o, node[5], tpi)
+    (@__MODULE__).check_ASN1_subject(o, node[6], tpi)
+    (@__MODULE__).check_ASN1_subjectPublicKeyInfo(o, node[7], tpi)
+    (@__MODULE__).check_ASN1_extensions(o, node[8], tpi)
 
     if o.object isa ROA 
         tpi.eeCert = node

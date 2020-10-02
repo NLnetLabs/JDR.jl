@@ -1,3 +1,11 @@
+module Crl
+
+using ...Common
+using ...RPKI
+using ...ASN
+
+export CRL, check_ASN1
+
 struct CRL 
     revoked_serials::Vector{Integer}
 end
@@ -127,7 +135,9 @@ function check_ASN1(o::RPKIObject{CRL}, tpi::TmpParseInfo) :: RPKIObject{CRL}
 end
 
 
-function check_signature(o::RPKIObject{CRL}, parent::RPKINode, lookup::Lookup) :: RPKIObject{CRL}
+function check_signature(o::RPKIObject{CRL}, parent::RPKINode, lookup::RPKI.Lookup) :: RPKIObject{CRL}
     @warn "in check_signature for CRL, not implemented yet" maxlog=5
     o
 end
+
+end # module

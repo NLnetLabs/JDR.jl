@@ -1,3 +1,15 @@
+module Roa
+
+using ...Common
+using ...RPKI.CMS
+using ...RPKI
+using ...ASN
+
+using IPNets
+
+export ROA, check_ASN1
+
+
 struct VRP{AFI<:IPNet}
     prefix::AFI
     maxlength::Integer
@@ -6,12 +18,12 @@ end
 mutable struct ROA
     asid::Integer
     vrps::Vector{VRP}
-    prefixes::Vector{Union{IPNet, Tuple{IPNet, IPNet}}}
+    prefixes::IPPrefixesOrRanges # on the EE cert
     rsa_modulus::BigInt
     rsa_exp::Int
     local_eContent_hash::String
 end
-ROA() = ROA(0, [], [], 0, 0, "EMPTY_LOCAL_HASH")
+ROA() = ROA(0, [], IPPrefixesOrRanges(), 0, 0, "EMPTY_LOCAL_HASH")
 
 function Base.show(io::IO, roa::ROA)
     print(io, "  ASID: ", roa.asid, "\n")
@@ -71,18 +83,6 @@ function rawv6_to_roa(o::RPKIObject{ROA}, roa_ipaddress::Node) :: RPKIObject{ROA
     o
 end
 
-macro check(name, block)
-    fnname = Symbol("check_ASN1_$(name)")
-    eval(quote
-      function $fnname(o::RPKIObject{T}, node::Node, tpi::TmpParseInfo) where T
-          if tpi.setNicenames
-              node.nicename = $name
-          end
-          $block
-      end
-  end)
-end
-
 @check "version" begin
     tagis_contextspecific(node, 0x00)
     # EXPLICIT tagging, so the version node be in a child
@@ -123,7 +123,7 @@ end
             maxlength = node[2].tag.value[1]
         end
     end
-    push!(o.object.vrps, VRP(prefix, maxlength))
+    push!(o.object.vrps, (@__MODULE__).VRP(prefix, maxlength))
 end
 @check "ROAIPAddressFamily" begin
         tagisa(node, ASN.SEQUENCE)
@@ -148,7 +148,7 @@ end
             node[1].nicename = "addressFamily: IPv6"
         end
         for roa_ipaddress in addresses.children
-            check_ASN1_ROAIPAddress(o, roa_ipaddress, tpi)
+            (@__MODULE__).check_ASN1_ROAIPAddress(o, roa_ipaddress, tpi)
         end
 end
 @check "ipAddrBlocks" begin
@@ -158,7 +158,7 @@ end
         err!(node, "there should be at least one ROAIPAddressFamily here")
     end
     for roa_afi in node.children
-        check_ASN1_ROAIPAddressFamily(o, roa_afi, tpi)
+        (@__MODULE__).check_ASN1_ROAIPAddressFamily(o, roa_afi, tpi)
     end
 end
 
@@ -171,10 +171,11 @@ end
 		check_ASN1_version(o, node[1], tpi)
         offset += 1
 	end
-    check_ASN1_asID(o, node[offset+1], tpi)
-    check_ASN1_ipAddrBlocks(o, node[offset+2], tpi)
+    (@__MODULE__).check_ASN1_asID(o, node[offset+1], tpi)
+    (@__MODULE__).check_ASN1_ipAddrBlocks(o, node[offset+2], tpi)
 end
 
+import .RPKI:check_ASN1
 function check_ASN1(o::RPKIObject{ROA}, tpi::TmpParseInfo) :: RPKIObject{ROA}
     cmsobject = o.tree
     # CMS, RFC5652:
@@ -212,3 +213,5 @@ function check_cert(o::RPKIObject{ROA}, tpi::TmpParseInfo)
     # compare subject with SKI
     # TODO
 end
+
+end # module

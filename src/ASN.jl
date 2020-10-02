@@ -161,42 +161,6 @@ function value(t::Tag{OCTETSTRING}) where {T}
 end
 
 
-macro oid(s)
-    ints = map(i -> parse(UInt32, i), split(s, '.'))
-    res = UInt8[]
-    for i in ints
-        if i >= 128
-            tmp = UInt8[0x00]
-            idx = 1
-            while i >= 128 # equal to i & 0x80 == 0x80
-                tmp[idx] +=  i % 128
-                push!(tmp, 0x80) # next byte, set the first bit
-                i >>= 7
-                idx += 1
-            end
-            tmp[idx] +=  i % 128
-            Base.append!(res, reverse(tmp))
-
-        else
-            push!(res, convert(UInt8, i))
-        end
-    end
-    # now create the first byte from the first two identifiers
-    res2::Vector{UInt8} = if res[1] == 0x01
-        #res2::Vector{UInt8} = 
-        vcat(res[2] + 40, res[3:end])
-    elseif res[1] == 0x02
-        #res2::Vector{UInt8} = 
-        vcat(res[2] + 80, res[3:end])
-    elseif res[1] == 0x03
-        #res2::Vector{UInt8} = 
-        vcat(res[2] + 120, res[3:end])
-    end
-    
-    res2
-end
-
-
 function value(t::Tag{OID}) 
     if t.class == 0x02 # context specific TODO find documentation for this
         return String(copy(t.value))

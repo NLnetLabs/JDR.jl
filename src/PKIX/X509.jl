@@ -54,11 +54,13 @@ const MANDATORY_EXTENSIONS = Vector{Pair{Vector{UInt8}, String}}([
             end
         end
     end
-    if !carepo_present
-        err!(node, "missing essential caRepository")
-    end
-    if !manifest_present
-        err!(node, "missing essential rpkiManifest")
+    if o.object isa CER
+        if !carepo_present
+            err!(node, "missing essential caRepository")
+        end
+        if !manifest_present
+            err!(node, "missing essential rpkiManifest")
+        end
     end
 end
 

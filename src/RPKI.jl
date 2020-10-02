@@ -150,8 +150,9 @@ macro check(name, block)
 end
 
 
-include("PKIX/X509.jl")
-include("PKIX/CMS.jl")
+include("PKIX/PKIX.jl")
+using .PKIX.X509
+using .PKIX.CMS
 
 function check_ASN1(::RPKIObject{T}, ::TmpParseInfo) where T end
 function check_cert(::RPKIObject{T}, ::TmpParseInfo) where T end

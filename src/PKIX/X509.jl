@@ -1,8 +1,8 @@
 module X509
-using ...JDR.Common
-using ..RPKI
-using ..ASN
-using ..DER
+using .....JDR.Common
+using ....RPKI
+using ....ASN
+using ....DER
 using IPNets
 
 const MANDATORY_EXTENSIONS = Vector{Pair{Vector{UInt8}, String}}([

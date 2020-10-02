@@ -288,7 +288,7 @@ function print_node(n::Node, ps::PrintState)
     end
     if ps.traverse
         inc(ps)
-        println(ps.indent, n)
+        println(n)
         ps.indent += 1
         if !isnothing(n.children)
             for (i, c) in enumerate(n.children)

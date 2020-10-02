@@ -473,6 +473,7 @@ function retrieve_all(tal_urls=TAL_URLS; stripTree::Bool=false, nicenames=true) 
 
         # 'rsync' the .cer from the TAL
         ta_cer = joinpath(rir_dir, cer_fn)
+        @info "Processing $(rir)"
         @debug ta_cer
         @assert isfile(ta_cer)
 

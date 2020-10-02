@@ -3,10 +3,10 @@ module JDR
 include("Common.jl")
 using .Common
 
-include("ASN.jl")
+include("ASN1/ASN.jl")
 
 export DER
-include("DER.jl")
+include("ASN1/DER.jl")
 
 include("PrefixTrees.jl")
 using .PrefixTrees

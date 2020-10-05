@@ -1,9 +1,11 @@
 module X509
 using .....JDR.Common
-using ....RPKI
+using ....JDR.RPKICommon
 using ....ASN
 using ....DER
 using IPNets
+
+import ...PKIX.@check
 
 const MANDATORY_EXTENSIONS = Vector{Pair{Vector{UInt8}, String}}([
                                                     @oid("2.5.29.14") => "basicConstraints",

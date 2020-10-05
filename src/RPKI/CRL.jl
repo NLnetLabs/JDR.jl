@@ -4,6 +4,9 @@ using ...Common
 using ...RPKI
 using ...ASN
 
+using ...RPKICommon
+using ...PKIX
+
 export CRL, check_ASN1
 
 struct CRL 
@@ -118,7 +121,7 @@ function check_tbsCertList(o::RPKIObject{CRL}, node::Node)
     end
 end
 
-
+import .RPKI:check_ASN1
 function check_ASN1(o::RPKIObject{CRL}, tpi::TmpParseInfo) :: RPKIObject{CRL}
     # The certificate should consist of three parts: (RFC5280)
 	# Certificate  ::=  SEQUENCE  {
@@ -135,9 +138,9 @@ function check_ASN1(o::RPKIObject{CRL}, tpi::TmpParseInfo) :: RPKIObject{CRL}
 end
 
 
-function check_signature(o::RPKIObject{CRL}, parent::RPKINode, lookup::RPKI.Lookup) :: RPKIObject{CRL}
-    @warn "in check_signature for CRL, not implemented yet" maxlog=5
-    o
-end
+#function check_signature(o::RPKIObject{CRL}, parent::RPKINode, lookup::RPKI.Lookup) :: RPKIObject{CRL}
+#    @warn "in check_signature for CRL, not implemented yet" maxlog=5
+#    o
+#end
 
 end # module

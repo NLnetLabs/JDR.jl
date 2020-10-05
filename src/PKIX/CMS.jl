@@ -1,12 +1,14 @@
 module CMS
-using .....JDR.Common
-using ....RPKI
-using ....ASN
-using ....DER
-using SHA
+using ...JDR.Common
+using ...JDR.RPKICommon
+using ...JDR.ASN
+using ...JDR.DER
+using ..X509
+
+import ...PKIX.@check
 
 @check "contentType" begin
-    tag_OID(node, @oid("1.2.840.113549.1.7.2"))
+    ASN.tag_OID(node, @oid("1.2.840.113549.1.7.2"))
 end
 
 @check "version"  begin
@@ -102,7 +104,7 @@ end
     if length(node[1].children) > 3
         @info "More than one certificate in $(o.filename)?"
     end
-    RPKI.X509.check_ASN1_tbsCertificate(o, node[1,1], tpi)
+    X509.check_ASN1_tbsCertificate(o, node[1,1], tpi)
     tpi.eeSig = node[1,3]
 end
 

@@ -1,4 +1,7 @@
+using IPNets
+using ...PrefixTrees
 export search
+export add_filename!, add_missing_filename!
 
 struct Lookup
     ASNs::Dict{AutSysNum}{Vector{RPKINode}}
@@ -16,7 +19,7 @@ Lookup() = Lookup(Dict(), Dict(), Dict(), PrefixTree{RPKINode}(), Dict(), Set(),
 function add_filename!(l::Lookup, fn::String, node::RPKINode)
     l.filenames[fn] = node
 end
-function add_missing_file!(l::Lookup, fn::String, node::RPKINode)
+function add_missing_filename!(l::Lookup, fn::String, node::RPKINode)
     l.missing_files[fn] = node
 end
 

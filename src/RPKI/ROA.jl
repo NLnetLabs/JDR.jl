@@ -1,29 +1,19 @@
 module Roa
+using SHA
 
 using ...Common
-using ...RPKI.CMS
+using ...PKIX.CMS
 using ...RPKI
+using ...RPKICommon
 using ...ASN
 
 using IPNets
 
-export ROA, check_ASN1
+import ...PKIX.@check
 
+#export ROA, check_ASN1
+export check_ASN1
 
-struct VRP{AFI<:IPNet}
-    prefix::AFI
-    maxlength::Integer
-end
-
-mutable struct ROA
-    asid::Integer
-    vrps::Vector{VRP}
-    prefixes::IPPrefixesOrRanges # on the EE cert
-    rsa_modulus::BigInt
-    rsa_exp::Int
-    local_eContent_hash::String
-end
-ROA() = ROA(0, [], IPPrefixesOrRanges(), 0, 0, "EMPTY_LOCAL_HASH")
 
 function Base.show(io::IO, roa::ROA)
     print(io, "  ASID: ", roa.asid, "\n")

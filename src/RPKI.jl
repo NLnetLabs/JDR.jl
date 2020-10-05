@@ -1,158 +1,29 @@
 module RPKI
 using ...JDR.Common
-using ..ASN
-using ..DER
+using ...JDR.RPKICommon
+using ...JDR.ASN
+using ...JDR.DER
 using ..PrefixTrees
 
 using IPNets
 using Dates
 using SHA
 
-export retrieve_all, RPKINode, RPKIObject, CER, MFT, CRL, ROA
+export RPKINode, RPKIObject # reexport from RPKI.Common
+export retrieve_all, CER, MFT, CRL, ROA
 export TmpParseInfo
 export print_ASN1
-export @check
-
-#abstract type RPKIObject <: AbstractNode end
-mutable struct RPKIObject{T}
-    filename::String
-    tree::Union{Nothing, Node}
-    object::T
-    remarks::Union{Nothing, Vector{Remark}}
-    remarks_tree::Union{Nothing, Vector{Remark}}
-end
+#export @check
 
 
-function Base.show(io::IO, obj::RPKIObject{T}) where T
-    print(io, "RPKIObject type: ", nameof(typeof(obj).parameters[1]), '\n')
-    print(io, "filename: ", basename(obj.filename), '\n')
-    print(io, obj.object)
-end
+#include("RPKI/Common.jl")
 
-function print_ASN1(o::RPKIObject{T}; max_lines=0) where T
-    ASN.print_node(o.tree; traverse=true, max_lines)
-end
-
-
-function RPKIObject{T}(filename::String, tree::Node) where T 
-    RPKIObject{T}(filename, tree, T(), nothing, nothing)
-end
-
-# TODO:
-# - can (do we need to) we further optimize/parametrize RPKINode on .obj?
-mutable struct RPKINode
-    parent::Union{Nothing, RPKINode}
-    children::Vector{RPKINode}
-    obj::Union{Nothing, RPKIObject, String}
-    # remark_counts_me could be a wrapper to the obj.remark_counts_me 
-    remark_counts_me::RemarkCounts_t
-    remark_counts_children::RemarkCounts_t
-end
-
-function root_to(n::RPKINode)
-    res = [n]
-    cur = n
-    while !(isnothing(cur.parent))
-        push!(res, cur.parent)
-        cur = cur.parent
-    end
-    reverse(res)
-end
-
-function Base.show(io::IO, node::RPKINode) 
-    if !(isnothing(node.obj))
-        print(io, "RPKINode [$(nameof(typeof(node.obj).parameters[1]))] $(node.obj.filename)")
-    else
-        print(io, "RPKINode")
-    end
-end
-
-function Base.show(io::IO, m::MIME"text/html", node::RPKINode) 
-    path = root_to(node) 
-    print(io, "<ul>")
-    for p in path[1:end-1]
-        print(io, "<li>")
-        if !(isnothing(p.obj))
-            print(io, "RPKINode [$(nameof(typeof(p.obj).parameters[1]))] $(p.obj.filename) ")
-        else
-            print(io, "RPKINode")
-        end
-        print(io, "</li><ul>")
-    end
-    print(io, "<li>RPKINode [$(nameof(typeof(node.obj).parameters[1]))] <b>$(node.obj.filename)</b></li>")
-    print(io, "<ul><li>$(length(node.children)) child nodes</li></ul>")
-    for _ in length(path)
-        print(io, "</ul>")
-    end
-end
-
-include("Lookup.jl")
-mutable struct TmpParseInfo
-    lookup::Lookup
-    setNicenames::Bool
-    stripTree::Bool
-    subjectKeyIdentifier::Vector{UInt8}
-    signerIdentifier::Vector{UInt8}
-    eContent::Union{Nothing,ASN.Node}
-    signedAttrs::Union{Nothing,ASN.Node}
-    saHash::String
-
-    caCert::Union{Nothing,ASN.Node}
-    ca_rsaExponent::Vector{Integer} # stack
-    ca_rsaModulus::Vector{BigInt} # stack
-    issuer::Vector{String} # stack
-
-    eeCert::Union{Nothing,ASN.Node}
-    ee_rsaExponent::Union{Nothing,ASN.Node}
-    ee_rsaModulus::Union{Nothing,ASN.Node}
-
-    eeSig::Union{Nothing,ASN.Node}
-    #certStack::Vector{RPKI.CER} # to replace all the other separate fields here
-    certStack::Vector{Any} # TODO rearrange include/modules so we can actually use type RPKI.CER here
-    certValid::Union{Nothing,Bool}
-
-    # for ROA:
-    afi::UInt32
-end
-TmpParseInfo(;lookup=Lookup(),nicenames::Bool=true,stripTree=false) = TmpParseInfo(lookup, nicenames, stripTree,
-                                                    [],
-                                                    [],
-                                                    nothing,
-                                                    nothing,
-                                                    "",
-
-                                                    nothing,
-                                                    [],
-                                                    [],
-                                                    [],
-
-                                                    nothing,
-                                                    nothing,
-                                                    nothing,
-                                                    nothing,
-                                                    [],
-                                                    nothing,
-                                                    0x0)
-
-
-
-
-macro check(name, block)
-    fnname = esc(Symbol("check_ASN1_$(name)"))
-    :(
-      function $fnname(o::RPKI.RPKIObject{T}, node::Node, tpi::TmpParseInfo) where T
-          if tpi.setNicenames
-              node.nicename = $name
-          end
-          $block
-      end
-     )
-end
-
-
-include("PKIX/PKIX.jl")
-using .PKIX.X509
-using .PKIX.CMS
+#include("Lookup.jl")
+#FIXME do we need X509 and CMS here? because everything is modulized now
+#anyway..
+#using .PKIX
+#using .PKIX.X509
+#using .PKIX.CMS
 
 function check_ASN1(::RPKIObject{T}, ::TmpParseInfo) where T end
 function check_cert(::RPKIObject{T}, ::TmpParseInfo) where T end
@@ -186,9 +57,6 @@ function RPKIObject{T}(filename::String)::RPKIObject{T} where T
     end
 end
 
-
-# FIXME: check how we actually use RPKINode() throughout the codebase
-RPKINode(p, c, o) = RPKINode(p, c, o, RemarkCounts(), RemarkCounts())
 
 function add(p::RPKINode, c::RPKINode)#, o::RPKIObject)
     c.parent = p
@@ -311,7 +179,7 @@ function process_mft(mft_fn::String, lookup::Lookup, tpi::TmpParseInfo) :: RPKIN
         if !isfile(joinpath(mft_dir, f))
             @warn "Missing file: $(f)"
             Mft.add_missing_file(m.object, f)
-            add_missing_file!(lookup, joinpath(mft_dir, f), me)
+            add_missing_filename!(lookup, joinpath(mft_dir, f), me)
             err!(m, "Files listed in manifest missing on file system")
             continue
         end
@@ -426,7 +294,7 @@ function process_cer(cer_fn::String, lookup::Lookup, tpi::TmpParseInfo) :: RPKIN
     #no manifest?
     if !isfile(mft_fn)
         @error "manifest $(basename(mft_fn)) not found"
-        add_missing_file!(lookup, mft_fn, rpki_node)
+        add_missing_filename!(lookup, mft_fn, rpki_node)
         err!(o, "Manifest file $(basename(mft_fn)) not in repo")
     else
 

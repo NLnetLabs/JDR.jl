@@ -1,20 +1,16 @@
 module Mft
-using Dates
-using ...RPKI
 using ...ASN
-using ...RPKI.CMS
+using ...RPKI
+using ...RPKICommon
 using SHA
+using ...PKIX.CMS
 
-export MFT, check_ASN1, check_cert
+using Dates
 
-mutable struct MFT
-    files::Vector{String}
-    loops::Union{Nothing, Vector{String}}
-    missing_files::Union{Nothing, Vector{String}}
-    this_update::Union{Nothing, DateTime}
-    next_update::Union{Nothing, DateTime}
-end
-MFT() = MFT([], nothing, nothing, nothing, nothing)
+import ...PKIX.@check
+
+
+export check_ASN1, check_cert
 
 function Base.show(io::IO, mft::MFT)
     print(io, "  num of files: ", length(mft.files), '\n')

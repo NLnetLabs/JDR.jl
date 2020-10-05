@@ -3,38 +3,10 @@ module Cer
 using ...JDR.Common
 using ...RPKI
 using ...ASN
-using ...RPKI.X509
+using ...PKIX.X509
 using SHA
 
-export CER, check_ASN1, check_cert, check_resources
-
-struct ASIdentifiers
-    ids::Vector{AutSysNum}
-    ranges::Vector{OrdinalRange{AutSysNum}}
-end
-mutable struct CER 
-    serial::Integer
-    pubpoint::String
-    manifest::String
-    rrdp_notify::String
-    selfsigned::Union{Nothing, Bool}
-    validsig::Union{Nothing, Bool}
-    rsa_modulus::BigInt
-    rsa_exp::Int
-
-    issuer::String
-    subject::String
-
-    inherit_prefixes::Bool
-    #prefixes::Vector{Union{IPNet, Tuple{IPNet, IPNet}}}
-    prefixes::IPPrefixesOrRanges
-    inherit_ASNs::Bool
-    #ASNs::Vector{Union{Tuple{UInt32, UInt32}, UInt32}}
-    ASNs::AsIdsOrRanges
-end
-CER() = CER(0, "", "", "", nothing, nothing, 0, 0, "", "",
-            false, IPPrefixesOrRanges(),
-            false, AsIdsOrRanges())
+export check_ASN1, check_cert, check_resources
 
 function Base.show(io::IO, cer::CER)
     print(io, "  pubpoint: ", cer.pubpoint, '\n')

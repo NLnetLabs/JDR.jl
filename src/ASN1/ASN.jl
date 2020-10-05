@@ -444,6 +444,6 @@ function lazy_contains(tree::Node, tagtype::Type{T}, v::Any) where {T<:AbstractT
 end
 
 
-include("../RPKI/validation_common.jl")
+include("validation_common.jl")
 
 end # module

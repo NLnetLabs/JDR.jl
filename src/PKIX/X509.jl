@@ -1,8 +1,8 @@
 module X509
-using .....JDR.Common
-using ....JDR.RPKICommon
-using ....ASN
-using ....DER
+using ...JDR.Common
+using ...JDR.RPKICommon
+using ...ASN
+using ...DER
 using IPNets
 
 import ...PKIX.@check

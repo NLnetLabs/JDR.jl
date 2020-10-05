@@ -5,7 +5,7 @@ using HTTP
 using Dates
 using ..RPKI
 using ..JDR.Common
-using ..ASN
+using ..ASN1
 
 export ObjectDetails, to_root, to_vue_branch, to_vue_tree, to_vue_pubpoints, length
 
@@ -83,8 +83,8 @@ end
 JSON2.write(io::IO, bn::Basename) = JSON2.write(io, basename(bn.filename))
 Base.convert(Basename, s) = Basename(s)
 
-function JSON2.write(io::IO, t::ASN.Tag{T}) where {T}
-    JSON2.write(io, "$(nameof(ASN.tagtype(t))) ($(t.len))")
+function JSON2.write(io::IO, t::ASN1.Tag{T}) where {T}
+    JSON2.write(io, "$(nameof(ASN1.tagtype(t))) ($(t.len))")
     #JSON2.write(io, " ($(t.len))")
 end
 

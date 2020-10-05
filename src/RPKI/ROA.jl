@@ -5,7 +5,7 @@ using ...Common
 using ...PKIX.CMS
 using ...RPKI
 using ...RPKICommon
-using ...ASN
+using ...ASN1
 
 using IPNets
 
@@ -24,17 +24,17 @@ function Base.show(io::IO, roa::ROA)
 end
 
 function rawv4_to_roa(o::RPKIObject{ROA}, roa_ipaddress::Node) :: RPKIObject{ROA}
-    tagisa(roa_ipaddress, ASN.SEQUENCE)
-    tagisa(roa_ipaddress[1], ASN.BITSTRING)
+    tagisa(roa_ipaddress, ASN1.SEQUENCE)
+    tagisa(roa_ipaddress[1], ASN1.BITSTRING)
 
     prefix = bitstring_to_v4prefix(roa_ipaddress[1].tag.value)
     maxlength = prefix.netmask #FIXME @code_warntype ?
 
     # optional maxLength:
     if length(roa_ipaddress.children) == 2
-        tagisa(roa_ipaddress[2], ASN.INTEGER)
+        tagisa(roa_ipaddress[2], ASN1.INTEGER)
         @assert roa_ipaddress[2].tag.len == 1
-        #if ASN.value(roa_ipaddress[2].tag) == maxlength
+        #if ASN1.value(roa_ipaddress[2].tag) == maxlength
         if roa_ipaddress[2].tag.value[1] == maxlength
             info!(roa_ipaddress[2], "redundant maxLength")
         else
@@ -45,15 +45,15 @@ function rawv4_to_roa(o::RPKIObject{ROA}, roa_ipaddress::Node) :: RPKIObject{ROA
     o
 end
 function rawv6_to_roa(o::RPKIObject{ROA}, roa_ipaddress::Node) :: RPKIObject{ROA}
-    tagisa(roa_ipaddress, ASN.SEQUENCE)
-    tagisa(roa_ipaddress[1], ASN.BITSTRING)
+    tagisa(roa_ipaddress, ASN1.SEQUENCE)
+    tagisa(roa_ipaddress[1], ASN1.BITSTRING)
 
     prefix = bitstring_to_v6prefix(roa_ipaddress[1].tag.value)
     maxlength = prefix.netmask
 
     # optional maxLength:
     if length(roa_ipaddress.children) == 2
-        tagisa(roa_ipaddress[2], ASN.INTEGER)
+        tagisa(roa_ipaddress[2], ASN1.INTEGER)
         explicit_len = if roa_ipaddress[2].tag.len == 1
             #@debug roa_ipaddress[2].tag.value
             roa_ipaddress[2].tag.value[1]
@@ -76,20 +76,20 @@ end
 @check "version" begin
     tagis_contextspecific(node, 0x00)
     # EXPLICIT tagging, so the version node be in a child
-    checkchildren(node, 1)
-    tagisa(node[1], ASN.INTEGER)
+    childcount(node, 1)
+    tagisa(node[1], ASN1.INTEGER)
     if value(node[1].tag) == 0
         info!(node[1], "version explicitly set to 0 while that is the default")
     end
 end
 
 @check "asID" begin
-    tagisa(node, ASN.INTEGER)
-    o.object.asid = ASN.value(node.tag)
+    tagisa(node, ASN1.INTEGER)
+    o.object.asid = ASN1.value(node.tag)
 end
 @check "ROAIPAddress" begin
-    tagisa(node, ASN.SEQUENCE)
-    tagisa(node[1], ASN.BITSTRING)
+    tagisa(node, ASN1.SEQUENCE)
+    tagisa(node[1], ASN1.BITSTRING)
     node[1].nicename = "address"
 
     prefix = if tpi.afi == 1
@@ -104,7 +104,7 @@ end
 
     # optional maxLength:
     if length(node.children) == 2
-        tagisa(node[2], ASN.INTEGER)
+        tagisa(node[2], ASN1.INTEGER)
         node[2].nicename = "maxLength"
         #@assert node[2].tag.len == 1
         if node[2].tag.value[1] == maxlength
@@ -116,9 +116,9 @@ end
     push!(o.object.vrps, (@__MODULE__).VRP(prefix, maxlength))
 end
 @check "ROAIPAddressFamily" begin
-        tagisa(node, ASN.SEQUENCE)
+        tagisa(node, ASN1.SEQUENCE)
         # addressFamily
-        tagisa(node[1], ASN.OCTETSTRING)
+        tagisa(node[1], ASN1.OCTETSTRING)
 
         tpi.afi = reinterpret(UInt16, reverse(node[1].tag.value))[1]
         if ! (tpi.afi in [1,2])
@@ -127,7 +127,7 @@ end
         end
 
         addresses = node[2]
-        tagisa(addresses, ASN.SEQUENCE)
+        tagisa(addresses, ASN1.SEQUENCE)
         addresses.nicename = "addresses"
         if length(addresses.children) == 0
             err!(addresses, "there should be at least one ROAIPAddress here")
@@ -142,7 +142,7 @@ end
         end
 end
 @check "ipAddrBlocks" begin
-    tagisa(node, ASN.SEQUENCE)
+    tagisa(node, ASN1.SEQUENCE)
 
     if length(node.children) == 0
         err!(node, "there should be at least one ROAIPAddressFamily here")
@@ -153,8 +153,8 @@ end
 end
 
 @check "routeOriginAttestation" begin
-    tagisa(node, ASN.SEQUENCE)
-    checkchildren(node, 2:3)
+    tagisa(node, ASN1.SEQUENCE)
+    childcount(node, 2:3)
     # the 'version' is optional, defaults to 0
     offset = 0
     if length(node.children) == 6
@@ -173,8 +173,8 @@ function check_ASN1(o::RPKIObject{ROA}, tpi::TmpParseInfo) :: RPKIObject{ROA}
     #           contentType ContentType,
     #           content [0] EXPLICIT ANY DEFINED BY contentType }
     
-    tagisa(cmsobject, ASN.SEQUENCE)
-    checkchildren(cmsobject, 2)
+    tagisa(cmsobject, ASN1.SEQUENCE)
+    childcount(cmsobject, 2)
 
     CMS.check_ASN1_contentType(o, cmsobject[1], tpi)
     CMS.check_ASN1_content(o, cmsobject[2], tpi)

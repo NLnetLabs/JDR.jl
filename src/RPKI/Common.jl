@@ -2,7 +2,7 @@ module RPKICommon
 
 
 using ..JDR.Common
-using ..ASN
+using ..ASN1.ASN
 using Dates
 
 export RPKIObject, RPKINode, TmpParseInfo, Lookup, print_ASN1

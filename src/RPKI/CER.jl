@@ -2,7 +2,7 @@ module Cer
 
 using ...JDR.Common
 using ...RPKI
-using ...ASN
+using ...ASN1
 using ...PKIX.X509
 using SHA
 
@@ -29,7 +29,7 @@ function check_ASN1(o::RPKIObject{CER}, tpi::TmpParseInfo=TmpParseInfo()) :: RPK
 	#      signature            BIT STRING  }
     
 
-    checkchildren(o.tree, 3) # this one marks the SEQUENCE as checked!
+    childcount(o.tree, 3) # this one marks the SEQUENCE as checked!
     tbsCertificate = o.tree.children[1]
     X509.check_ASN1_tbsCertificate(o, tbsCertificate, tpi)
     

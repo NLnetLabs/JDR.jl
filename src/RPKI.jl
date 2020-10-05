@@ -1,8 +1,7 @@
 module RPKI
 using ...JDR.Common
 using ...JDR.RPKICommon
-using ...JDR.ASN
-using ...JDR.DER
+using ..ASN1
 using ..PrefixTrees
 
 using IPNets
@@ -13,17 +12,6 @@ export RPKINode, RPKIObject # reexport from RPKI.Common
 export retrieve_all, CER, MFT, CRL, ROA
 export TmpParseInfo
 export print_ASN1
-#export @check
-
-
-#include("RPKI/Common.jl")
-
-#include("Lookup.jl")
-#FIXME do we need X509 and CMS here? because everything is modulized now
-#anyway..
-#using .PKIX
-#using .PKIX.X509
-#using .PKIX.CMS
 
 function check_ASN1(::RPKIObject{T}, ::TmpParseInfo) where T end
 function check_cert(::RPKIObject{T}, ::TmpParseInfo) where T end

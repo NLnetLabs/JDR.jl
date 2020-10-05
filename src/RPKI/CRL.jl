@@ -2,7 +2,7 @@ module Crl
 
 using ...Common
 using ...RPKI
-using ...ASN
+using ...ASN1
 
 using ...RPKICommon
 using ...PKIX
@@ -22,68 +22,68 @@ function check_revokedCertificates(o::RPKIObject{CRL}, node::Node)
 #                                      -- if present, version MUST be v2
 #                                  }  OPTIONAL,
 
-    tagisa(node, ASN.SEQUENCE)
+    tagisa(node, ASN1.SEQUENCE)
     for s in node.children
-        tagisa(s, ASN.SEQUENCE)
+        tagisa(s, ASN1.SEQUENCE)
 
         # userCertificate serialnumber
-        tagisa(s[1], ASN.INTEGER)
-        push!(o.object.revoked_serials, ASN.value(s[1].tag, force_reinterpret=true))
+        tagisa(s[1], ASN1.INTEGER)
+        push!(o.object.revoked_serials, ASN1.value(s[1].tag, force_reinterpret=true))
 
         # recovationDate Time
-        tagisa(s[2], [ASN.UTCTIME, ASN.GENTIME])
+        tagisa(s[2], [ASN1.UTCTIME, ASN1.GENTIME])
     end
 
 end
 
 function check_nextUpdate(o::RPKIObject{CRL}, node::Node) 
-    tagisa(node, [ASN.UTCTIME, ASN.GENTIME])
+    tagisa(node, [ASN1.UTCTIME, ASN1.GENTIME])
 end
 
 function check_thisUpdate(o::RPKIObject{CRL}, node::Node) 
-    tagisa(node, [ASN.UTCTIME, ASN.GENTIME])
+    tagisa(node, [ASN1.UTCTIME, ASN1.GENTIME])
 end
 
 function check_issuer(o::RPKIObject{CRL}, node::Node) 
-    tagisa(node, ASN.SEQUENCE)
-    tagisa(node[1], ASN.SET)
+    tagisa(node, ASN1.SEQUENCE)
+    tagisa(node[1], ASN1.SET)
         # it's a SET of AttributeTypeAndValue 
         # which is a SEQUENCE of type (OID) + value (ANY)
         # from RFC6487:
 		# An issuer name MUST contain one instance of the CommonName attribute
 		#   and MAY contain one instance of the serialNumber attribute.  If both
 		#   attributes are present, it is RECOMMENDED that they appear as a set.
-		#   The CommonName attribute MUST be encoded using the ASN.1 type
+		#   The CommonName attribute MUST be encoded using the ASN1.1 type
 		#   PrintableString [X.680].
 
-    checkchildren(node[1], 1:2)
+    childcount(node[1], 1:2)
     # If the issuer contains the serialNumber as well,
     # the set should contain 1 child, the RECOMMENDED set
     # TODO check this interpretation
-    containAttributeTypeAndValue(node[1], @oid("2.5.4.3"), ASN.PRINTABLESTRING)
+    containAttributeTypeAndValue(node[1], @oid("2.5.4.3"), ASN1.PRINTABLESTRING)
 end
 
 function check_signature(o::RPKIObject{CRL}, node::Node) 
     # SEQ / OID / NULL
-    tagisa(node, ASN.SEQUENCE)
+    tagisa(node, ASN1.SEQUENCE)
 
     tag_OID(node[1], @oid "1.2.840.113549.1.1.11")
     #TODO D-R-Y with MFT.jl and ROA.jl
     #TODO double check whether 4055 mentions CRLs specifically
     if length(node.children) == 2 
-        tagisa(node[2], ASN.NULL)
+        tagisa(node[2], ASN1.NULL)
         info!(node[2], "this NULL SHOULD be absent (RFC4055)")
     end
 end
 
 function check_tbsCertList(o::RPKIObject{CRL}, node::Node)
-    tagisa(node, ASN.SEQUENCE)
+    tagisa(node, ASN1.SEQUENCE)
     # version, optional
     # if present, MUST be v2 == 0x01
     offset = 0
-    if node[1].tag isa Tag{ASN.INTEGER}
+    if node[1].tag isa Tag{ASN1.INTEGER}
         offset += 1
-        tagvalue(node[1], ASN.INTEGER, 0x1)
+        tagvalue(node[1], ASN1.INTEGER, 0x1)
     end
 
     # signature
@@ -99,15 +99,15 @@ function check_tbsCertList(o::RPKIObject{CRL}, node::Node)
     check_thisUpdate(o, thisUpdate)
 
     # optional nextUpdate
-    if node[offset+4].tag isa Tag{ASN.UTCTIME} ||
-        node[offset+4].tag isa Tag{ASN.GENTIME}
+    if node[offset+4].tag isa Tag{ASN1.UTCTIME} ||
+        node[offset+4].tag isa Tag{ASN1.GENTIME}
         check_nextUpdate(o, node[offset+4])
         offset += 1
     end
 
     # optional revokedCertificates and crlExtensions
     if length(node.children) > offset
-        if node[offset+4].tag isa Tag{ASN.SEQUENCE}
+        if node[offset+4].tag isa Tag{ASN1.SEQUENCE}
             revokedCertificates = node[offset+4]
             check_revokedCertificates(o, revokedCertificates)
             offset += 1
@@ -129,7 +129,7 @@ function check_ASN1(o::RPKIObject{CRL}, tpi::TmpParseInfo) :: RPKIObject{CRL}
 	#      signatureAlgorithm   AlgorithmIdentifier,
 	#      signature            BIT STRING  }
     
-    checkchildren(o.tree, 3)
+    childcount(o.tree, 3)
     tbsCertList = o.tree.children[1]
     check_tbsCertList(o, tbsCertList)
 

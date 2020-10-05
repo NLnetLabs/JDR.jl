@@ -1,7 +1,6 @@
 module PKIX
 using ...JDR.Common
-using ...JDR.ASN
-using ..DER
+using ..ASN1
 using ...JDR.RPKICommon
 
 # for the uses of @check in X509 and CMS:
@@ -12,7 +11,7 @@ macro check(name, block)
     fnname = esc(Symbol("check_ASN1_$(name)"))
     :(
       esc(
-      function $fnname(o::RPKIObject{T}, node::Node, tpi::TmpParseInfo) where T
+      function $fnname(o::RPKIObject{T}, node::ASN1.Node, tpi::TmpParseInfo) where T
           if tpi.setNicenames
               node.nicename = $name
           end

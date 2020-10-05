@@ -1,13 +1,12 @@
 module ASN
 using ...JDR.Common
 
-export Tag, AbstractTag, Node, AbstractNode, Leaf
+export Tag, AbstractTag, Node, AbstractNode
 export value, print_node, append!, isleaf, iter, lazy_iter #parent
 export remark!, child, getindex, tagtype
-export @oid
 
 export  Unimplemented, InvalidTag, SEQUENCE, SET, RESERVED_ENC, OCTETSTRING,
-        BITSTRING, PRINTABLESTRING, CONTEXT_SPECIFIC
+        BITSTRING, PRINTABLESTRING, CONTEXT_SPECIFIC, INTEGER, NULL, UTCTIME, GENTIME, OID, IA5STRING
 
 
 abstract type AbstractTag end 

@@ -1,5 +1,5 @@
 module Mft
-using ...ASN
+using ...ASN1
 using ...RPKI
 using ...RPKICommon
 using SHA
@@ -37,24 +37,24 @@ function gentime_to_ts(raw::Vector{UInt8})
 end
 
 import Base.length
-length(::Nothing) = 0 #used in checkchildren from validation_common.jl
+length(::Nothing) = 0 #used in childcount from validation_common.jl
 
 @check "version" begin
     tagis_contextspecific(node, 0x00)
     # EXPLICIT tagging, so the version node be in a child
-    checkchildren(node, 1)
-    tagisa(node[1], ASN.INTEGER)
+    childcount(node, 1)
+    tagisa(node[1], ASN1.INTEGER)
     if value(node[1].tag) == 0
         info!(node[1], "version explicitly set to 0 while that is the default")
     end
 end
 
 @check "manifestNumber" begin
-    tagisa(node, ASN.INTEGER)
+    tagisa(node, ASN1.INTEGER)
 end
 
 @check "thisUpdate" begin
-    tagisa(node, ASN.GENTIME)
+    tagisa(node, ASN1.GENTIME)
     try
         o.object.this_update = (@__MODULE__).gentime_to_ts(node.tag.value)
     catch e
@@ -66,7 +66,7 @@ end
     end
 end
 @check "nextUpdate" begin
-    tagisa(node, ASN.GENTIME)
+    tagisa(node, ASN1.GENTIME)
     try
         o.object.next_update = (@__MODULE__).gentime_to_ts(node.tag.value)
     catch e
@@ -83,13 +83,13 @@ end
 end
 
 @check "fileList" begin
-    tagisa(node, ASN.SEQUENCE)
+    tagisa(node, ASN1.SEQUENCE)
     #@debug "manifest files: $(length(node.children))"
     for file_and_hash in node.children
-        tagisa(file_and_hash, ASN.SEQUENCE)
-        tagisa(file_and_hash[1], ASN.IA5STRING)
-        tagisa(file_and_hash[2], ASN.BITSTRING)
-        push!(o.object.files, value(file_and_hash[1].tag))
+        tagisa(file_and_hash, ASN1.SEQUENCE)
+        tagisa(file_and_hash[1], ASN1.IA5STRING)
+        tagisa(file_and_hash[2], ASN1.BITSTRING)
+        push!(o.object.files, ASN1.value(file_and_hash[1].tag))
     end
     #@debug "pushed files: $(length(o.object.files))"
 end
@@ -103,8 +103,8 @@ end
     #  fileHashAlg     OBJECT IDENTIFIER,
     #  fileList        SEQUENCE SIZE (0..MAX) OF FileAndHash
     #  }
-    tagisa(node, ASN.SEQUENCE)
-    checkchildren(node, 5:6)
+    tagisa(node, ASN1.SEQUENCE)
+    childcount(node, 5:6)
     # the 'version' is optional, defaults to 0
     offset = 0
     if length(node.children) == 6
@@ -126,8 +126,8 @@ function check_ASN1(o::RPKIObject{MFT}, tpi::TmpParseInfo) :: RPKIObject{MFT}
     #           contentType ContentType,
     #           content [0] EXPLICIT ANY DEFINED BY contentType }
     
-    tagisa(cmsobject, ASN.SEQUENCE)
-    checkchildren(cmsobject, 2)
+    tagisa(cmsobject, ASN1.SEQUENCE)
+    childcount(cmsobject, 2)
 
     CMS.check_ASN1_contentType(o, cmsobject[1], tpi)
     CMS.check_ASN1_content(o, cmsobject[2], tpi)

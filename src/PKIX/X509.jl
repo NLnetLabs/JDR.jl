@@ -1,8 +1,7 @@
 module X509
 using ...JDR.Common
 using ...JDR.RPKICommon
-using ...ASN
-using ...DER
+using ..ASN1 
 using IPNets
 
 import ...PKIX.@check
@@ -16,7 +15,7 @@ const MANDATORY_EXTENSIONS = Vector{Pair{Vector{UInt8}, String}}([
 
 
 @check "subjectInfoAccess" begin
-    tagisa(node, ASN.OCTETSTRING)
+    tagisa(node, ASN1.OCTETSTRING)
     # Need a second pass to decode the OCTETSTRING
     DER.parse_append!(DER.Buf(node.tag.value), node)
     # MUST be present:
@@ -24,13 +23,13 @@ const MANDATORY_EXTENSIONS = Vector{Pair{Vector{UInt8}, String}}([
     # 1.3.6.1.5.5.7.48.10 rpkiManifest
     # could be present:
     # 1.3.6.1.5.5.7.48.13 RRDP notification URL
-    tagisa(node[1], ASN.SEQUENCE)
+    tagisa(node[1], ASN1.SEQUENCE)
     carepo_present = false
     manifest_present = false
     for access_description in node[1].children
-        tagisa(access_description, ASN.SEQUENCE)
-        checkchildren(access_description, 2)
-        tagisa(access_description[1], ASN.OID)
+        tagisa(access_description, ASN1.SEQUENCE)
+        childcount(access_description, 2)
+        tagisa(access_description[1], ASN1.OID)
         # [6] is a uniformResourceIdentifier, RFC5280
         tagis_contextspecific(access_description[2], 0x06)
 
@@ -69,29 +68,29 @@ end
 @check "ipAddrBlocks" begin
     DER.parse_append!(DER.Buf(node.tag.value), node)
     node.validated = true
-    tagisa(node[1], ASN.SEQUENCE)
+    tagisa(node[1], ASN1.SEQUENCE)
     for ipaddrblock in node[1].children 
-        tagisa(ipaddrblock, ASN.SEQUENCE)
-        tagisa(ipaddrblock[1], ASN.OCTETSTRING)
+        tagisa(ipaddrblock, ASN1.SEQUENCE)
+        tagisa(ipaddrblock[1], ASN1.OCTETSTRING)
         afi = reinterpret(UInt16, reverse(ipaddrblock[1].tag.value))[1]
         @assert afi in [1,2] # 1 == IPv4, 2 == IPv6
         # now, or a NULL -> inherit
         # or a SEQUENCE OF IPAddressOrRange
-        if typeof(ipaddrblock[2].tag) == Tag{ASN.SEQUENCE}
+        if typeof(ipaddrblock[2].tag) == Tag{ASN1.SEQUENCE}
             ipaddrblock[2].validated = true
             # now loop over children of this SEQUENCE OF IPAddressOrRange 
             for ipaddress_or_range in ipaddrblock[2].children
 
-                #if typeof(ipaddrblock[2, 1].tag) == Tag{ASN.SEQUENCE}
-                if ipaddress_or_range.tag isa Tag{ASN.SEQUENCE}
+                #if typeof(ipaddrblock[2, 1].tag) == Tag{ASN1.SEQUENCE}
+                if ipaddress_or_range.tag isa Tag{ASN1.SEQUENCE}
 
                     ipaddress_or_range.validated = true
                     # if child is another SEQUENCE, we have an IPAddressRange
                     #throw("check me")
 
                     # we expect two BITSTRINGs in this SEQUENCE
-                    tagisa(ipaddress_or_range[1], ASN.BITSTRING)
-                    tagisa(ipaddress_or_range[2], ASN.BITSTRING)
+                    tagisa(ipaddress_or_range[1], ASN1.BITSTRING)
+                    tagisa(ipaddress_or_range[2], ASN1.BITSTRING)
                     if afi == 1
                         (minaddr, maxaddr) = bitstrings_to_v4range(
                                                 ipaddress_or_range[1].tag.value,
@@ -105,8 +104,8 @@ end
                                               )
                         push!(o.object.prefixes, IPRange{IPv6Net}(minaddr, maxaddr))
                     end
-                #elseif typeof(ipaddrblock[2, 1].tag) == Tag{ASN.BITSTRING}
-                elseif ipaddress_or_range.tag isa Tag{ASN.BITSTRING}
+                #elseif typeof(ipaddrblock[2, 1].tag) == Tag{ASN1.BITSTRING}
+                elseif ipaddress_or_range.tag isa Tag{ASN1.BITSTRING}
                     ipaddress_or_range.validated = true
                     # else if it is a BITSTRING, we have an IPAddress (prefix)
                     #@debug "IPAddress (prefix)"
@@ -120,7 +119,7 @@ end
                     @error "unexpected tag number $(ipaddress_or_range.tag.number)"
                 end
             end # for-loop over SEQUENCE OF IPAddressOrRange
-        elseif ipaddrblock[2].tag isa Tag{ASN.NULL}
+        elseif ipaddrblock[2].tag isa Tag{ASN1.NULL}
             #throw("implement inherit for ipAdressBlocks")
             #@error "implement inherit for ipAdressBlocks"
             if o.object isa CER
@@ -136,29 +135,29 @@ end
 @check "autonomousSysIds" begin
     DER.parse_append!(DER.Buf(node.tag.value), node)
     node.validated = true
-    tagisa(node[1], ASN.SEQUENCE)
+    tagisa(node[1], ASN1.SEQUENCE)
     for asidentifierchoice in node[1].children 
         # expect either a [0] or [1]
-        tagisa(asidentifierchoice, ASN.CONTEXT_SPECIFIC)
+        tagisa(asidentifierchoice, ASN1.CONTEXT_SPECIFIC)
         if asidentifierchoice.tag.number == 0
             #DER.parse_append!(DER.Buf(asidentifierchoice.tag.value), asidentifierchoice)
             # or NULL (inherit) or SEQUENCE OF ASIdOrRange
-            if asidentifierchoice[1].tag isa Tag{ASN.NULL}
+            if asidentifierchoice[1].tag isa Tag{ASN1.NULL}
                 if o.object isa CER
                     o.object.inherit_ASNs = true
                 end
                 #throw("implement inherit for ASIdentifierChoice")
-            elseif asidentifierchoice[1].tag isa Tag{ASN.SEQUENCE}
+            elseif asidentifierchoice[1].tag isa Tag{ASN1.SEQUENCE}
                 # now it can be or a single INTEGER, or again a SEQUENCE
                 asidentifierchoice[1].validated = true
                 for asid_or_range in asidentifierchoice[1].children
-                    if asid_or_range.tag isa Tag{ASN.INTEGER}
-                        asid = UInt32(ASN.value(asid_or_range.tag))
+                    if asid_or_range.tag isa Tag{ASN1.INTEGER}
+                        asid = UInt32(ASN1.value(asid_or_range.tag))
                         push!(o.object.ASNs, AutSysNum(asid))
                         asid_or_range.validated = true
-                    elseif asid_or_range.tag isa Tag{ASN.SEQUENCE}
-                        asmin = UInt32(ASN.value(asid_or_range[1].tag))
-                        asmax = UInt32(ASN.value(asid_or_range[2].tag))
+                    elseif asid_or_range.tag isa Tag{ASN1.SEQUENCE}
+                        asmin = UInt32(ASN1.value(asid_or_range[1].tag))
+                        asmax = UInt32(ASN1.value(asid_or_range[2].tag))
                         push!(o.object.ASNs, AutSysNumRange(asmin, asmax))
                         asid_or_range.validated = true
                         asid_or_range[1].validated = true
@@ -196,31 +195,31 @@ end
 @check "version"  begin
     # Version == 0x02? (meaning version 3)
     tagis_contextspecific(node, 0x0)
-    tagvalue(node[1], ASN.INTEGER, 0x02)
+    tagvalue(node[1], ASN1.INTEGER, 0x02)
 end
 
 @check "serialNumber" begin
-    tagisa(node, ASN.INTEGER)
+    tagisa(node, ASN1.INTEGER)
     # do we need the serial? 
     if o.object isa CER
-        o.object.serial = ASN.value(node.tag, force_reinterpret=true)
+        o.object.serial = ASN1.value(node.tag, force_reinterpret=true)
     end
 end
 
 @check "signature" begin
-    tagisa(node, ASN.SEQUENCE)
+    tagisa(node, ASN1.SEQUENCE)
 
     tag_OID(node[1], @oid "1.2.840.113549.1.1.11")
-    if checkchildren(node, 2)
-        tagisa(node[2], ASN.NULL) # TODO be more explicit in the remark
+    if childcount(node, 2)
+        tagisa(node[2], ASN1.NULL) # TODO be more explicit in the remark
     end
 end
 
 @check "issuer" begin
     # Issuer = Name = RDNSequence = SEQUENCE OF RelativeDistinguishedName
-    tagisa(node, ASN.SEQUENCE)
+    tagisa(node, ASN1.SEQUENCE)
     issuer_set = node[1]
-    tagisa(issuer_set, ASN.SET)
+    tagisa(issuer_set, ASN1.SET)
         # it's a SET of AttributeTypeAndValue 
         # which is a SEQUENCE of type (OID) + value (ANY)
         # from RFC6487:
@@ -232,14 +231,14 @@ end
 		# FIXME question: what would such a RECOMMENDED set look like?
 		# is it a SET of SEQUENCEs(==AttributeTypeValue) within the SET(==RelDisName) ?
 
-    checkchildren(issuer_set, 1:2)
+    childcount(issuer_set, 1:2)
     # If the issuer contains the serialNumber as well,
     # the set should contain 1 child, the RECOMMENDED set
     # TODO check this interpretation
-    issuer = containAttributeTypeAndValue(issuer_set, @oid("2.5.4.3"), ASN.PRINTABLESTRING)
+    issuer = containAttributeTypeAndValue(issuer_set, @oid("2.5.4.3"), ASN1.PRINTABLESTRING)
     if o.object isa CER
-        o.object.issuer = ASN.value(issuer.tag)
-        push!(tpi.issuer, ASN.value(issuer.tag))
+        o.object.issuer = ASN1.value(issuer.tag)
+        push!(tpi.issuer, ASN1.value(issuer.tag))
     end
 
 	if length(issuer_set.children) > 1
@@ -250,36 +249,36 @@ end
 
 @check "validity" begin
     # SEQUENCE of 2x Time, which is a CHOICE of utcTime/generalTime
-    tagisa(node, ASN.SEQUENCE)
-    tagisa(node[1], [ASN.UTCTIME, ASN.GENTIME])
-    tagisa(node[2], [ASN.UTCTIME, ASN.GENTIME])
+    tagisa(node, ASN1.SEQUENCE)
+    tagisa(node[1], [ASN1.UTCTIME, ASN1.GENTIME])
+    tagisa(node[2], [ASN1.UTCTIME, ASN1.GENTIME])
 end
 
 @check "subject" begin
-    tagisa(node, ASN.SEQUENCE)
+    tagisa(node, ASN1.SEQUENCE)
     # RFC6487:
     #  Each distinct subordinate CA and
     #  EE certified by the issuer MUST be identified using a subject name
     #  that is unique per issuer.
     #  TODO can we check on this? not here, but in a later stage?
-    subject = containAttributeTypeAndValue(node[1], @oid("2.5.4.3"), ASN.PRINTABLESTRING)
-    #@debug "CER, subject:" ASN.value(subject.tag)
+    subject = containAttributeTypeAndValue(node[1], @oid("2.5.4.3"), ASN1.PRINTABLESTRING)
+    #@debug "CER, subject:" ASN1.value(subject.tag)
 
     if o.object isa CER
-        o.object.subject = ASN.value(subject.tag)
+        o.object.subject = ASN1.value(subject.tag)
         o.object.selfsigned = o.object.issuer == o.object.subject
     end
 end
 
 @check "algorithm" begin
-    tagisa(node, ASN.SEQUENCE)
+    tagisa(node, ASN1.SEQUENCE)
     # FIXME: RFC6485 is not quite clear on which OID we should expect here..
     tag_OID(node[1], @oid "1.2.840.113549.1.1.1")
-    tagisa(node[2], ASN.NULL)
+    tagisa(node[2], ASN1.NULL)
 end
 
 @check "subjectPublicKey" begin
-    tagisa(node, ASN.BITSTRING)
+    tagisa(node, ASN1.BITSTRING)
 
     # Now we go for a second pass:
     # skip the first byte as it will be 0, 
@@ -288,20 +287,20 @@ end
     encaps_buf = DER.Buf(node.tag.value[2:end])
     DER.parse_append!(encaps_buf, node)
 
-    tagisa(node[1], ASN.SEQUENCE)
-    tagisa(node[1,1], ASN.INTEGER)
+    tagisa(node[1], ASN1.SEQUENCE)
+    tagisa(node[1,1], ASN1.INTEGER)
    
     encaps_modulus  = node[1, 1]
     encaps_exponent = node[1, 2]
     # RFC6485:the exponent MUST be 65537
-    tagvalue(encaps_exponent, ASN.INTEGER, 65_537)
+    tagvalue(encaps_exponent, ASN1.INTEGER, 65_537)
 
     # 256 bytes + the first byte indicating unused bits == 257
     @assert encaps_modulus.tag.len == 257
     if o.object isa CER
         # OLD, maybe remove:
         o.object.rsa_modulus   = to_bigint(encaps_modulus.tag.value[2:end])
-        o.object.rsa_exp       = ASN.value(encaps_exponent.tag)
+        o.object.rsa_exp       = ASN1.value(encaps_exponent.tag)
         # for use in RPKI::process_cer/mft/roa()
 
         #tpi.ca_rsaModulus   = to_bigint(encaps_modulus.tag.value[2:end])
@@ -310,7 +309,7 @@ end
         # attempt to use a stack
         #@debug ("push, now $(length(tpi.ca_rsaModulus))")
         push!(tpi.ca_rsaModulus, to_bigint(encaps_modulus.tag.value[2:end]) )
-        push!(tpi.ca_rsaExponent, ASN.value(encaps_exponent.tag))
+        push!(tpi.ca_rsaExponent, ASN1.value(encaps_exponent.tag))
     end
     if o.object isa ROA || o.object isa MFT
         tpi.ee_rsaExponent = encaps_exponent
@@ -320,7 +319,7 @@ end
 
 @check "subjectPublicKeyInfo" begin
     # AlgorithmIdentifier + BITSTRING
-    tagisa(node, ASN.SEQUENCE)
+    tagisa(node, ASN1.SEQUENCE)
     (@__MODULE__).check_ASN1_algorithm(o, node[1], tpi)
     (@__MODULE__).check_ASN1_subjectPublicKey(o, node[2], tpi)
 end

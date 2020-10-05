@@ -1,35 +1,34 @@
 module CMS
 using ...JDR.Common
 using ...JDR.RPKICommon
-using ...JDR.ASN
-using ...JDR.DER
+using ...ASN1
 using ..X509
 
 import ...PKIX.@check
 
 @check "contentType" begin
-    ASN.tag_OID(node, @oid("1.2.840.113549.1.7.2"))
+    ASN1.tag_OID(node, @oid("1.2.840.113549.1.7.2"))
 end
 
 @check "version"  begin
-    tagvalue(node, ASN.INTEGER, 0x03)
+    tagvalue(node, ASN1.INTEGER, 0x03)
 end
 
 @check "digestAlgorithm" begin
-    tagisa(node, ASN.SEQUENCE)
+    tagisa(node, ASN1.SEQUENCE)
     tag_OID(node[1], @oid("2.16.840.1.101.3.4.2.1"))
     # TODO: This field MUST contain the same algorithm identifier as the
     #    signature field in the sequence tbsCertificate (Section 4.1.2.3).
 
     if length(node.children) == 2
-        tagisa(node[2], ASN.NULL)
+        tagisa(node[2], ASN1.NULL)
         info!(node[2], "this NULL SHOULD be absent (RFC4055)")
     end
 end
 
 @check "digestAlgorithms" begin
-    tagisa(node, ASN.SET)
-    checkchildren(node, 1)
+    tagisa(node, ASN1.SET)
+    childcount(node, 1)
     (@__MODULE__).check_ASN1_digestAlgorithm(o, node[1], tpi)
 end
 
@@ -56,13 +55,13 @@ end
     # now, be flexible: for BER mft's, there will be another OCTETSTRING
     # either way, the eContent only has 1 child
      
-    checkchildren(node[1], 1)
-    eContent = if node[1,1].tag isa Tag{ASN.OCTETSTRING} 
+    childcount(node[1], 1)
+    eContent = if node[1,1].tag isa Tag{ASN1.OCTETSTRING} 
         warn!(node[1,1], "nested OCTETSTRING, BER instead of DER")
         # we need to do a second pass on this then
         DER.parse_append!(DER.Buf(node[1,1].tag.value), node[1,1])
         node[1,1,1]
-    elseif node[1,1].tag isa Tag{ASN.SEQUENCE}
+    elseif node[1,1].tag isa Tag{ASN1.SEQUENCE}
         node[1,1]
     else
         @error("unexpected tag $(tagtype(node[1,1])) in $(o.filename)")
@@ -93,8 +92,8 @@ end
 	#  eContentType ContentType,
 	#  eContent [0] EXPLICIT OCTET STRING OPTIONAL }
 
-	tagisa(node, ASN.SEQUENCE)    
-	checkchildren(node, 2)
+	tagisa(node, ASN1.SEQUENCE)    
+	childcount(node, 2)
     (@__MODULE__).check_ASN1_eContentType(o, node[1], tpi)
     (@__MODULE__).check_ASN1_eContent(o, node[2], tpi)
 end
@@ -119,8 +118,8 @@ end
 end
 
 @check "sa_contentType" begin
-    tagisa(node, ASN.SET)
-    tagisa(node[1], ASN.OID)
+    tagisa(node, ASN1.SET)
+    tagisa(node[1], ASN1.OID)
     if o.object isa ROA
         tag_OID(node[1], @oid("1.2.840.113549.1.9.16.1.24"))
         if tpi.setNicenames
@@ -135,15 +134,15 @@ end
 end
 
 @check "messageDigest" begin
-    tagisa(node, ASN.SET)
+    tagisa(node, ASN1.SET)
 end
 
 @check "signingTime" begin
 end
 
 @check "attribute" begin
-    tagisa(node, ASN.SEQUENCE)
-    tagisa(node[1], ASN.OID)
+    tagisa(node, ASN1.SEQUENCE)
+    tagisa(node[1], ASN1.OID)
     if node[1].tag.value == @oid("1.2.840.113549.1.9.3")
         (@__MODULE__).check_ASN1_sa_contentType(o, node[2], tpi)
     elseif node[1].tag.value == @oid("1.2.840.113549.1.9.4")
@@ -176,15 +175,15 @@ end
 
 @check "signatureAlgorithm" begin
     # copied from X509.jl "algorithm"
-    tagisa(node, ASN.SEQUENCE)
+    tagisa(node, ASN1.SEQUENCE)
     # FIXME: RFC6485 is not quite clear on which OID we should expect here..
     tag_OID(node[1], @oid "1.2.840.113549.1.1.1")
-    tagisa(node[2], ASN.NULL)
+    tagisa(node[2], ASN1.NULL)
 end
 
 @check "signature" begin
     # Decrypt signature using the EE certificate in the ROA 
-    v = powermod(to_bigint(node.tag.value), ASN.value(tpi.ee_rsaExponent.tag), to_bigint(tpi.ee_rsaModulus.tag.value[2:end]))
+    v = powermod(to_bigint(node.tag.value), ASN1.value(tpi.ee_rsaExponent.tag), to_bigint(tpi.ee_rsaModulus.tag.value[2:end]))
     v.size = 4
     v_str = string(v, base=16, pad=64)
     if tpi.saHash == v_str
@@ -205,7 +204,7 @@ end
   #	   signature SignatureValue,
   #	   unsignedAttrs [1] IMPLICIT UnsignedAttributes OPTIONAL }
 
-    tagisa(node, ASN.SEQUENCE)
+    tagisa(node, ASN1.SEQUENCE)
     (@__MODULE__).check_ASN1_version(o, node[1], tpi)
     (@__MODULE__).check_ASN1_sid(o, node[2], tpi)
     (@__MODULE__).check_ASN1_digestAlgorithm(o, node[3], tpi)
@@ -215,7 +214,7 @@ end
 end
 
 @check "signerInfos" begin
-    tagisa(node, ASN.SET)    
+    tagisa(node, ASN1.SET)    
     if length(node.children) > 1
         @info "More than one signerInfo in $(o.filename)"
     end
@@ -237,8 +236,8 @@ end
     # for RPKI Manifests, we MUST have the CertificateSet and MUST NOT have the
     # RevocationInfoChoices
 
-    tagisa(node, ASN.SEQUENCE)
-    checkchildren(node, 5)
+    tagisa(node, ASN1.SEQUENCE)
+    childcount(node, 5)
 
     (@__MODULE__).check_ASN1_version(o, node[1], tpi)
     (@__MODULE__).check_ASN1_digestAlgorithms(o, node[2], tpi)

@@ -1,6 +1,6 @@
 module DER
 using ...JDR.Common
-using ...JDR.ASN
+using ..ASN1.ASN
 using Mmap
 
 # Possible/common mistakes or violations:

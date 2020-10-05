@@ -3,13 +3,7 @@ module JDR
 include("Common.jl")
 using .Common
 
-include("ASN1/ASN.jl")
-
-export DER
-include("ASN1/DER.jl")
-
-# TODO need to include parts of RPKI.jl here
-# because PKIX.jl needs RPKIObject
+include("ASN1/ASN1.jl")
 
 include("PrefixTrees.jl")
 using .PrefixTrees
@@ -26,6 +20,7 @@ include("RPKI.jl")
 using .RPKI
 export print_ASN1
 
+# Only for webservice:
 include("JSONHelpers.jl")
 
 end # module

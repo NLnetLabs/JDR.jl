@@ -1,5 +1,5 @@
 using IPNets
-export tagvalue, tagisa, tag_OID, checkchildren, containAttributeTypeAndValue
+export tagvalue, tagisa, tag_OID, childcount, containAttributeTypeAndValue
 export tagis_contextspecific, check_extensions, get_extensions
 export to_bigint, bitstring_to_v4prefix, bitstring_to_v6prefix
 export bitstrings_to_v4range, bitstrings_to_v6range
@@ -48,7 +48,7 @@ function tag_OID(node::Node, v::Vector{UInt8})
     end
 end
 
-function checkchildren(node::Node, num::Integer) :: Bool #TODO can we use "> 1" here? maybe with an Expr?
+function childcount(node::Node, num::Integer) :: Bool #TODO can we use "> 1" here? maybe with an Expr?
     valid = true
     if !(length(node.children) == num)
         warn!(node, "expected $(num) children, found $(length(node.children))")
@@ -57,7 +57,7 @@ function checkchildren(node::Node, num::Integer) :: Bool #TODO can we use "> 1" 
     node.validated = true
     valid
 end
-function checkchildren(node::Node, range::UnitRange{Int}) #TODO can we use "> 1" here? maybe with an Expr?
+function childcount(node::Node, range::UnitRange{Int}) #TODO can we use "> 1" here? maybe with an Expr?
     if !(length(node.children) in range)
         warn!(node, "expected $(minimum(range)) to $(maximum(range)) children, found $(length(node.children))")
     end

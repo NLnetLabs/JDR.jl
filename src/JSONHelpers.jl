@@ -5,6 +5,7 @@ using HTTP
 using Dates
 using ..RPKI
 using ..JDR.Common
+using ..JDR.RPKICommon
 using ..ASN1
 
 export ObjectDetails, to_root, to_vue_branch, to_vue_tree, to_vue_pubpoints, length
@@ -122,8 +123,14 @@ JSON2.@format SlimMFT begin
 end
 
 
+struct SlimCRL
+    revoked_serials::Vector{Integer}
+end
+SlimCRL(crl::RPKI.CRL) = SlimCRL(crl.revoked_serials)
+
 to_slim(o::RPKI.MFT) = SlimMFT(o)
 to_slim(o::RPKI.CER) = SlimCER(o)
+to_slim(o::RPKI.CRL) = SlimCRL(o)
 to_slim(o::RPKI.ROA) = o
 
 
@@ -131,25 +138,13 @@ to_slim(o::RPKI.ROA) = o
 # to the root. The circular ref between  `parent` and `children` in the RPKINode
 # struct causes trouble in the JSON generation, so to_root returns a simple
 # Vector with ObjectSlim's, and no explicition pointers to parents or children.
+# now using RPKICommon.root_to
 function to_root(node::RPKI.RPKINode) :: Vector{ObjectSlim}
-    current = node
-    res = Vector{ObjectSlim}([ObjectSlim(
-                                         current.obj,
-                                         current.remark_counts_me,
-                                         current.remark_counts_children
-                                        )])
-    while !isnothing(current.parent)
-        if !isnothing(current.parent.obj)
-            push!(res, ObjectSlim(
-                                  current.parent.obj,
-                                  current.parent.remark_counts_me,
-                                  current.parent.remark_counts_children
-                                 ))
-        end
-        current = current.parent
-    end
-    res
+    path = reverse(root_to(node)[2:end])
+    @debug path[end]
+    [ObjectSlim(n.obj, n.remark_counts_me, n.remark_counts_children) for n in path]
 end
+
 
 mutable struct VueNode
     children::Vector{VueNode}
@@ -163,21 +158,23 @@ JSON2.@format VueNode begin
     mates => (omitempty=true,)
 end
 
+
 function to_vue_branch(node::RPKI.RPKINode)
-    nodes = reverse(to_root(node))
-    root = VueNode([], [], "root", nothing)
+    nodes = root_to(node)[2:end]
+    first_cer = VueNode([], [], basename(nodes[1].obj.filename), ObjectSlim(nodes[1].obj, nodes[1].remark_counts_me, nodes[1].remark_counts_children))
+    root = VueNode([first_cer], [], "root", nothing)
     current = root
     for n in nodes
-        if n.objecttype == "MFT"
-            #@debug "MFT!"
-            current.mates = [VueNode([], [], basename(n.filename), n)]
-            #current = current.children[1]
+        siblings = [VueNode([], [], basename(s.obj.filename), ObjectSlim(s.obj, s.remark_counts_me, s.remark_counts_children)) for s in n.siblings]
+        vuenode = VueNode([], siblings, basename(n.obj.filename), ObjectSlim(n.obj, n.remark_counts_me, n.remark_counts_children))
+        if n.obj.object isa MFT 
+            push!(current.mates, vuenode)
         else
-            current.children = [VueNode([], [], basename(n.filename), n)]
+            current.children = [vuenode]
             current = current.children[1]
         end
-        #@debug "current:", current
     end
+
     root
 end
 
@@ -243,12 +240,12 @@ function to_vue_tree(branches::Vector)
         return branches
     end
     for b in branches
-        @debug "branch length:", length(b)
+        #@debug "branch length:", length(b)
     end
     sort!(branches, by = x -> length(x), rev=true)
     @debug "----"
     for b in branches
-        @debug "branch length:", length(b)
+        #@debug "branch length:", length(b)
     end
     
     left = branches[1]
@@ -260,14 +257,14 @@ function to_vue_tree(branches::Vector)
 
         done = false
         while ! done
-            @debug "children in left:", length(l.children)
+            #@debug "children in left:", length(l.children)
             if isnothing(findfirst(x -> x.object.filename == r.children[1].object.filename, l.children))
-                @debug "different", r.children[1].object.filename
+                #@debug "different", r.children[1].object.filename
                 push!(l.children, r.children[1])
                 done = true
                 continue
             else
-                @debug "left_child same as r.children[1]!, breaking.."
+                #@debug "left_child same as r.children[1]!, breaking.."
             end
             l = l.children[1]
             r = r.children[1]

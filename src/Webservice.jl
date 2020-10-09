@@ -1,3 +1,4 @@
+module Webservice
 using HTTP
 using Dates
 using JSON2
@@ -7,13 +8,14 @@ using IPNets
 
 using JDR
 using JDR.Common
+using JDR.RPKICommon
 using JDR.JSONHelpers
 
 const ROUTER = HTTP.Router()
 const APIV = "/api/v1"
 const LAST_UPDATE = Ref(now(UTC))
 const LAST_UPDATE_SERIAL = Ref(0)
-const TREE = Ref(RPKI.RPKINode(nothing, [], nothing))
+const TREE = Ref(RPKI.RPKINode())
 const LOOKUP = Ref(RPKI.Lookup())
 
 const ATLAS_BILL_TO = "ripe@luukhendriks.eu"
@@ -323,4 +325,5 @@ function start()
     HTTP.serve(JSONHandler, "::1", 8081)
 end
 
-start()
+end # module
+

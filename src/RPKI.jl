@@ -343,7 +343,7 @@ end
 
 function retrieve_all(tal_urls=TAL_URLS; stripTree::Bool=false, nicenames=true) :: Tuple{RPKINode, Lookup}
     lookup = Lookup()
-    root = RPKINode("root")
+    root = RPKINode()
     for (rir, rsync_url) in tal_urls
         (hostname, cer_fn) = split_rsync_url(rsync_url)  
         rir_dir = joinpath(REPO_DIR, hostname)

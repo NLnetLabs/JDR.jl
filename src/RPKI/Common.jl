@@ -8,6 +8,7 @@ using Dates
 export RPKIObject, RPKINode, TmpParseInfo, Lookup, print_ASN1
 export CER, MFT, ROA, CRL
 export VRP
+export root_to
 
 mutable struct RPKIObject{T}
     filename::String

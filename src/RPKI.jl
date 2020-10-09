@@ -57,6 +57,11 @@ function add(p::RPKINode, c::Vector{RPKINode})
     end
 end
 
+function add_sibling(a::RPKINode, b::RPKINode)
+    push!(a.siblings, b)
+    push!(b.siblings, a)
+end
+
 function check(::RPKIObject{T}) where {T}
     @warn "unknown RPKIObject type $(T)"
 end
@@ -113,19 +118,19 @@ function add_roa!(lookup::Lookup, roanode::RPKINode)
 end
 
 function process_roa(roa_fn::String, lookup::Lookup, tpi::TmpParseInfo) :: RPKINode
-    o::RPKIObject{ROA} = check_ASN1(RPKIObject{ROA}(roa_fn), tpi)
-    roa_node = RPKINode(nothing, [], o)
+    roa_obj::RPKIObject{ROA} = check_ASN1(RPKIObject{ROA}(roa_fn), tpi)
+    roa_node = RPKINode(roa_obj)
     add_filename!(lookup, roa_fn, roa_node)
 
-    roa_node.remark_counts_me = count_remarks(o) + count_remarks(o.tree)
+    roa_node.remark_counts_me = count_remarks(roa_obj) + count_remarks(roa_obj.tree)
 
     @assert !isnothing(tpi.caCert)
     @assert !isnothing(tpi.eeCert)
-    check_cert(o, tpi)
+    check_cert(roa_obj, tpi)
 
     # optionally strip the tree to save memory
     if tpi.stripTree
-        o.tree = nothing
+        roa_obj.tree = nothing
     end
     roa_node
 end
@@ -137,44 +142,52 @@ end
 LoopError(file1::String) = LoopError(file1, "")
 Base.showerror(io::IO, e::LoopError) = print(io, "loop between ", e.file1, " and ", e.file2)
 
-function process_mft(mft_fn::String, lookup::Lookup, tpi::TmpParseInfo) :: RPKINode
+function process_crl(crl_fn::String, lookup::Lookup, tpi::TmpParseInfo) ::RPKINode
+    crl_obj::RPKIObject{CRL} = check_ASN1(RPKIObject{CRL}(crl_fn), tpi)
+    crl_node = RPKINode(crl_obj)
+    add_filename!(lookup, crl_fn, crl_node)
+    crl_node.remark_counts_me = count_remarks(crl_obj) + count_remarks(crl_obj.tree)
+    crl_node
+end
+
+function process_mft(mft_fn::String, lookup::Lookup, tpi::TmpParseInfo, cer_node::RPKINode) :: RPKINode
     #if mft_fn in keys(lookup.filenames)
     #    @warn "$(mft_fn) already seen, loop?"
     #    throw("possible loop in $(mft_fn)" )
     #end
-    m::RPKIObject{MFT} = try 
+    mft_obj::RPKIObject{MFT} = try 
         check_ASN1(RPKIObject{MFT}(mft_fn), tpi)
     catch e 
         showerror(stderr, e, catch_backtrace())
         @error "MFT: error with $(mft_fn)"
-        return RPKINode(nothing, [], nothing)
+        return RPKINode()
     end
     mft_dir = dirname(mft_fn)
     listed_files = Vector{RPKINode}()
 	crl_count = 0
-    crl_node = nothing
 
-    check_cert(m, tpi)
+    check_cert(mft_obj, tpi)
 
-    me = RPKINode(nothing, [], m)
-    me.remark_counts_me = count_remarks(m.tree)
+    mft_node = RPKINode(mft_obj)
+    # we add the remarks_counts for the mft_obj after we actually processed the
+    # fileList on the manifest, as more remarks might be added there
+    mft_node.remark_counts_me = count_remarks(mft_obj.tree)
     if tpi.stripTree
-        m.tree = nothing 
+        mft_obj.tree = nothing 
     end
 
-    for f in m.object.files
-        # check for .cer
+    for f in mft_obj.object.files
         if !isfile(joinpath(mft_dir, f))
             @warn "Missing file: $(f)"
-            Mft.add_missing_file(m.object, f)
-            add_missing_filename!(lookup, joinpath(mft_dir, f), me)
-            err!(m, "Files listed in manifest missing on file system")
+            Mft.add_missing_file(mft_obj.object, f)
+            add_missing_filename!(lookup, joinpath(mft_dir, f), mft_node)
+            err!(mft_obj, "Files listed in manifest missing on file system")
             continue
         end
         ext = lowercase(f[end-3:end])
         if ext == ".cer"
+            # TODO accomodate for BGPsec router certificates
             subcer_fn = joinpath(mft_dir, f)
-            #@assert isfile(subcer_fn)
             try
                 # TODO
                 # can .cer and .roa files be in the same dir / on the same level
@@ -194,12 +207,12 @@ function process_mft(mft_fn::String, lookup::Lookup, tpi::TmpParseInfo) :: RPKIN
                     #@warn "LoopError, trying to continue"
                     #@warn "but pushing $(basename(subcer_fn))"
 
-                    if isnothing(m.object.loops)
-                        m.object.loops = [basename(subcer_fn)]
+                    if isnothing(mft_obj.object.loops)
+                        mft_obj.object.loops = [basename(subcer_fn)]
                     else
-                        push!(m.object.loops, basename(subcer_fn))
+                        push!(mft_obj.object.loops, basename(subcer_fn))
                     end
-                    err!(m, "Loop detected!")
+                    err!(mft_obj, "Loop detected!")
                     #@warn "so now it is $(m.object.loops)"
                 else
                     #throw("MFT->.cer: error with $(subcer_fn): \n $(e)")
@@ -211,8 +224,6 @@ function process_mft(mft_fn::String, lookup::Lookup, tpi::TmpParseInfo) :: RPKIN
             roa_fn = joinpath(mft_dir, f)
             try
                 roanode = process_roa(roa_fn, lookup, tpi)
-                #roanode = RPKINode(nothing, [], roa)
-                #push!(roas, RPKINode(nothing, [], roa))
                 push!(listed_files, roanode)
                 add_roa!(lookup, roanode)
             catch e
@@ -220,15 +231,31 @@ function process_mft(mft_fn::String, lookup::Lookup, tpi::TmpParseInfo) :: RPKIN
                 #throw("MFT->.roa: error with $(roa_fn): \n $(e)")
                 rethrow(e)
             end
+        elseif ext == ".crl"
+            crl_fn = joinpath(mft_dir, f)
+            crl_count += 1
+            if crl_count > 1
+                @error "more than one CRL on $(mft_fn)"
+                err!(mft_obj, "more than one CRL on this manifest")
+            end
+            try
+                crlnode = process_crl(crl_fn, lookup, tpi)
+                push!(listed_files, crlnode)
+                add_sibling(cer_node, crlnode)
+
+
+            catch e
+                rethrow(e)
+            end
         end
 
     end
 
     # returning:
-    me.remark_counts_me += count_remarks(m) 
-    add(me, listed_files)
-    add_filename!(lookup, mft_fn, me)
-    me
+    mft_node.remark_counts_me += count_remarks(mft_obj) 
+    add(mft_node, listed_files)
+    add_filename!(lookup, mft_fn, mft_node)
+    mft_node
 end
 
 function process_cer(cer_fn::String, lookup::Lookup, tpi::TmpParseInfo) :: RPKINode
@@ -241,54 +268,55 @@ function process_cer(cer_fn::String, lookup::Lookup, tpi::TmpParseInfo) :: RPKIN
         # placeholder: we need to put something in because when a loop appears
         # in the RPKI repo, this call will never finish so adding it at the end
         # of this function will never happen.
-        add_filename!(lookup, cer_fn, RPKINode(nothing, [], nothing))
+        add_filename!(lookup, cer_fn, RPKINode())
     end
 
-    o::RPKIObject{CER} = check_ASN1(RPKIObject{CER}(cer_fn), tpi)
-    push!(tpi.certStack, o.object)
-    check_cert(o, tpi)
-    check_resources(o, tpi)
+    cer_obj::RPKIObject{CER} = check_ASN1(RPKIObject{CER}(cer_fn), tpi)
+    push!(tpi.certStack, cer_obj.object)
+    check_cert(cer_obj, tpi)
+    # FIXME temporarily do not check resources, it's too slow 
+    check_resources(cer_obj, tpi)
 
-    (ca_host, ca_path) = split_rsync_url(o.object.pubpoint)
+    (ca_host, ca_path) = split_rsync_url(cer_obj.object.pubpoint)
     ca_dir = joinpath(REPO_DIR, ca_host, ca_path)
     
-    mft_host, mft_path = split_rsync_url(o.object.manifest)
+    mft_host, mft_path = split_rsync_url(cer_obj.object.manifest)
     mft_fn = joinpath(REPO_DIR, mft_host, mft_path)
-    rpki_node = RPKINode(nothing, [], o)
+    cer_node = RPKINode(cer_obj)
 
     if tpi.certValid
-        push!(lookup.valid_certs, rpki_node)
+        push!(lookup.valid_certs, cer_node)
     else
-        push!(lookup.invalid_certs, rpki_node)
+        push!(lookup.invalid_certs, cer_node)
     end
     tpi.certValid = nothing
 
     if !(ca_host in keys(lookup.pubpoints))
-        lookup.pubpoints[ca_host] = rpki_node
+        lookup.pubpoints[ca_host] = cer_node
     end
-    if !(isempty(o.object.rrdp_notify))
-        (rrdp_host, _) = split_rrdp_path(o.object.rrdp_notify)
+    if !(isempty(cer_obj.object.rrdp_notify))
+        (rrdp_host, _) = split_rrdp_path(cer_obj.object.rrdp_notify)
         if !(rrdp_host in keys(lookup.pubpoints))
-            lookup.pubpoints[rrdp_host] = rpki_node
+            lookup.pubpoints[rrdp_host] = cer_node
         end
     end
 
-    rpki_node.remark_counts_me = count_remarks(o) + count_remarks(o.tree)
+    cer_node.remark_counts_me = count_remarks(cer_obj) + count_remarks(cer_obj.tree)
     if tpi.stripTree
-        o.tree = nothing
+        cer_obj.tree = nothing
     end
 
     #TODO: should we still process through the directory, even though there was
     #no manifest?
     if !isfile(mft_fn)
         @error "manifest $(basename(mft_fn)) not found"
-        add_missing_filename!(lookup, mft_fn, rpki_node)
-        err!(o, "Manifest file $(basename(mft_fn)) not in repo")
+        add_missing_filename!(lookup, mft_fn, cer_node)
+        err!(cer_obj, "Manifest file $(basename(mft_fn)) not in repo")
     else
 
         try
-            mft = process_mft(mft_fn, lookup, tpi)
-            add(rpki_node, mft)
+            mft = process_mft(mft_fn, lookup, tpi, cer_node)
+            add(cer_node, mft)
         catch e
             if e isa LoopError
                 @warn "Loop! between $(basename(e.file1)) and $(basename(e.file2))"
@@ -303,23 +331,19 @@ function process_cer(cer_fn::String, lookup::Lookup, tpi::TmpParseInfo) :: RPKIN
         # TODO check RFC on directory structures: do the .mft and .cer have to
         # reside in the same dir?
 
-        # ireturning:
-        #rpki_node = RPKINode(nothing, [], o)
-        #@debug "process_cer add() on", rpki_node, "\n", mft
-
-        add_filename!(lookup, cer_fn, rpki_node)
+        add_filename!(lookup, cer_fn, cer_node)
     end
     #@debug "end of process_cer, popping rsaModulus, $(length(tpi.ca_rsaModulus)) left on stack"
     pop!(tpi.ca_rsaModulus)
     pop!(tpi.ca_rsaExponent)
     pop!(tpi.issuer)
     pop!(tpi.certStack)
-    rpki_node
+    cer_node
 end
 
 function retrieve_all(tal_urls=TAL_URLS; stripTree::Bool=false, nicenames=true) :: Tuple{RPKINode, Lookup}
     lookup = Lookup()
-    root = RPKINode(nothing, [], nothing)
+    root = RPKINode("root")
     for (rir, rsync_url) in tal_urls
         (hostname, cer_fn) = split_rsync_url(rsync_url)  
         rir_dir = joinpath(REPO_DIR, hostname)

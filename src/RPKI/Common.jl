@@ -35,16 +35,21 @@ end
 
 # TODO:
 # - can (do we need to) we further optimize/parametrize RPKINode on .obj?
+# - should children and/or siblings be a Union{nothing, Vector} to reduce
+# allocations?
 mutable struct RPKINode
     parent::Union{Nothing, RPKINode}
     children::Vector{RPKINode}
+    siblings::Vector{RPKINode}
     obj::Union{Nothing, RPKIObject, String}
     # remark_counts_me could be a wrapper to the obj.remark_counts_me 
     remark_counts_me::RemarkCounts_t
     remark_counts_children::RemarkCounts_t
 end
-# FIXME: check how we actually use RPKINode() throughout the codebase
-RPKINode(p, c, o) = RPKINode(p, c, o, RemarkCounts(), RemarkCounts())
+
+RPKINode() = RPKINode(nothing, RPKINode[], RPKINode[], nothing, RemarkCounts(), RemarkCounts())
+RPKINode(o::RPKIObject) = RPKINode(nothing, RPKINode[], RPKINode[], o, RemarkCounts(), RemarkCounts())
+RPKINode(s::String) = RPKINode(nothing, RPKINode[], RPKINode[], s, RemarkCounts(), RemarkCounts())
 
 
 function root_to(n::RPKINode)
@@ -154,15 +159,26 @@ mutable struct CER
     subject::String
 
     inherit_prefixes::Bool
-    #prefixes::Vector{Union{IPNet, Tuple{IPNet, IPNet}}}
     prefixes::IPPrefixesOrRanges
     inherit_ASNs::Bool
-    #ASNs::Vector{Union{Tuple{UInt32, UInt32}, UInt32}}
     ASNs::AsIdsOrRanges
 end
 CER() = CER(0, "", "", "", nothing, nothing, 0, 0, "", "",
             false, IPPrefixesOrRanges(),
             false, AsIdsOrRanges())
+
+function Base.show(io::IO, cer::CER)
+    print(io, "  pubpoint: ", cer.pubpoint, '\n')
+    print(io, "  manifest: ", cer.manifest, '\n')
+    print(io, "  rrdp: ", cer.rrdp_notify, '\n')
+    printstyled(io, "  ASNs: \n")
+    print(io, "    ", join(cer.ASNs, ","), "\n")
+    printstyled(io, "  prefixes: \n")
+    for p in cer.prefixes
+        print(io, "    ", p, '\n')
+    end
+end
+
 
 
 mutable struct MFT
@@ -178,6 +194,7 @@ struct VRP{AFI<:IPNet}
     prefix::AFI
     maxlength::Integer
 end
+Base.show(io::IO, vrp::VRP) = println(io, vrp.prefix, "-$(vrp.maxlength)")
 
 mutable struct ROA
     asid::Integer

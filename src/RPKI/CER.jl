@@ -8,18 +8,6 @@ using SHA
 
 export check_ASN1, check_cert, check_resources
 
-function Base.show(io::IO, cer::CER)
-    print(io, "  pubpoint: ", cer.pubpoint, '\n')
-    print(io, "  manifest: ", cer.manifest, '\n')
-    print(io, "  rrdp: ", cer.rrdp_notify, '\n')
-    printstyled(io, "  ASNs: \n")
-    print(io, "    ", join(cer.ASNs, ","), "\n")
-    printstyled(io, "  prefixes: \n")
-    for p in cer.prefixes
-        print(io, "    ", p, '\n')
-    end
-end
-
 import .RPKI:check_ASN1
 function check_ASN1(o::RPKIObject{CER}, tpi::TmpParseInfo=TmpParseInfo()) :: RPKIObject{CER}
     # The certificate should consist of three parts: (RFC5280)

@@ -46,7 +46,7 @@ const TAL_URLS = Dict(
 function asn(req::HTTP.Request)
     # /api/v1/asn/10, get 10
     asid = HTTP.URIs.splitpath(req.target)[4] 
-    res = RPKI.lookup(LOOKUP[], RPKI.AutSysNum(parse(UInt32, asid)))
+    res = RPKI.search(LOOKUP[], RPKI.AutSysNum(parse(UInt32, asid)))
 
     if length(HTTP.URIs.splitpath(req.target)) > 4 && 
         HTTP.URIs.splitpath(req.target)[5]  == "raw"
@@ -63,7 +63,7 @@ function prefix(req::HTTP.Request)
     prefix = HTTP.URIs.splitpath(req.target)[4] 
     prefix = HTTP.URIs.unescapeuri(prefix)
     prefix = IPNet(prefix)
-    res = RPKI.lookup(LOOKUP[], prefix)
+    res = RPKI.search(LOOKUP[], prefix)
 
     if length(HTTP.URIs.splitpath(req.target)) > 4 && 
         HTTP.URIs.splitpath(req.target)[5]  == "raw"
@@ -79,9 +79,12 @@ function object(req::HTTP.Request)
     # /api/v1/object/escaped_filename, get and unescape filename
     object = HTTP.URIs.splitpath(req.target)[4] 
     object = HTTP.URIs.unescapeuri(object)
-    res = RPKI.lookup(LOOKUP[], object)
+	@debug "object details call for $(object)"
+    res = RPKI.search(LOOKUP[], object)
+	@debug typeof(res)
+	@debug length(res)
     
-    ObjectDetails(res.obj, res.remark_counts_me)
+    ObjectDetails(first(res).second.obj, first(res).second.remark_counts_me)
 end
 
 

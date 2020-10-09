@@ -34,7 +34,7 @@ end
 function ObjectDetails(r::RPKI.RPKIObject, rc::RemarkCounts_t) 
     # we parse this again, because it is removed from the main tree/lookup 
     tmp = RPKI.RPKIObject(r.filename)
-    RPKI.check(tmp, RPKI.TmpParseInfo(;nicenames=true))
+    RPKI.check_ASN1(tmp, RPKI.TmpParseInfo(;nicenames=true))
     @assert isnothing(tmp.remarks_tree)
     RPKI.collect_remarks_from_asn1!(tmp, tmp.tree)
     

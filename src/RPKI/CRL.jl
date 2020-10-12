@@ -23,15 +23,19 @@ function check_revokedCertificates(o::RPKIObject{CRL}, node::Node)
 #                                  }  OPTIONAL,
 
     tagisa(node, ASN1.SEQUENCE)
-    for s in node.children
-        tagisa(s, ASN1.SEQUENCE)
+    if !isnothing(node.children)
+        for s in node.children
+            tagisa(s, ASN1.SEQUENCE)
 
-        # userCertificate serialnumber
-        tagisa(s[1], ASN1.INTEGER)
-        push!(o.object.revoked_serials, ASN1.value(s[1].tag, force_reinterpret=true))
+            # userCertificate serialnumber
+            tagisa(s[1], ASN1.INTEGER)
+            push!(o.object.revoked_serials, ASN1.value(s[1].tag, force_reinterpret=true))
 
-        # recovationDate Time
-        tagisa(s[2], [ASN1.UTCTIME, ASN1.GENTIME])
+            # recovationDate Time
+            tagisa(s[2], [ASN1.UTCTIME, ASN1.GENTIME])
+        end
+    else
+        @debug "empty revokedCertificates SEQUENCE in $(o.filename)"
     end
 
 end

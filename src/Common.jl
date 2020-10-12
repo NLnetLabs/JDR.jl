@@ -122,6 +122,14 @@ export AutSysNum, AutSysNumRange, AsIdsOrRanges, covered
 struct AutSysNum
     asn::UInt32
 end
+function AutSysNum(s::String) 
+    m = match(r"(ASN?)?(\d+)"i, s)
+    if m === nothing
+        @error "can not parse $(s)"
+    else
+        AutSysNum(parse(UInt32, m.captures[end]))
+    end
+end
 struct AutSysNumRange
     first::AutSysNum
     last::AutSysNum

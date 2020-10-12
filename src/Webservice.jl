@@ -48,14 +48,13 @@ const TAL_URLS = Dict(
 function asn(req::HTTP.Request)
     # /api/v1/asn/10, get 10
     asid = HTTP.URIs.splitpath(req.target)[4] 
-    res = RPKI.search(LOOKUP[], RPKI.AutSysNum(parse(UInt32, asid)))
+    res = RPKI.search(LOOKUP[], RPKI.AutSysNum(asid))
 
     if length(HTTP.URIs.splitpath(req.target)) > 4 && 
         HTTP.URIs.splitpath(req.target)[5]  == "raw"
         @info "RAW request"
         return [to_root(r) for r in res] 
     else
-        @info "returning new vue tree format"
         return to_vue_tree(map(to_vue_branch, res))
     end
 end
@@ -72,7 +71,6 @@ function prefix(req::HTTP.Request)
         @info "RAW request"
         return [to_root(r) for r in res]
     else
-        @info "returning new vue tree format"
         return to_vue_tree(map(to_vue_branch, res))
     end
 end
@@ -264,7 +262,7 @@ function set_last_update()
 end
 
 function JSONHandler(req::HTTP.Request)
-    @info "Request: $(req.target)"
+    @info "[$(now())] request: $(req.target)"
 
     # first check if there's any request body
     body = IOBuffer(HTTP.payload(req))

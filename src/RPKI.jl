@@ -84,7 +84,7 @@ REPO_DIR = joinpath(homedir(), ".rpki-cache/repository/rsync")
 # TODO move to validation_common ?
 function split_scheme_uri(uri::String) :: Tuple{String, String}
     m = match(r"(rsync|https)://([^/]+)/(.*)", uri)
-    (hostname, cer_fn) = m.captures
+    (scheme, hostname, cer_fn) = m.captures
     (hostname, cer_fn)
 end
 function split_rrdp_path(url::String) :: Tuple{String, String}
@@ -350,7 +350,10 @@ function retrieve_all(tal_urls=TAL_URLS; stripTree::Bool=false, nicenames=true) 
 
         # For now, we rely on Routinator for the actual fetching
         # We do however construct all the paths and mimic the entire procedure
-        @assert isdir(rir_dir)
+        if !isdir(rir_dir)
+            @error "repo dir not found: $(rir_dir)"
+            @assert isdir(rir_dir)
+        end
 
         # 'rsync' the .cer from the TAL
         ta_cer = joinpath(rir_dir, cer_fn)

@@ -196,6 +196,9 @@ end
     # Version == 0x02? (meaning version 3)
     tagis_contextspecific(node, 0x0)
     tagvalue(node[1], ASN1.INTEGER, 0x02)
+    if tpi.setNicenames
+        node.nicevalue = string(ASN1.value(node[1].tag))
+    end
 end
 
 @check "serialNumber" begin
@@ -203,6 +206,9 @@ end
     # do we need the serial? 
     if o.object isa CER
         o.object.serial = ASN1.value(node.tag, force_reinterpret=true)
+    end
+    if tpi.setNicenames 
+        node.nicevalue = string(ASN1.value(node.tag, force_reinterpret=true))
     end
 end
 
@@ -239,6 +245,9 @@ end
     if o.object isa CER
         o.object.issuer = ASN1.value(issuer.tag)
         push!(tpi.issuer, ASN1.value(issuer.tag))
+    end
+    if tpi.setNicenames 
+        node.nicevalue = ASN1.value(issuer.tag)
     end
 
 	if length(issuer_set.children) > 1

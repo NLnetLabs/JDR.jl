@@ -204,6 +204,7 @@ mutable struct Node <: AbstractNode
     validated::Bool
 	remarks::Union{Nothing, Vector{Remark}}
     nicename::Union{Nothing, String}
+    nicevalue::Union{Nothing, String}
 end
 
 isleaf(n::Node) :: Bool = isnothing(n.children)
@@ -236,7 +237,7 @@ function count_remarks(tree::Node) :: RemarkCounts_t
 end
 
 #Node(t::T) where {T <: Any } = Node(nothing, nothing, t, false, nothing)
-Node(t::T) where {T <: Any } = Node(nothing, t, false, nothing, nothing)
+Node(t::T) where {T <: Any } = Node(nothing, t, false, nothing, nothing, nothing)
 
 function child(node::Node, indices...) :: Node
     current = node

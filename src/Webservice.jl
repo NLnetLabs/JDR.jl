@@ -81,8 +81,6 @@ function object(req::HTTP.Request)
     object = HTTP.URIs.unescapeuri(object)
 	@debug "object details call for $(object)"
     res = RPKI.search(LOOKUP[], object)
-	@debug typeof(res)
-	@debug length(res)
     
     ObjectDetails(first(res).second.obj, first(res).second.remark_counts_me)
 end

@@ -243,7 +243,6 @@ function to_vue_tree(branches::Vector)
         #@debug "branch length:", length(b)
     end
     sort!(branches, by = x -> length(x), rev=true)
-    @debug "----"
     for b in branches
         #@debug "branch length:", length(b)
     end

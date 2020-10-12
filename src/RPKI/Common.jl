@@ -148,6 +148,8 @@ struct ASIdentifiers
 end
 mutable struct CER 
     serial::Integer
+    notBefore::Union{Nothing, DateTime}
+    notAfter::Union{Nothing, DateTime}
     pubpoint::String
     manifest::String
     rrdp_notify::String
@@ -164,7 +166,8 @@ mutable struct CER
     inherit_ASNs::Bool
     ASNs::AsIdsOrRanges
 end
-CER() = CER(0, "", "", "", nothing, nothing, 0, 0, "", "",
+CER() = CER(0, nothing, nothing,
+            "", "", "", nothing, nothing, 0, 0, "", "",
             false, IPPrefixesOrRanges(),
             false, AsIdsOrRanges())
 

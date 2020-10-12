@@ -1,5 +1,6 @@
 module ASN
 using ...JDR.Common
+using Dates
 
 export Tag, AbstractTag, Node, AbstractNode
 export value, print_node, append!, isleaf, iter, lazy_iter #parent
@@ -128,8 +129,21 @@ value(t::Tag{SET}) = ""
 # all bits should be 1 for true
 value(t::Tag{BOOLEAN}) = t.value[1] != 0 
 value(t::Tag{PRINTABLESTRING}) = String(copy(t.value))
-value(t::Tag{UTCTIME}) = String(copy(t.value))
-value(t::Tag{GENTIME}) = String(copy(t.value))
+
+#value(t::Tag{UTCTIME}) = String(copy(t.value))
+#value(t::Tag{GENTIME}) = String(copy(t.value))
+value(t::Tag{GENTIME}) = DateTime(String(copy(t.value)), dateformat"yyyymmddHHMMSSZ")
+function value(t::Tag{UTCTIME}) 
+    ts = DateTime(String(copy(t.value)), dateformat"yymmddHHMMSSZ")
+    if year(ts) < 50
+        ts += Year(2000)
+    else
+        ts += Year(1900)
+    end
+    ts
+end
+
+
 value(t::Tag{UTF8STRING}) = String(copy(t.value))
 value(t::Tag{IA5STRING}) = String(copy(t.value))
 function value(t::Tag{INTEGER}; force_reinterpret=false) where {T}

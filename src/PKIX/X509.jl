@@ -261,6 +261,13 @@ end
     tagisa(node, ASN1.SEQUENCE)
     tagisa(node[1], [ASN1.UTCTIME, ASN1.GENTIME])
     tagisa(node[2], [ASN1.UTCTIME, ASN1.GENTIME])
+    if tpi.setNicenames
+        node[1].nicename = "notBefore"
+        node[1].nicevalue = string(ASN1.value(node[1].tag))
+        node[2].nicename = "notAfter"
+        node[2].nicevalue = string(ASN1.value(node[2].tag))
+
+    end
 end
 
 @check "subject" begin

@@ -196,7 +196,7 @@ function _pubpoints!(pp_tree::VueNode, tree::RPKI.RPKINode, current_pp::String)
 
     for c in tree.children
         if c.obj isa RPKI.RPKIObject{CER}
-            this_pp = RPKI.split_rsync_url(c.obj.object.pubpoint)[1]
+            this_pp = RPKI.split_scheme_uri(c.obj.object.pubpoint)[1]
             if this_pp != current_pp
                 # check if this_pp exists on the same level
                 if this_pp in [c2.name for c2 in pp_tree.children]
@@ -226,7 +226,7 @@ function to_vue_pubpoints(tree::RPKI.RPKINode)
     pp_tree = VueNode([], [], "root", nothing)
     for c in tree.children
         if ! isnothing(c.obj) && c.obj isa RPKI.RPKIObject{CER}
-            pp = RPKI.split_rsync_url(c.obj.object.pubpoint)[1]
+            pp = RPKI.split_scheme_uri(c.obj.object.pubpoint)[1]
             subtree = VueNode([], [], pp, ObjectSlim(c.obj, c.remark_counts_me, c.remark_counts_children))
             _pubpoints!(subtree, c, pp)
             push!(pp_tree.children, subtree)

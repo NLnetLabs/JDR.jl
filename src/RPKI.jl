@@ -82,8 +82,8 @@ const TAL_URLS = Dict(
 REPO_DIR = joinpath(homedir(), ".rpki-cache/repository/rsync")
 
 # TODO move to validation_common ?
-function split_rsync_url(url::String) :: Tuple{String, String}
-    m = match(r"rsync://([^/]+)/(.*)", url)
+function split_scheme_uri(uri::String) :: Tuple{String, String}
+    m = match(r"(rsync|https)://([^/]+)/(.*)", uri)
     (hostname, cer_fn) = m.captures
     (hostname, cer_fn)
 end
@@ -277,10 +277,10 @@ function process_cer(cer_fn::String, lookup::Lookup, tpi::TmpParseInfo) :: RPKIN
     # FIXME temporarily do not check resources, it's too slow 
     check_resources(cer_obj, tpi)
 
-    (ca_host, ca_path) = split_rsync_url(cer_obj.object.pubpoint)
+    (ca_host, ca_path) = split_scheme_uri(cer_obj.object.pubpoint)
     ca_dir = joinpath(REPO_DIR, ca_host, ca_path)
     
-    mft_host, mft_path = split_rsync_url(cer_obj.object.manifest)
+    mft_host, mft_path = split_scheme_uri(cer_obj.object.manifest)
     mft_fn = joinpath(REPO_DIR, mft_host, mft_path)
     cer_node = RPKINode(cer_obj)
 
@@ -345,7 +345,7 @@ function retrieve_all(tal_urls=TAL_URLS; stripTree::Bool=false, nicenames=true) 
     lookup = Lookup()
     root = RPKINode()
     for (rir, rsync_url) in tal_urls
-        (hostname, cer_fn) = split_rsync_url(rsync_url)  
+        (hostname, cer_fn) = split_scheme_uri(rsync_url)  
         rir_dir = joinpath(REPO_DIR, hostname)
 
         # For now, we rely on Routinator for the actual fetching
@@ -416,7 +416,7 @@ function _pubpoints!(pp_tree::RPKINode, tree::RPKINode, current_pp::String)
         if c.obj isa RPKIObject{CER}
             #@debug "found CER child", c.obj
             #@debug "c.obj.object", c.obj.object
-            this_pp = split_rsync_url(c.obj.object.pubpoint)[1]
+            this_pp = split_scheme_uri(c.obj.object.pubpoint)[1]
             if this_pp != current_pp
                 # FIXME check if this_pp exists on the same level
                 if this_pp in [c2.obj for c2 in pp_tree.children]
@@ -451,7 +451,7 @@ function pubpoints(tree::RPKINode) :: RPKINode
     pp_tree = RPKINode(nothing, [], "root")
     for c in tree.children
         if ! isnothing(c.obj) && c.obj isa RPKIObject{CER}
-            pp = split_rsync_url(c.obj.object.pubpoint)[1]
+            pp = split_scheme_uri(c.obj.object.pubpoint)[1]
             subtree = RPKINode(nothing, [], pp)
             _pubpoints!(subtree, c, pp)
             add(pp_tree, subtree)
@@ -482,7 +482,7 @@ function _html(tree::RPKINode, io::IOStream)
             # a href to html_path(Object)
             write(io, "<li><span class='caret'>$(nameof(typeof(tree.obj).parameters[1]))")
             if tree.obj isa RPKIObject{CER}
-                write(io, " [$(split_rsync_url(tree.obj.object.pubpoint)[1])]")
+                write(io, " [$(split_scheme_uri(tree.obj.object.pubpoint)[1])]")
             end
             write(io, " <a target='_blank' href='file://$(html_path(tree.obj, "/tmp/jdrhtml"))'>")
             write(io, "$(basename(tree.obj.filename))")

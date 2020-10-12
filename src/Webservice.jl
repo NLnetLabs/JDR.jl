@@ -104,7 +104,7 @@ end
 
 function _generate_msm_definitions(cer::RPKI.CER; params...) #:: Vector{Atlas.Definition}
     definitions = Vector()
-    host_rsync, _ = RPKI.split_rsync_url(cer.pubpoint)
+    host_rsync, _ = RPKI.split_scheme_uri(cer.pubpoint)
     push!(definitions, Ping6(host_rsync; skip_dns_check=true, tags=["jdr"], params...))
     push!(definitions, Ping4(host_rsync; skip_dns_check=true, tags=["jdr"], params...))
 

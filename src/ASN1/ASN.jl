@@ -7,7 +7,7 @@ export value, print_node, append!, isleaf, iter, lazy_iter #parent
 export remark!, child, getindex, tagtype
 
 export  Unimplemented, InvalidTag, SEQUENCE, SET, RESERVED_ENC, OCTETSTRING,
-        BITSTRING, PRINTABLESTRING, CONTEXT_SPECIFIC, INTEGER, NULL, UTCTIME, GENTIME, OID, IA5STRING
+        BITSTRING, PRINTABLESTRING, UTF8STRING, CONTEXT_SPECIFIC, INTEGER, NULL, UTCTIME, GENTIME, OID, IA5STRING
 
 
 abstract type AbstractTag end 

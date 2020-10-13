@@ -64,7 +64,7 @@ function check_issuer(o::RPKIObject{CRL}, node::Node)
     # If the issuer contains the serialNumber as well,
     # the set should contain 1 child, the RECOMMENDED set
     # TODO check this interpretation
-    containAttributeTypeAndValue(node[1], @oid("2.5.4.3"), ASN1.PRINTABLESTRING)
+    containAttributeTypeAndValue(node[1], @oid("2.5.4.3"), ASN1.PRINTABLESTRING, [ASN1.UTF8STRING])
 end
 
 function check_signature(o::RPKIObject{CRL}, node::Node) 

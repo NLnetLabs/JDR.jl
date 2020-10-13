@@ -241,13 +241,17 @@ end
     # If the issuer contains the serialNumber as well,
     # the set should contain 1 child, the RECOMMENDED set
     # TODO check this interpretation
-    issuer = containAttributeTypeAndValue(issuer_set, @oid("2.5.4.3"), ASN1.PRINTABLESTRING)
-    if o.object isa CER
-        o.object.issuer = ASN1.value(issuer.tag)
-        push!(tpi.issuer, ASN1.value(issuer.tag))
-    end
-    if tpi.setNicenames 
-        node.nicevalue = ASN1.value(issuer.tag)
+    issuer = containAttributeTypeAndValue(issuer_set, @oid("2.5.4.3"), ASN1.PRINTABLESTRING, [ASN1.UTF8STRING])
+    if !isnothing(issuer)
+        if o.object isa CER
+            o.object.issuer = ASN1.value(issuer.tag)
+            push!(tpi.issuer, ASN1.value(issuer.tag))
+        end
+        if tpi.setNicenames
+            node.nicevalue = ASN1.value(issuer.tag)
+        end
+    else
+        @warn("no issuer for $(o.filename)")
     end
 
 	if length(issuer_set.children) > 1
@@ -277,7 +281,7 @@ end
     #  EE certified by the issuer MUST be identified using a subject name
     #  that is unique per issuer.
     #  TODO can we check on this? not here, but in a later stage?
-    subject = containAttributeTypeAndValue(node[1], @oid("2.5.4.3"), ASN1.PRINTABLESTRING)
+    subject = containAttributeTypeAndValue(node[1], @oid("2.5.4.3"), ASN1.PRINTABLESTRING, [ASN1.UTF8STRING])
     #@debug "CER, subject:" ASN1.value(subject.tag)
 
     if o.object isa CER

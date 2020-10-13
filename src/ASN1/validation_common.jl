@@ -89,8 +89,7 @@ function childrencontainvalue(node::Node, t::Type, v::Any)
     end
 end
 
-function containAttributeTypeAndValue(node::Node, oid::Vector{UInt8}, t::Type) :: Node
-    found_oid = false
+function containAttributeTypeAndValue(node::Node, oid::Vector{UInt8}, expected_type::DataType, accepted_types::Vector{DataType}=[]) :: Union{Nothing, Node}
     node.validated = true # this node is the RelativeDistinguishedName, thus a SET
 
     # in case of IMPLICITly tagged context-specific SETs, the first part of the
@@ -100,14 +99,22 @@ function containAttributeTypeAndValue(node::Node, oid::Vector{UInt8}, t::Type) :
     for c in node.children # every c in a SEQUENCE
         @assert c.tag isa Tag{ASN.SEQUENCE}
         if c[1].tag isa Tag{ASN.OID} && c[1].tag.value == oid
-            if tagisa(c[2], t)
+            if c[2].tag isa Tag{expected_type}
                 c.validated = c[1].validated = c[2].validated = true
                 return c[2]
+            end
+            for t in accepted_types
+                if c[2].tag isa Tag{t}
+                    c.validated = c[1].validated = c[2].validated = true
+                    warn!(c[2], "RFC6487: MUST be PRINTABLESTRING instead of $(t)")
+                    return c[2]
+                end
             end
 
         end
     end
     warn!(node, "expected child node OID $(oid)")
+    nothing
 end
 
 function check_extensions(tree::Node, oids::Vector{Pair{Vector{UInt8},String}}) 

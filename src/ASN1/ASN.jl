@@ -278,7 +278,10 @@ function Base.show(io::IO, n::Node)
         end
         if !isnothing(n.remarks) && !isempty(n.remarks)
             printstyled(io, " [$(length(n.remarks))] "; color=:red)
-            printstyled(io, n.remarks[end]; color=:yellow)
+            for (idx, r) in enumerate(n.remarks)
+                printstyled(io, idx, ": "; color=:red)
+                printstyled(io, n.remarks[idx], " "; color=:yellow)
+            end
         end
     else
         print(io, "__EMPTY NODE__")

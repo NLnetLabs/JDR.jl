@@ -151,6 +151,7 @@ mutable struct VueNode
     mates::Vector{VueNode}
     name::String
     object::Union{Nothing, ObjectSlim}
+    newPubpoint::Union{Nothing,String}
 end
 
 JSON2.@format VueNode begin
@@ -161,12 +162,21 @@ end
 
 function to_vue_branch(node::RPKI.RPKINode)
     nodes = root_to(node)[2:end]
-    first_cer = VueNode([], [], basename(nodes[1].obj.filename), ObjectSlim(nodes[1].obj, nodes[1].remark_counts_me, nodes[1].remark_counts_children))
-    root = VueNode([first_cer], [], "root", nothing)
+    first_cer = VueNode([], [], basename(nodes[1].obj.filename), ObjectSlim(nodes[1].obj, nodes[1].remark_counts_me, nodes[1].remark_counts_children), nothing)
+    root = VueNode([first_cer], [], "root", nothing, nothing)
     current = root
+    current_pp = "root"
     for n in nodes
-        siblings = [VueNode([], [], basename(s.obj.filename), ObjectSlim(s.obj, s.remark_counts_me, s.remark_counts_children)) for s in n.siblings]
-        vuenode = VueNode([], siblings, basename(n.obj.filename), ObjectSlim(n.obj, n.remark_counts_me, n.remark_counts_children))
+        siblings = [VueNode([], [], basename(s.obj.filename), ObjectSlim(s.obj, s.remark_counts_me, s.remark_counts_children), nothing) for s in n.siblings]
+        vuenode = VueNode([], siblings, basename(n.obj.filename), ObjectSlim(n.obj, n.remark_counts_me, n.remark_counts_children), nothing)
+        if n.obj.object isa CER 
+            (this_pp, ) = split_scheme_uri(n.obj.object.pubpoint)
+            if this_pp != current_pp
+                vuenode.newPubpoint = this_pp
+            end
+            current_pp = this_pp
+        end
+
         if n.obj.object isa MFT 
             push!(current.mates, vuenode)
         else
@@ -206,7 +216,7 @@ function _pubpoints!(pp_tree::VueNode, tree::RPKI.RPKINode, current_pp::String)
                     #TODO check remark_counts_me, should we take the
                     #remarks_counts from the parent?
                     #but, pp_tree does not have any..
-                    new_pp = VueNode([], [], this_pp, ObjectSlim(c.obj, c.remark_counts_me, c.remark_counts_children))
+                    new_pp = VueNode([], [], this_pp, ObjectSlim(c.obj, c.remark_counts_me, c.remark_counts_children), nothing)
                     _pubpoints!(new_pp, c, this_pp)
                     push!(pp_tree.children, new_pp)
                 end
@@ -223,11 +233,11 @@ end
 
 function to_vue_pubpoints(tree::RPKI.RPKINode)
     #pp_tree = RPKINode(nothing, [], "root")
-    pp_tree = VueNode([], [], "root", nothing)
+    pp_tree = VueNode([], [], "root", nothing, nothing)
     for c in tree.children
         if ! isnothing(c.obj) && c.obj isa RPKI.RPKIObject{CER}
             pp = RPKI.split_scheme_uri(c.obj.object.pubpoint)[1]
-            subtree = VueNode([], [], pp, ObjectSlim(c.obj, c.remark_counts_me, c.remark_counts_children))
+            subtree = VueNode([], [], pp, ObjectSlim(c.obj, c.remark_counts_me, c.remark_counts_children), nothing)
             _pubpoints!(subtree, c, pp)
             push!(pp_tree.children, subtree)
         end
@@ -239,13 +249,7 @@ function to_vue_tree(branches::Vector)
     if length(branches) < 2
         return branches
     end
-    for b in branches
-        #@debug "branch length:", length(b)
-    end
     sort!(branches, by = x -> length(x), rev=true)
-    for b in branches
-        #@debug "branch length:", length(b)
-    end
     
     left = branches[1]
     for b in (2:length(branches)) 

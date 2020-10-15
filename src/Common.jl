@@ -1,9 +1,22 @@
 module Common
 using IPNets
 
+export split_scheme_uri, split_rrdp_path
 export Remark, RemarkLevel, RemarkCounts, RemarkCounts_t, count_remarks
 export remark!, dbg!, info!, warn!, err!
 export @oid
+
+
+function split_scheme_uri(uri::String) :: Tuple{String, String}
+    m = match(r"(rsync|https)://([^/]+)/(.*)", uri)
+    (scheme, hostname, cer_fn) = m.captures
+    (hostname, cer_fn)
+end
+function split_rrdp_path(url::String) :: Tuple{String, String}
+    m = match(r"https://([^/]+)(/.*)", url)
+    (hostname, cer_fn) = m.captures
+    (hostname, cer_fn)
+end
 
 
 

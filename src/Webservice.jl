@@ -100,12 +100,12 @@ end
 
 function _generate_msm_definitions(cer::RPKI.CER; params...) #:: Vector{Atlas.Definition}
     definitions = Vector()
-    host_rsync, _ = RPKI.split_scheme_uri(cer.pubpoint)
+    host_rsync, _ = split_scheme_uri(cer.pubpoint)
     push!(definitions, Ping6(host_rsync; skip_dns_check=true, tags=["jdr"], params...))
     push!(definitions, Ping4(host_rsync; skip_dns_check=true, tags=["jdr"], params...))
 
     if !isempty(cer.rrdp_notify)
-        rrdp_host, rrdp_path = RPKI.split_rrdp_path(cer.rrdp_notify)
+        rrdp_host, rrdp_path = split_rrdp_path(cer.rrdp_notify)
         if rrdp_host != host_rsync
             push!(definitions, Ping6(rrdp_host; skip_dns_check=true, tags=["jdr"], params...))
             push!(definitions, Ping4(rrdp_host; skip_dns_check=true, tags=["jdr"], params...))

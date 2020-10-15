@@ -81,19 +81,6 @@ const TAL_URLS = Dict(
 )
 REPO_DIR = joinpath(homedir(), ".rpki-cache/repository/rsync")
 
-# TODO move to validation_common ?
-function split_scheme_uri(uri::String) :: Tuple{String, String}
-    m = match(r"(rsync|https)://([^/]+)/(.*)", uri)
-    (scheme, hostname, cer_fn) = m.captures
-    (hostname, cer_fn)
-end
-function split_rrdp_path(url::String) :: Tuple{String, String}
-    m = match(r"https://([^/]+)(/.*)", url)
-    (hostname, cer_fn) = m.captures
-    (hostname, cer_fn)
-end
-
-
 function add_roa!(lookup::Lookup, roanode::RPKINode)
     # add ASN
     # TODO do we also want to add CERs here?

@@ -33,6 +33,7 @@ import .RPKI:check_cert
 function check_cert(o::RPKIObject{CER}, tpi::TmpParseInfo) :: RPKI.RPKIObject{CER}
     if !o.object.selfsigned && tpi.certStack[end-1].subject != o.object.issuer
         @error "subject != issuer for child cert $(o.filename)"
+        err!(o, "subject != issuer for child cert")
     end
     sig = o.tree.children[3]
     signature = to_bigint(sig.tag.value[2:end])

@@ -3,7 +3,8 @@ using IPNets
 
 export split_scheme_uri, split_rrdp_path
 export Remark, RemarkLevel, RemarkCounts, RemarkCounts_t, count_remarks
-export remark!, dbg!, info!, warn!, err!
+export dbg!, info!, warn!, err!
+export remark_encodingIssue!, remark_ASN1Issue!, remark_manifestIssue!, remark_missingFile!, remark_validityIssue!, remark_resourceIssue!, remark_loopIssue!
 export @oid
 
 
@@ -25,15 +26,18 @@ end
 ##############################
 
 @enum RemarkLevel DBG INFO WARN ERR
+@enum RemarkType EncodingIssue ASN1Issue ManifestIssue MissingFile ValidityIssue ResourceIssue LoopIssue
 
 remarkTID = 0
 resetRemarkTID() = global remarkTID = 0
 struct Remark
     lvl::RemarkLevel
+    type::Union{Nothing, RemarkType}
     msg::String
     tid::Int
 end
-Remark(lvl, msg) = Remark(lvl, msg, global remarkTID += 1)
+Remark(lvl::RemarkLevel, msg::String) = Remark(lvl, nothing, msg, global remarkTID += 1)
+Remark(lvl::RemarkLevel, type::RemarkType, msg::String) = Remark(lvl, type, msg, global remarkTID += 1)
 
 ## Example:
 #struct MyObject
@@ -45,31 +49,44 @@ Remark(lvl, msg) = Remark(lvl, msg, global remarkTID += 1)
 
 
 # Helper for constructors:
-const RemarkCounts_t = Dict{RemarkLevel, Int64}
-RemarkCounts() = Dict(lvl => 0 for lvl in instances(RemarkLevel)) 
+const RemarkCounts_t = Dict{Union{RemarkLevel, RemarkType}, Int64}
+RemarkCounts() = Dict(lvl => 0 for lvl in hcat(instances(RemarkLevel)..., instances(RemarkType)...))
 
-function remark!(o::Any, lvl::RemarkLevel, msg::String)
+function remark!(o::Any, lvl::RemarkLevel, type::RemarkType, msg::String)
 	if isnothing(o.remarks)
         o.remarks = Vector{Remark}([])
 	end	
-	push!(o.remarks, Remark(lvl, msg))
+	push!(o.remarks, Remark(lvl, type, msg))
 end
 
-dbg!(o::Any, msg::String) 	= remark!(o, DBG, msg)
-info!(o::Any, msg::String) 	= remark!(o, INFO, msg)
-warn!(o::Any, msg::String) 	= remark!(o, WARN, msg)
-err!(o::Any, msg::String)  	= remark!(o, ERR, msg)
+# TODO: check all uses of these functions are indeed ASN1Issues
+dbg!(o::Any, msg::String) 	= remark!(o, DBG, ASN1Issue, msg)
+info!(o::Any, msg::String) 	= remark!(o, INFO, ASN1Issue, msg)
+warn!(o::Any, msg::String) 	= remark!(o, WARN, ASN1Issue, msg)
+err!(o::Any, msg::String)  	= remark!(o, ERR, ASN1Issue, msg)
 
-function remark!(o::Any, msg::String)
-    @warn "common.jl: remark!() is deprecated! defaulting to info!()" maxlog=10
-    info!(o, msg)
-end
+# WARN level helpers:
+remark_encodingIssue!(o::Any, msg::String) = remark!(o, WARN, EncodingIssue, msg)
+remark_ASN1Issue!(o::Any, msg::String) = remark!(o, WARN, ASN1Issue, msg)
+# ERR level helpers:
+remark_manifestIssue!(o::Any, msg::String) = remark!(o, ERR, ManifestIssue, msg)
+remark_missingFile!(o::Any, msg::String) = remark!(o, ERR, MissingFile, msg)
+remark_validityIssue!(o::Any, msg::String) = remark!(o, ERR, ValidityIssue, msg)
+remark_resourceIssue!(o::Any, msg::String) = remark!(o, ERR, ResourceIssue, msg)
+remark_loopIssue!(o::Any, msg::String) = remark!(o, ERR, LoopIssue, msg)
 
-function count_remarks(o::T) where {T<:Any}
+
+#function remark!(o::Any, msg::String)
+#    @warn "common.jl: remark!() is deprecated! defaulting to info!()" maxlog=10
+#    info!(o, msg)
+#end
+
+function count_remarks(o::T) :: RemarkCounts_t where {T<:Any}
     res = RemarkCounts()
     if !isnothing(o.remarks)
         for r in o.remarks
             res[r.lvl] += 1
+            res[r.type] += 1
         end
     end
     res
@@ -80,6 +97,9 @@ function +(c1::RemarkCounts_t, c2::RemarkCounts_t) :: RemarkCounts_t
     res = RemarkCounts()
     for lvl in instances(RemarkLevel)
         res[lvl] = c1[lvl] + c2[lvl]
+    end
+    for type in instances(RemarkType)
+        res[type] = c1[type] + c2[type]
     end
     res
 end

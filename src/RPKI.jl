@@ -168,7 +168,8 @@ function process_mft(mft_fn::String, lookup::Lookup, tpi::TmpParseInfo, cer_node
             @warn "Missing file: $(f)"
             Mft.add_missing_file(mft_obj.object, f)
             add_missing_filename!(lookup, joinpath(mft_dir, f), mft_node)
-            err!(mft_obj, "Files listed in manifest missing on file system")
+            #err!(mft_obj, "Files listed in manifest missing on file system")
+            remark_missingFile!(mft_obj, "Listed in manifest but missing on file system: $(f)")
             continue
         end
         ext = lowercase(f[end-3:end])
@@ -199,7 +200,8 @@ function process_mft(mft_fn::String, lookup::Lookup, tpi::TmpParseInfo, cer_node
                     else
                         push!(mft_obj.object.loops, basename(subcer_fn))
                     end
-                    err!(mft_obj, "Loop detected!")
+                    #err!(mft_obj, "Loop detected!")
+                    remark_loopIssue!(mft_obj, "Loop detected with $(basename(subcer_fn))")
                     #@warn "so now it is $(m.object.loops)"
                 else
                     #throw("MFT->.cer: error with $(subcer_fn): \n $(e)")
@@ -223,7 +225,8 @@ function process_mft(mft_fn::String, lookup::Lookup, tpi::TmpParseInfo, cer_node
             crl_count += 1
             if crl_count > 1
                 @error "more than one CRL on $(mft_fn)"
-                err!(mft_obj, "more than one CRL on this manifest")
+                #err!(mft_obj, "more than one CRL on this manifest")
+                remark_manifestIssue!(mft_obj, "More than one CRL on this manifest")
             end
             try
                 crlnode = process_crl(crl_fn, lookup, tpi)
@@ -288,7 +291,7 @@ function process_cer(cer_fn::String, lookup::Lookup, tpi::TmpParseInfo) :: RPKIN
         end
     end
 
-    cer_node.remark_counts_me = count_remarks(cer_obj) + count_remarks(cer_obj.tree)
+    cer_node.remark_counts_me = count_remarks(cer_obj.tree)
     if tpi.stripTree
         cer_obj.tree = nothing
     end
@@ -298,7 +301,8 @@ function process_cer(cer_fn::String, lookup::Lookup, tpi::TmpParseInfo) :: RPKIN
     if !isfile(mft_fn)
         @error "manifest $(basename(mft_fn)) not found"
         add_missing_filename!(lookup, mft_fn, cer_node)
-        err!(cer_obj, "Manifest file $(basename(mft_fn)) not in repo")
+        #err!(cer_obj, "Manifest file $(basename(mft_fn)) not in repo")
+        remark_missingFile!(cer_obj, "Manifest file $(basename(mft_fn)) not in repo")
     else
 
         try
@@ -318,8 +322,11 @@ function process_cer(cer_fn::String, lookup::Lookup, tpi::TmpParseInfo) :: RPKIN
         # TODO check RFC on directory structures: do the .mft and .cer have to
         # reside in the same dir?
 
-        add_filename!(lookup, cer_fn, cer_node)
     end
+    # we already counted the remarks from .tree, now add those from the object:
+    cer_node.remark_counts_me += count_remarks(cer_obj)
+
+    add_filename!(lookup, cer_fn, cer_node)
     #@debug "end of process_cer, popping rsaModulus, $(length(tpi.ca_rsaModulus)) left on stack"
     pop!(tpi.ca_rsaModulus)
     pop!(tpi.ca_rsaExponent)

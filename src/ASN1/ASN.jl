@@ -245,7 +245,7 @@ function count_remarks(tree::Node) :: RemarkCounts_t
     for n in iter(tree)
         if !isnothing(n.remarks)
             for r in n.remarks
-                cnts[r.lvl] += 1
+                cnts[r.lvl] = get(cnts, r.lvl, 0) + 1
             end
         end
     end

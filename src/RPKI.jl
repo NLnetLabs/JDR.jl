@@ -460,8 +460,11 @@ end
 
 function collect_remarks_from_asn1!(o::RPKIObject{T}, node::Node) where T
     if !isnothing(node.remarks)
-        o.remarks_tree = node.remarks
-        #Base.append!(o.remarks_tree, node.remarks)
+        if isnothing(o.remarks_tree)
+            o.remarks_tree = node.remarks
+        else
+            Base.append!(o.remarks_tree, node.remarks)
+        end
     end
     if !isnothing(node.children)
         for c in node.children

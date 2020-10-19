@@ -50,7 +50,7 @@ Remark(lvl::RemarkLevel, type::RemarkType, msg::String) = Remark(lvl, type, msg,
 
 # Helper for constructors:
 const RemarkCounts_t = Dict{Union{RemarkLevel, RemarkType}, Int64}
-RemarkCounts() = Dict(lvl => 0 for lvl in hcat(instances(RemarkLevel)..., instances(RemarkType)...))
+RemarkCounts() = RemarkCounts_t()
 
 function remark!(o::Any, lvl::RemarkLevel, type::RemarkType, msg::String)
 	if isnothing(o.remarks)
@@ -75,18 +75,12 @@ remark_validityIssue!(o::Any, msg::String) = remark!(o, ERR, ValidityIssue, msg)
 remark_resourceIssue!(o::Any, msg::String) = remark!(o, ERR, ResourceIssue, msg)
 remark_loopIssue!(o::Any, msg::String) = remark!(o, ERR, LoopIssue, msg)
 
-
-#function remark!(o::Any, msg::String)
-#    @warn "common.jl: remark!() is deprecated! defaulting to info!()" maxlog=10
-#    info!(o, msg)
-#end
-
 function count_remarks(o::T) :: RemarkCounts_t where {T<:Any}
     res = RemarkCounts()
     if !isnothing(o.remarks)
         for r in o.remarks
-            res[r.lvl] += 1
-            res[r.type] += 1
+            res[r.lvl] = get(res, r.lvl, 0) + 1
+            res[r.type] = get(res, r.type, 0) + 1
         end
     end
     res
@@ -94,14 +88,7 @@ end
 
 import Base.+
 function +(c1::RemarkCounts_t, c2::RemarkCounts_t) :: RemarkCounts_t
-    res = RemarkCounts()
-    for lvl in instances(RemarkLevel)
-        res[lvl] = c1[lvl] + c2[lvl]
-    end
-    for type in instances(RemarkType)
-        res[type] = c1[type] + c2[type]
-    end
-    res
+    mergewith(+, c1, c2)
 end
 
 

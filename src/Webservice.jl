@@ -75,16 +75,28 @@ function prefix(req::HTTP.Request)
     end
 end
 
+function filename(req::HTTP.Request)
+    # /api/v1/filename/somefilename, get and unescape filename
+    filename = HTTP.URIs.splitpath(req.target)[4]
+    filename = HTTP.URIs.unescapeuri(filename)
+    res = RPKI.search(LOOKUP[], filename)
+    if length(res) > 10
+        @warn "more than 10 results ($(length(res))) for /filename search on '$(filename)', limiting .."
+        res = map(e->e.second, (Iterators.take(res, 10)))
+    else
+        @info "filename search on '$(filename)': $(length(res)) result(s)"
+    end
+    to_vue_tree(map(to_vue_branch, values(res)))
+end
+
 function object(req::HTTP.Request)
     # /api/v1/object/escaped_filename, get and unescape filename
     object = HTTP.URIs.splitpath(req.target)[4] 
     object = HTTP.URIs.unescapeuri(object)
-	@debug "object details call for $(object)"
     res = RPKI.search(LOOKUP[], object)
     
     ObjectDetails(first(res).second.obj, first(res).second.remark_counts_me)
 end
-
 
 function pubpoints(req::HTTP.Request)
     # /api/v1/pubpoints
@@ -240,6 +252,7 @@ function _init()
     HTTP.@register(ROUTER, "GET", APIV*"/asn/*", asn)
     HTTP.@register(ROUTER, "GET", APIV*"/prefix/*", prefix)
     HTTP.@register(ROUTER, "GET", APIV*"/object/*", object)
+    HTTP.@register(ROUTER, "GET", APIV*"/filename/*", filename)
     HTTP.@register(ROUTER, "GET", APIV*"/pp/", pubpoints)
     HTTP.@register(ROUTER, "GET", APIV*"/ppstatus/", ppstatus)
     HTTP.@register(ROUTER, "GET", APIV*"/generate_msm/", generate_msm)

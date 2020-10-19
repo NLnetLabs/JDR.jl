@@ -149,8 +149,10 @@ value(t::Tag{IA5STRING}) = String(copy(t.value))
 function value(t::Tag{INTEGER}; force_reinterpret=false) where {T}
     if t.len > 5 && !force_reinterpret
         "$(t.len * 8)bit integer" #FIXME not accurate, perhaps the lenbytes itself cause that
-    else
+    elseif t.len <= 8
         reinterpret(Int64, resize!(reverse(t.value), 8))[1]
+    else
+        parse(BigInt, bytes2hex(t.value), base=16)
     end
 end
 

@@ -59,6 +59,7 @@ end
 
 # TODO: add a resourcesValid flag somewhere
 # and perhaps, on the RPKINode level, create a pointer to the covering CER
+import .RPKI:check_resources
 function check_resources(o::RPKIObject{CER}, tpi::TmpParseInfo)
     if !o.object.selfsigned
         if isempty(o.object.ASNs) && !o.object.inherit_ASNs
@@ -85,11 +86,10 @@ function check_resources(o::RPKIObject{CER}, tpi::TmpParseInfo)
 
     # now for the prefixes
     # TODO merge somehow with the ASN loop above?
-    #=
-    #temporary, see if things work before checking and changing this part..
+    # TODO what do we do if the object is self signed?
     if !o.object.selfsigned
         certStackOffset_v6 = certStackOffset_v4 = 1
-        if isempty(o.object.prefixes_v6) 
+        if isempty(o.object.prefixes_v6_intervaltree) 
             if isnothing(o.object.inherit_v6_prefixes)
                 #@warn "v6 prefixes empty, but inherit bool is not set.."
                 #@error "empty v6 prefixes undefined inheritance? $(o.filename)"
@@ -100,12 +100,12 @@ function check_resources(o::RPKIObject{CER}, tpi::TmpParseInfo)
             end
         else
             while tpi.certStack[end-certStackOffset_v6].inherit_v6_prefixes
-                @assert length(tpi.certStack[end-certStackOffset_v6].prefixes_v6) == 0
+                @assert length(tpi.certStack[end-certStackOffset_v6].prefixes_v6_intervaltree) == 0
                 #@debug "parent says inherit_prefixes, increasing offset to $(certStackOffset+1)"
                 certStackOffset_v6 += 1
             end
         end
-        if isempty(o.object.prefixes_v4) 
+        if isempty(o.object.prefixes_v4_intervaltree) 
             if isnothing(o.object.inherit_v4_prefixes)
                 #@warn "v4 prefixes empty, but inherit bool is not set.."
                 #@error "empty v4 prefixes undefined inheritance? $(o.filename)"
@@ -116,98 +116,34 @@ function check_resources(o::RPKIObject{CER}, tpi::TmpParseInfo)
             end
         else
             while tpi.certStack[end-certStackOffset_v4].inherit_v4_prefixes
-                @assert length(tpi.certStack[end-certStackOffset_v4].prefixes_v4) == 0
+                @assert length(tpi.certStack[end-certStackOffset_v4].prefixes_v4_intervaltree) == 0
                 #@debug "parent says inherit_prefixes, increasing offset to $(certStackOffset+1)"
                 certStackOffset_v4 += 1
             end
         end
         
-        checking_on_0_v6 = checking_on_0_v4 = false
-        if tpi.certStack[end - certStackOffset_v6].prefixes_v6 == IPPrefixesOrRanges([IPPrefix("::/0")])
-            #@warn "checking resources for $(o.filename) against /0, offset $(certStackOffset)/$(length(tpi.certStack))"
-            checking_on_0_v6 = true
-        #elseif isempty(tpi.certStack[end - certStackOffset].prefixes)
-        #    @warn "prefixes in parent cert empty"
-        else
-            #@debug tpi.certStack[end - certStackOffset].prefixes
-            #throw("debug")
-        end
-        if tpi.certStack[end - certStackOffset_v4].prefixes_v4 == IPPrefixesOrRanges([IPPrefix("0/0")])
-            checking_on_0_v4 = true
+        # IPv6:
+        overlap_v6 = collect(intersect(tpi.certStack[end-certStackOffset_v6].prefixes_v6_intervaltree, o.object.prefixes_v6_intervaltree))
+        #@assert length(overlap_v6) == length(o.object.prefixes_v6_intervaltree)
+        for (p, c) in overlap_v6
+            if !(p.first <= c.first <= c.last <= p.last)
+                @warn "illegal IP resource on $(o.filename)"
+                remark_resourceIssue!(o, "Illegal IP resource $(c)")
+            end
         end
 
-        for p in o.object.prefixes_v6
-            interval = if p isa IPPrefix
-                if p.netmask == 0
-                    @assert p isa IPv6Net
-                    Interval{Integer}(UInt128(1) << 125, typemax(UInt128))
-                else
-                    Interval{Integer}(minimum(p), maximum(p))
-                end
-            elseif p isa IPRange
-                Interval{Integer}(p.first.netaddr, p.last.netaddr)
-            else
-                throw("illegal prefix type")
-            end
-
-            matches = collect(intersect(tpi.certStack[end-certStackOffset_v6].prefixes_v6_intervaltree, interval))
-            if length(matches) > 1
-                if length(matches) == 2 && checking_on_0_v6
-                else
-                    @warn "$(p) matched by $(length(matches))"
-                    @debug matches
-                    @debug tpi.certStack[end-certStackOffset_v6].prefixes_v6
-                end
-            elseif length(matches) == 1
-                # now check the intersection is actually within the boundaries
-                # of the parent
-                if !(matches[1].first <= first_ip(p) <= last_ip(p) <= matches[1].last)
-                    @error "intersection but not properly covering!"
-                    @debug p
-                    @debug matches[1]
-                end
-                #@info "$(p) is covered by $(matches[1])"
-            else
-                @error "overclaim! $(p) not in parent's prefix_intervaltree"
+        # IPv4:
+        overlap_v4 = collect(intersect(tpi.certStack[end-certStackOffset_v4].prefixes_v4_intervaltree, o.object.prefixes_v4_intervaltree))
+        #@assert length(overlap_v4) == length(o.object.prefixes_v4_intervaltree)
+        for (p, c) in overlap_v4
+            if !(p.first <= c.first <= c.last <= p.last)
+                @warn "illegal IP resource on $(o.filename)"
+                remark_resourceIssue!(o, "Illegal IP resource $(c)")
             end
         end
-        for p in o.object.prefixes_v4
-            interval = if p isa IPPrefix
-                if p.netmask == 0
-                    @assert p isa IPv4Net
-                    Interval{Integer}(0, typemax(UInt32))
-                else
-                    Interval{Integer}(minimum(p), maximum(p))
-                end
-            elseif p isa IPRange
-                Interval{Integer}(p.first.netaddr, p.last.netaddr)
-            else
-                throw("illegal prefix type")
-            end
+        
 
-            matches = collect(intersect(tpi.certStack[end-certStackOffset_v4].prefixes_v4_intervaltree, interval))
-            if length(matches) > 1
-                if length(matches) == 2 && checking_on_0_v4
-                else
-                    @warn "$(p) matched by $(length(matches))"
-                    @debug matches
-                    @debug tpi.certStack[end-certStackOffset_v4].prefixes_4
-                end
-            elseif length(matches) == 1
-                # now check the intersection is actually within the boundaries
-                # of the parent
-                if !(matches[1].first <= first_ip(p) <= last_ip(p) <= matches[1].last)
-                    @error "intersection but not properly covering!"
-                    @debug p
-                    @debug matches[1]
-                end
-                #@info "$(p) is covered by $(matches[1])"
-            else
-                @error "overclaim! $(p) not in parent's prefix_intervaltree"
-            end
-        end
     end
-    =#
 
 end
 

@@ -265,37 +265,6 @@ function process_cer(cer_fn::String, lookup::Lookup, tpi::TmpParseInfo) :: RPKIN
 
     cer_obj::RPKIObject{CER} = check_ASN1(RPKIObject{CER}(cer_fn), tpi)
 
-    #=
-    #refactor: we remove .prefixes_vX and only use the intervaltree
-    for p in [cer_obj.object.prefixes_v6..., cer_obj.object.prefixes_v4...]
-        # ignore ::/0 and 0/0
-        if p isa IPPrefix && p.netmask > 0
-            if p isa IPv6Net
-                push!(cer_obj.object.prefixes_v6_intervaltree, Interval{Integer}(minimum(p), maximum(p)))
-            else
-                push!(cer_obj.object.prefixes_v4_intervaltree, Interval{Integer}(minimum(p), maximum(p)))
-            end
-
-        else
-            if p isa IPv6Net
-                #push!(cer_obj.object.prefix_intervaltree, Interval{Integer}(UInt128(1) << 125, typemax(UInt128)))
-                push!(cer_obj.object.prefixes_v6_intervaltree, Interval{Integer}(0, typemax(UInt128)))
-            elseif p isa IPv4Net
-                push!(cer_obj.object.prefixes_v4_intervaltree, Interval{Integer}(0, typemax(UInt32)))
-            elseif p isa IPRange{IPv6Net}
-                push!(cer_obj.object.prefixes_v6_intervaltree, Interval{Integer}(p.first.netaddr, p.last.netaddr))
-            elseif p isa IPRange{IPv4Net}
-                push!(cer_obj.object.prefixes_v4_intervaltree, Interval{Integer}(p.first.netaddr, p.last.netaddr))
-            else
-                @debug p
-                throw("illegal prefix type")
-            end
-
-        end
-    end
-    =#
-
-
     push!(tpi.certStack, cer_obj.object)
     check_cert(cer_obj, tpi)
     check_resources(cer_obj, tpi)

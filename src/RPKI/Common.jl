@@ -4,6 +4,7 @@ module RPKICommon
 using ..JDR.Common
 using ..ASN1.ASN
 using Dates
+using IntervalTrees
 
 export RPKIObject, RPKINode, TmpParseInfo, Lookup, print_ASN1
 export CER, MFT, ROA, CRL
@@ -161,14 +162,22 @@ mutable struct CER
     issuer::String
     subject::String
 
-    inherit_prefixes::Bool
-    prefixes::IPPrefixesOrRanges
+    inherit_v6_prefixes::Union{Nothing, Bool}
+    inherit_v4_prefixes::Union{Nothing, Bool}
+    #prefixes_v6::IPPrefixesOrRanges
+    #prefixes_v4::IPPrefixesOrRanges
+    prefixes_v6_intervaltree::IntervalTree{Integer, Interval{Integer}}
+    prefixes_v4_intervaltree::IntervalTree{Integer, Interval{Integer}}
+
     inherit_ASNs::Bool
     ASNs::AsIdsOrRanges
 end
 CER() = CER(0, nothing, nothing,
             "", "", "", nothing, nothing, 0, 0, "", "",
-            false, IPPrefixesOrRanges(),
+            nothing, nothing,
+            #IPPrefixesOrRanges(), IPPrefixesOrRanges(),
+            IntervalTree{Integer, Interval{Integer}}(),
+            IntervalTree{Integer, Interval{Integer}}(),
             false, AsIdsOrRanges())
 
 function Base.show(io::IO, cer::CER)
@@ -177,10 +186,14 @@ function Base.show(io::IO, cer::CER)
     print(io, "  rrdp: ", cer.rrdp_notify, '\n')
     printstyled(io, "  ASNs: \n")
     print(io, "    ", join(cer.ASNs, ","), "\n")
-    printstyled(io, "  prefixes: \n")
-    for p in cer.prefixes
-        print(io, "    ", p, '\n')
-    end
+    printstyled(io, "  IPv6 prefixes ($(length(cer.prefixes_v6))): \n")
+    #for p in cer.prefixes_v6
+    #    print(io, "    ", p, '\n')
+    #end
+    printstyled(io, "  IPv4 prefixes ($(length(cer.prefixes_v4))): \n")
+    #for p in cer.prefixes_v4
+    #    print(io, "    ", p, '\n')
+    #end
 end
 
 
@@ -203,11 +216,19 @@ Base.show(io::IO, vrp::VRP) = println(io, vrp.prefix, "-$(vrp.maxlength)")
 mutable struct ROA
     asid::Integer
     vrps::Vector{VRP}
-    prefixes::IPPrefixesOrRanges # on the EE cert
+    prefixes_v6::IPPrefixesOrRanges # on the EE cert
+    prefixes_v4::IPPrefixesOrRanges # on the EE cert
+    prefixes_v6_intervaltree::IntervalTree{Integer, Interval{Integer}}
+    prefixes_v4_intervaltree::IntervalTree{Integer, Interval{Integer}}
     rsa_modulus::BigInt
     rsa_exp::Int
     local_eContent_hash::String
 end
-ROA() = ROA(0, [], IPPrefixesOrRanges(), 0, 0, "EMPTY_LOCAL_HASH")
+ROA() = ROA(0, [],
+            IPPrefixesOrRanges(),
+            IPPrefixesOrRanges(),
+            IntervalTree{Integer, Interval{Integer}}(),
+            IntervalTree{Integer, Interval{Integer}}(),
+            0, 0, "EMPTY_LOCAL_HASH")
 
 end # module

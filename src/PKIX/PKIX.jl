@@ -6,6 +6,8 @@ using ...JDR.RPKICommon
 # for the uses of @check in X509 and CMS:
 using SHA 
 using IPNets
+using IntervalTrees
+using Sockets
 
 macro check(name, block)
     fnname = esc(Symbol("check_ASN1_$(name)"))

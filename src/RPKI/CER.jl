@@ -5,6 +5,8 @@ using ...RPKI
 using ...ASN1
 using ...PKIX.X509
 using SHA
+using IntervalTrees
+using IPNets
 
 export check_ASN1, check_cert, check_resources
 
@@ -80,6 +82,134 @@ function check_resources(o::RPKIObject{CER}, tpi::TmpParseInfo)
             throw("illegal resources")
         end
     end
+
+    # now for the prefixes
+    # TODO merge somehow with the ASN loop above?
+    #=
+    #temporary, see if things work before checking and changing this part..
+    if !o.object.selfsigned
+        certStackOffset_v6 = certStackOffset_v4 = 1
+        if isempty(o.object.prefixes_v6) 
+            if isnothing(o.object.inherit_v6_prefixes)
+                #@warn "v6 prefixes empty, but inherit bool is not set.."
+                #@error "empty v6 prefixes undefined inheritance? $(o.filename)"
+            elseif !(o.object.inherit_v6_prefixes)
+                @warn "v6 prefixes empty, inherit bool set to false.."
+                @error "empty v6 prefixes and no inheritance? $(o.filename)"
+                ResourceIssue!(o, "No IPv6 prefixes and no inherit flag set")
+            end
+        else
+            while tpi.certStack[end-certStackOffset_v6].inherit_v6_prefixes
+                @assert length(tpi.certStack[end-certStackOffset_v6].prefixes_v6) == 0
+                #@debug "parent says inherit_prefixes, increasing offset to $(certStackOffset+1)"
+                certStackOffset_v6 += 1
+            end
+        end
+        if isempty(o.object.prefixes_v4) 
+            if isnothing(o.object.inherit_v4_prefixes)
+                #@warn "v4 prefixes empty, but inherit bool is not set.."
+                #@error "empty v4 prefixes undefined inheritance? $(o.filename)"
+            elseif !(o.object.inherit_v4_prefixes)
+                @warn "v4 prefixes empty, inherit bool set to false.."
+                @error "empty v4 prefixes and no inheritance? $(o.filename)"
+                ResourceIssue!(o, "No IPv4 prefixes and no inherit flag set")
+            end
+        else
+            while tpi.certStack[end-certStackOffset_v4].inherit_v4_prefixes
+                @assert length(tpi.certStack[end-certStackOffset_v4].prefixes_v4) == 0
+                #@debug "parent says inherit_prefixes, increasing offset to $(certStackOffset+1)"
+                certStackOffset_v4 += 1
+            end
+        end
+        
+        checking_on_0_v6 = checking_on_0_v4 = false
+        if tpi.certStack[end - certStackOffset_v6].prefixes_v6 == IPPrefixesOrRanges([IPPrefix("::/0")])
+            #@warn "checking resources for $(o.filename) against /0, offset $(certStackOffset)/$(length(tpi.certStack))"
+            checking_on_0_v6 = true
+        #elseif isempty(tpi.certStack[end - certStackOffset].prefixes)
+        #    @warn "prefixes in parent cert empty"
+        else
+            #@debug tpi.certStack[end - certStackOffset].prefixes
+            #throw("debug")
+        end
+        if tpi.certStack[end - certStackOffset_v4].prefixes_v4 == IPPrefixesOrRanges([IPPrefix("0/0")])
+            checking_on_0_v4 = true
+        end
+
+        for p in o.object.prefixes_v6
+            interval = if p isa IPPrefix
+                if p.netmask == 0
+                    @assert p isa IPv6Net
+                    Interval{Integer}(UInt128(1) << 125, typemax(UInt128))
+                else
+                    Interval{Integer}(minimum(p), maximum(p))
+                end
+            elseif p isa IPRange
+                Interval{Integer}(p.first.netaddr, p.last.netaddr)
+            else
+                throw("illegal prefix type")
+            end
+
+            matches = collect(intersect(tpi.certStack[end-certStackOffset_v6].prefixes_v6_intervaltree, interval))
+            if length(matches) > 1
+                if length(matches) == 2 && checking_on_0_v6
+                else
+                    @warn "$(p) matched by $(length(matches))"
+                    @debug matches
+                    @debug tpi.certStack[end-certStackOffset_v6].prefixes_v6
+                end
+            elseif length(matches) == 1
+                # now check the intersection is actually within the boundaries
+                # of the parent
+                if !(matches[1].first <= first_ip(p) <= last_ip(p) <= matches[1].last)
+                    @error "intersection but not properly covering!"
+                    @debug p
+                    @debug matches[1]
+                end
+                #@info "$(p) is covered by $(matches[1])"
+            else
+                @error "overclaim! $(p) not in parent's prefix_intervaltree"
+            end
+        end
+        for p in o.object.prefixes_v4
+            interval = if p isa IPPrefix
+                if p.netmask == 0
+                    @assert p isa IPv4Net
+                    Interval{Integer}(0, typemax(UInt32))
+                else
+                    Interval{Integer}(minimum(p), maximum(p))
+                end
+            elseif p isa IPRange
+                Interval{Integer}(p.first.netaddr, p.last.netaddr)
+            else
+                throw("illegal prefix type")
+            end
+
+            matches = collect(intersect(tpi.certStack[end-certStackOffset_v4].prefixes_v4_intervaltree, interval))
+            if length(matches) > 1
+                if length(matches) == 2 && checking_on_0_v4
+                else
+                    @warn "$(p) matched by $(length(matches))"
+                    @debug matches
+                    @debug tpi.certStack[end-certStackOffset_v4].prefixes_4
+                end
+            elseif length(matches) == 1
+                # now check the intersection is actually within the boundaries
+                # of the parent
+                if !(matches[1].first <= first_ip(p) <= last_ip(p) <= matches[1].last)
+                    @error "intersection but not properly covering!"
+                    @debug p
+                    @debug matches[1]
+                end
+                #@info "$(p) is covered by $(matches[1])"
+            else
+                @error "overclaim! $(p) not in parent's prefix_intervaltree"
+            end
+        end
+    end
+    =#
+
 end
+
 
 end # module

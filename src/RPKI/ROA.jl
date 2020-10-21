@@ -8,6 +8,8 @@ using ...RPKICommon
 using ...ASN1
 
 using IPNets
+using Sockets
+using IntervalTrees
 
 import ...PKIX.@check
 
@@ -184,6 +186,7 @@ function check_ASN1(o::RPKIObject{ROA}, tpi::TmpParseInfo) :: RPKIObject{ROA}
     o
 end
 
+import .RPKI:check_cert
 function check_cert(o::RPKIObject{ROA}, tpi::TmpParseInfo)
     # hash tpi.eeCert
     @assert !isnothing(tpi.eeCert)
@@ -202,6 +205,39 @@ function check_cert(o::RPKIObject{ROA}, tpi::TmpParseInfo)
 
     # compare subject with SKI
     # TODO
+end
+
+import .RPKI:check_resources
+function check_resources(o::RPKIObject{ROA}, tpi::TmpParseInfo)
+    # TODO: check whether the prefix is INSIDE the matches
+    # TODO: check out intersect(t1::IntervalTree, t2::IntervalTree) and find any
+    # underclaims?
+    for v in o.object.vrps
+        #@debug "checking $(v)"
+        interval = Interval{Integer}(minimum(v.prefix), maximum(v.prefix))
+        matches = if v.prefix isa IPv6Net
+            collect(intersect(o.object.prefixes_v6_intervaltree, interval))
+        elseif v.prefix isa IPv4Net
+            collect(intersect(o.object.prefixes_v4_intervaltree, interval))
+        else
+            throw("should not be here")
+        end
+        if length(matches) > 1
+            #@info "multiple matches for $(v)"
+        elseif length(matches) == 0
+            @warn "no match for interval $(interval), illegal VRP $(v)"
+            #@debug o.filename
+            #@debug o.object.prefixes_v6_intervaltree
+            #for i in values(o.object.prefixes_v6_intervaltree)
+            #    @debug i
+            #    @debug IPv6(i.first), IPv6(i.last)
+            #end
+            remark_resourceIssue!(o, "VRP not covered by resources in EE cert")
+            throw("stop here")
+        else
+            # all good!
+        end
+    end
 end
 
 end # module

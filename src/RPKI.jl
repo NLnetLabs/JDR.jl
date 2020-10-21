@@ -7,6 +7,7 @@ using ..PrefixTrees
 using IPNets
 using Dates
 using SHA
+using IntervalTrees
 
 export RPKINode, RPKIObject # reexport from RPKI.Common
 export retrieve_all, CER, MFT, CRL, ROA
@@ -15,6 +16,7 @@ export print_ASN1
 
 function check_ASN1(::RPKIObject{T}, ::TmpParseInfo) where T end
 function check_cert(::RPKIObject{T}, ::TmpParseInfo) where T end
+function check_resources(::RPKIObject{T}, ::TmpParseInfo) where T end
 
 include("RPKI/CER.jl")
 using .Cer
@@ -111,9 +113,9 @@ function process_roa(roa_fn::String, lookup::Lookup, tpi::TmpParseInfo) :: RPKIN
 
     roa_node.remark_counts_me = count_remarks(roa_obj) + count_remarks(roa_obj.tree)
 
-    @assert !isnothing(tpi.caCert)
     @assert !isnothing(tpi.eeCert)
     check_cert(roa_obj, tpi)
+    check_resources(roa_obj, tpi)
 
     # optionally strip the tree to save memory
     if tpi.stripTree
@@ -262,9 +264,40 @@ function process_cer(cer_fn::String, lookup::Lookup, tpi::TmpParseInfo) :: RPKIN
     end
 
     cer_obj::RPKIObject{CER} = check_ASN1(RPKIObject{CER}(cer_fn), tpi)
+
+    #=
+    #refactor: we remove .prefixes_vX and only use the intervaltree
+    for p in [cer_obj.object.prefixes_v6..., cer_obj.object.prefixes_v4...]
+        # ignore ::/0 and 0/0
+        if p isa IPPrefix && p.netmask > 0
+            if p isa IPv6Net
+                push!(cer_obj.object.prefixes_v6_intervaltree, Interval{Integer}(minimum(p), maximum(p)))
+            else
+                push!(cer_obj.object.prefixes_v4_intervaltree, Interval{Integer}(minimum(p), maximum(p)))
+            end
+
+        else
+            if p isa IPv6Net
+                #push!(cer_obj.object.prefix_intervaltree, Interval{Integer}(UInt128(1) << 125, typemax(UInt128)))
+                push!(cer_obj.object.prefixes_v6_intervaltree, Interval{Integer}(0, typemax(UInt128)))
+            elseif p isa IPv4Net
+                push!(cer_obj.object.prefixes_v4_intervaltree, Interval{Integer}(0, typemax(UInt32)))
+            elseif p isa IPRange{IPv6Net}
+                push!(cer_obj.object.prefixes_v6_intervaltree, Interval{Integer}(p.first.netaddr, p.last.netaddr))
+            elseif p isa IPRange{IPv4Net}
+                push!(cer_obj.object.prefixes_v4_intervaltree, Interval{Integer}(p.first.netaddr, p.last.netaddr))
+            else
+                @debug p
+                throw("illegal prefix type")
+            end
+
+        end
+    end
+    =#
+
+
     push!(tpi.certStack, cer_obj.object)
     check_cert(cer_obj, tpi)
-    # FIXME temporarily do not check resources, it's too slow 
     check_resources(cer_obj, tpi)
 
     (ca_host, ca_path) = split_scheme_uri(cer_obj.object.pubpoint)

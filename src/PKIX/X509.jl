@@ -3,6 +3,8 @@ using ...JDR.Common
 using ...JDR.RPKICommon
 using ..ASN1 
 using IPNets
+using IntervalTrees
+using Sockets
 
 import ...PKIX.@check
 
@@ -65,7 +67,10 @@ const MANDATORY_EXTENSIONS = Vector{Pair{Vector{UInt8}, String}}([
     end
 end
 
+
 @check "ipAddrBlocks" begin
+AFI_V4 = 0x01
+AFI_V6 = 0x02
     DER.parse_append!(DER.Buf(node.tag.value), node)
     node.validated = true
     tagisa(node[1], ASN1.SEQUENCE)
@@ -73,7 +78,7 @@ end
         tagisa(ipaddrblock, ASN1.SEQUENCE)
         tagisa(ipaddrblock[1], ASN1.OCTETSTRING)
         afi = reinterpret(UInt16, reverse(ipaddrblock[1].tag.value))[1]
-        @assert afi in [1,2] # 1 == IPv4, 2 == IPv6
+        @assert afi in [AFI_V6,AFI_V4] # 1 == IPv4, 2 == IPv6
         # now, or a NULL -> inherit
         # or a SEQUENCE OF IPAddressOrRange
         if typeof(ipaddrblock[2].tag) == Tag{ASN1.SEQUENCE}
@@ -81,49 +86,64 @@ end
             # now loop over children of this SEQUENCE OF IPAddressOrRange 
             for ipaddress_or_range in ipaddrblock[2].children
 
-                #if typeof(ipaddrblock[2, 1].tag) == Tag{ASN1.SEQUENCE}
                 if ipaddress_or_range.tag isa Tag{ASN1.SEQUENCE}
+                    # if child is another SEQUENCE, we have an IPAddressRange
 
                     ipaddress_or_range.validated = true
-                    # if child is another SEQUENCE, we have an IPAddressRange
-                    #throw("check me")
-
                     # we expect two BITSTRINGs in this SEQUENCE
                     tagisa(ipaddress_or_range[1], ASN1.BITSTRING)
                     tagisa(ipaddress_or_range[2], ASN1.BITSTRING)
-                    if afi == 1
-                        (minaddr, maxaddr) = bitstrings_to_v4range(
+                    if afi == AFI_V6
+                        (minaddr, maxaddr) = new_bitstrings_to_v6range(
                                                 ipaddress_or_range[1].tag.value,
                                                 ipaddress_or_range[2].tag.value
                                               )
-                        push!(o.object.prefixes, IPRange{IPv4Net}(minaddr, maxaddr))
+                        #push!(o.object.prefixes_v6, IPRange{IPv6Net}(minaddr, maxaddr))
+                        push!(o.object.prefixes_v6_intervaltree, Interval{Integer}(minaddr, maxaddr))
                     else
-                        (minaddr, maxaddr) = bitstrings_to_v6range(
+                        (minaddr, maxaddr) = new_bitstrings_to_v4range(
                                                 ipaddress_or_range[1].tag.value,
                                                 ipaddress_or_range[2].tag.value
                                               )
-                        push!(o.object.prefixes, IPRange{IPv6Net}(minaddr, maxaddr))
+                        #push!(o.object.prefixes_v4, IPRange{IPv4Net}(minaddr, maxaddr))
+                        push!(o.object.prefixes_v4_intervaltree, Interval{Integer}(minaddr, maxaddr))
                     end
-                #elseif typeof(ipaddrblock[2, 1].tag) == Tag{ASN1.BITSTRING}
                 elseif ipaddress_or_range.tag isa Tag{ASN1.BITSTRING}
-                    ipaddress_or_range.validated = true
                     # else if it is a BITSTRING, we have an IPAddress (prefix)
-                    #@debug "IPAddress (prefix)"
+                    ipaddress_or_range.validated = true
                     bitstring = ipaddress_or_range.tag.value
-                    if afi == 1
-                        push!(o.object.prefixes, bitstring_to_v4prefix(bitstring))
+                    if afi == AFI_V6
+                        #push!(o.object.prefixes_v6, bitstring_to_v6prefix(bitstring))
+                        #@debug "pushing prefix:" IPv6.(new_bitstring_to_v6prefix(bitstring))
+                        push!(o.object.prefixes_v6_intervaltree, Interval{Integer}(new_bitstring_to_v6prefix(bitstring)...))
                     else
-                        push!(o.object.prefixes, bitstring_to_v6prefix(bitstring))
+                        #push!(o.object.prefixes_v4, bitstring_to_v4prefix(bitstring))
+                        push!(o.object.prefixes_v4_intervaltree, Interval{Integer}(new_bitstring_to_v4prefix(bitstring)...))
                     end
                 else
                     @error "unexpected tag number $(ipaddress_or_range.tag.number)"
                 end
             end # for-loop over SEQUENCE OF IPAddressOrRange
+            if o.object isa CER
+                if afi == AFI_V6
+                    o.object.inherit_v6_prefixes = false
+                elseif afi == AFI_V4
+                    o.object.inherit_v4_prefixes = false
+                else
+                    throw("illegal AFI")
+                end
+            end
         elseif ipaddrblock[2].tag isa Tag{ASN1.NULL}
             #throw("implement inherit for ipAdressBlocks")
             #@error "implement inherit for ipAdressBlocks"
             if o.object isa CER
-                o.object.inherit_prefixes = true
+                if afi == AFI_V6
+                    o.object.inherit_v6_prefixes = true
+                elseif afi == AFI_V4
+                    o.object.inherit_v4_prefixes = true
+                else
+                    throw("illegal AFI")
+                end
             end
         else
             warn!(ipaddrblock[2], "expected either SEQUENCE OF or NULL here")

@@ -103,12 +103,18 @@ module PrefixTrees
                 if isnothing(node.zero)
                     break
                 else
+                    if node.is_key
+                        res = node
+                    end
                     node = node.zero
                 end
             else
                 if isnothing(node.one)
                     break
                 else
+                    if node.is_key
+                        res = node
+                    end
                     node = node.one
                 end
             end
@@ -117,7 +123,6 @@ module PrefixTrees
             res = node
         end
         return res
-
     end
 
         
@@ -126,7 +131,8 @@ module PrefixTrees
         if !isnothing(node) && node.is_key
             return node.vals
         end
-        throw(KeyError("no key '$key'"))
+        #throw(KeyError("no key '$key'"))
+        return nothing
     end
 
     function get(t::PrefixTree, key::IPNet)
@@ -134,7 +140,8 @@ module PrefixTrees
         if !isnothing(node) && node.is_key
             return first(node.vals)
         end
-        throw(KeyError("no key '$key'"))
+        #throw(KeyError("no key '$key'"))
+        return nothing
     end
 
     #FIXME

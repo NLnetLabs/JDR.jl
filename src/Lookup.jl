@@ -27,13 +27,17 @@ function search(l::Lookup, asn::AutSysNum) :: Vector{RPKINode}
     get(l.ASNs, asn, AutSysNum[])
 end
 
-# FIXME: do we need separate lookup trees for v6 and v4?
-function search(l::Lookup, prefix::IPv4Net)
-    values(firstparent(l.prefix_tree, prefix))
-end
-
-function search(l::Lookup, prefix::IPv6Net)
-    values(firstparent(l.prefix_tree, prefix))
+function search(l::Lookup, prefix::T) :: Vector{RPKINode} where T<:IPNet
+    if !isnothing(l.prefix_tree[prefix])
+        values(firstparent(l.prefix_tree, prefix))
+    else
+        fp = firstparent(l.prefix_tree, prefix)
+        if !isnothing(fp)
+            return fp.vals
+        else
+            return []
+        end
+    end
 end
 
 function search(l::Lookup, filename::String) :: Dict{String}{RPKINode}

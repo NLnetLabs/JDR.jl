@@ -19,6 +19,15 @@ JSON2.@format RPKI.RPKIObject{T} where T begin
         tree => (;exclude=true,)
 end
 
+JSON2.@format RPKI.ROA begin
+        prefixes_v6_intervaltree => (;exclude=true,)
+        prefixes_v4_intervaltree => (;exclude=true,)
+end
+JSON2.@format RPKI.CER begin
+        prefixes_v6_intervaltree => (;exclude=true,)
+        prefixes_v4_intervaltree => (;exclude=true,)
+end
+
 # custom view for RPKIObject{T}
 # includes the tree, but does not link to parent or children
 # howto: https://github.com/quinnj/JSON2.jl/issues/12
@@ -98,15 +107,24 @@ struct SlimCER
     pubpoint::String
     manifest::String
     rrdp_notify::String
-    inherit_prefixes::Bool
-    prefixes::Vector{Union{IPNet, Tuple{IPNet, IPNet}}}
+
+    inherit_v6_prefixes::Bool
+    inherit_v4_prefixes::Bool
+
+    #prefixes::Vector{Union{IPNet, Tuple{IPNet, IPNet}}}
     inherit_ASNs::Bool
     ASNs::Vector{Union{Tuple{UInt32, UInt32}, UInt32}}
 end
-SlimCER(cer::RPKI.CER) = SlimCER(cer.pubpoint, cer.manifest, cer.rrdp_notify, cer.inherit_prefixes, [], cer.inherit_ASNs, [])
+SlimCER(cer::RPKI.CER) = begin
+    SlimCER(cer.pubpoint, cer.manifest, cer.rrdp_notify,
+                                 cer.inherit_v6_prefixes, cer.inherit_v4_prefixes,
+                                 #[],
+                                 cer.inherit_ASNs, [])
+end
 JSON2.@format SlimCER begin
-    prefixes => (;exclude=true,)
     ASNs => (;exclude=true,)
+    inherit_v6_prefixes => (;exclude=true,)
+    inherit_v4_prefixes => (;exclude=true,)
 end
 
 # Slim copy of RPKI.MFT, with an empty files Vector

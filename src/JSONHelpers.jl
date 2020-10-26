@@ -108,8 +108,8 @@ struct SlimCER
     manifest::String
     rrdp_notify::String
 
-    inherit_v6_prefixes::Bool
-    inherit_v4_prefixes::Bool
+    inherit_v6_prefixes::Union{Nothing,Bool}
+    inherit_v4_prefixes::Union{Nothing,Bool}
 
     #prefixes::Vector{Union{IPNet, Tuple{IPNet, IPNet}}}
     inherit_ASNs::Bool
@@ -123,8 +123,6 @@ SlimCER(cer::RPKI.CER) = begin
 end
 JSON2.@format SlimCER begin
     ASNs => (;exclude=true,)
-    inherit_v6_prefixes => (;exclude=true,)
-    inherit_v4_prefixes => (;exclude=true,)
 end
 
 # Slim copy of RPKI.MFT, with an empty files Vector

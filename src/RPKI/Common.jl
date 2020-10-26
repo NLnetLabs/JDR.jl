@@ -216,8 +216,8 @@ Base.show(io::IO, vrp::VRP) = println(io, vrp.prefix, "-$(vrp.maxlength)")
 mutable struct ROA
     asid::Integer
     vrps::Vector{VRP}
-    prefixes_v6::IPPrefixesOrRanges # on the EE cert
-    prefixes_v4::IPPrefixesOrRanges # on the EE cert
+    #prefixes_v6::IPPrefixesOrRanges # on the EE cert
+    #prefixes_v4::IPPrefixesOrRanges # on the EE cert
     prefixes_v6_intervaltree::IntervalTree{Integer, Interval{Integer}}
     prefixes_v4_intervaltree::IntervalTree{Integer, Interval{Integer}}
     rsa_modulus::BigInt
@@ -225,8 +225,8 @@ mutable struct ROA
     local_eContent_hash::String
 end
 ROA() = ROA(0, [],
-            IPPrefixesOrRanges(),
-            IPPrefixesOrRanges(),
+            #IPPrefixesOrRanges(),
+            #IPPrefixesOrRanges(),
             IntervalTree{Integer, Interval{Integer}}(),
             IntervalTree{Integer, Interval{Integer}}(),
             0, 0, "EMPTY_LOCAL_HASH")

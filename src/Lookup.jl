@@ -29,8 +29,13 @@ end
 
 function search(l::Lookup, prefix::T) :: Vector{RPKINode} where T<:IPNet
     if !isnothing(l.prefix_tree[prefix])
+        # exact hit
         values(firstparent(l.prefix_tree, prefix))
+    elseif !isnothing(subtree(l.prefix_tree, prefix))
+        # more-specifics below this one
+        values(subtree(l.prefix_tree, prefix))
     else
+        # falling back to first less-specific
         fp = firstparent(l.prefix_tree, prefix)
         if !isnothing(fp)
             return fp.vals

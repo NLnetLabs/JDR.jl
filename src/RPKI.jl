@@ -377,29 +377,6 @@ function retrieve_all(tal_urls=TAL_URLS; stripTree::Bool=false, nicenames=true) 
     (root, lookup)
 end
 
-#function flatten_to_pubpoints!(tree::RPKINode)
-#    for c in tree.children
-#        if c.obj isa RPKIObject{CER}
-#            @assert length(c.children) > 0
-#            flatten_to_pubpoints!(c)
-#        elseif c.obj isa RPKIObject{MFT}
-#            subtree = c
-#            flatten_to_pubpoints!(c)
-#            add(tree, c)
-#            #c.parent = tree
-#            #deleteat!(tree.children, findfirst(tree.children, c))
-#            #for subc in c.children
-#            #    flatten_to_pubpoints!(subc)
-#            #end
-#            #@assert length(c.children) > 0
-#            #flatten_to_pubpoints(c)
-#        elseif c.obj isa RPKIObject{ROA}
-#            # leaf
-#            add(tree, c)
-#        end
-#    end
-#end
-
 function _pubpoints!(pp_tree::RPKINode, tree::RPKINode, current_pp::String)
 
     if isempty(tree.children)

@@ -3,8 +3,8 @@ using ...JDR.Common
 using Dates
 
 export Tag, AbstractTag, Node, AbstractNode
-export value, print_node, append!, isleaf, iter, lazy_iter #parent
-export remark!, child, getindex, tagtype
+export value, print_node, append!, iter, lazy_iter
+export child, getindex, tagtype
 
 export  Unimplemented, InvalidTag, SEQUENCE, SET, RESERVED_ENC, OCTETSTRING,
         BITSTRING, PRINTABLESTRING, UTF8STRING, CONTEXT_SPECIFIC, INTEGER, NULL, UTCTIME, GENTIME, OID, IA5STRING
@@ -223,12 +223,6 @@ mutable struct Node <: AbstractNode
     nicevalue::Union{Nothing, String}
 end
 
-isleaf(n::Node) :: Bool = isnothing(n.children)
-
-#function parent(n::Node) :: Node 
-#    n.parent
-#end
-
 function append!(p::Node, c::Node) :: Node
     if isnothing(p.children)
         p.children = [c]
@@ -277,6 +271,9 @@ function Base.show(io::IO, n::Node)
             printstyled(io, n.tag, color=:green)
         else
             print(io, n.tag)
+        end
+        if !isnothing(n.nicevalue)
+            print(n.nicevalue)
         end
         if !isnothing(n.remarks) && !isempty(n.remarks)
             printstyled(io, " [$(length(n.remarks))] "; color=:red)

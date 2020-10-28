@@ -98,10 +98,18 @@ function add_roa!(lookup::Lookup, roanode::RPKINode)
 
     # add prefixes
     for vrp in roa.vrps
-        lookup.prefix_tree[vrp.prefix] = roanode
-        if ((vrp.prefix isa IPv4Net && vrp.prefix.netmask > 24)
-            || (vrp.prefix isa IPv6Net && vrp.prefix.netmask > 48))
-            push!(lookup.too_specific, roanode)
+        if vrp.prefix isa IPv6Net
+            lookup.prefix_tree_v6[vrp.prefix] = roanode
+            if vrp.prefix.netmask > 48
+                push!(lookup.too_specific, roanode)
+            end
+        elseif vrp.prefix isa IPv4Net
+            lookup.prefix_tree_v4[vrp.prefix] = roanode
+            if vrp.prefix.netmask > 24
+                push!(lookup.too_specific, roanode)
+            end
+        else
+            throw("illegal vrp.prefix")
         end
     end
 end

@@ -261,34 +261,90 @@ function to_vue_pubpoints(tree::RPKI.RPKINode)
     pp_tree
 end
 
+# TODO: use/move to Webservice unit test
+# note that for this check to work, we need to fill the SlimMFT with the
+# filenames, something we normally do _not_ do in the Vue tree
+function _sanity_check(tree::VueNode) :: Bool
+    if !isempty(tree.children)
+        for c in tree.children
+            if isempty(c.children) # leaf node
+                @assert c.object.objecttype == "ROA"
+                #check tree.siblings for MFT
+                for s in tree.mates
+                    if s.object.objecttype == "MFT"
+                        @assert basename(c.object.filename) in s.object.object.files
+                        break # break out of for s
+                    end
+                end
+            else
+                # not a leaf node, so this is a CER
+                # should be on the mft of the parent CER as well then
+                @assert c.object.objecttype == "CER"
+                    #check tree.siblings for MFT
+                    for s in tree.mates
+                        if s.object.objecttype == "MFT"
+                            @assert basename(c.object.filename) in s.object.object.files
+                            break # break out of for s
+                        end
+                    end
+                _sanity_check(c)
+            end
+        end
+    end
+    return true
+end
 function to_vue_tree(branches::Vector)
     if length(branches) < 2
         return branches
     end
+
+    # We will iterate over all the branches from 'left to right', merging the
+    # right one to the left one. By sorting them first, we ensure we always have
+    # a longer left branch.
     sort!(branches, by = x -> length(x), rev=true)
     
+    # Start with the longest branch, call that the 'left branch"
+    # merge in every next 'right branch'
     left = branches[1]
     for b in (2:length(branches)) 
+        #@debug "---"
         right = branches[b]
 
+        # l and r point to the current node in the left and right branches we
+        # are trying to merge, and will be updated to point to their immediate
+        # successor in every iteration:
         l = left
         r = right
+        prev_l = prev_r = nothing
 
         done = false
         while ! done
-            #@debug "children in left:", length(l.children)
+            if isempty(r.children)
+                throw("illegal code path")
+            end
+
+            # As long as the right node is the same as the left, we do nothing
+            # But if the right filename matches nothing in the left's
+            # children, we attach it to the left and are done with this right
+            # branch
+            # (note that initially, the number of children on left is 1
+            # but because of this loop, it possibly increases)
+            @assert length(r.children) == 1
             if isnothing(findfirst(x -> x.object.filename == r.children[1].object.filename, l.children))
-                #@debug "different", r.children[1].object.filename
+                @assert l.name == r.name == "root" || prev_l.name == prev_r.name
                 push!(l.children, r.children[1])
                 done = true
                 continue
             else
-                #@debug "left_child same as r.children[1]!, breaking.."
+                # progress to the successor in both branches, and repeat:
+                prev_l = l
+                prev_r = r
+                l = l.children[findfirst(x -> x.object.filename == r.children[1].object.filename, l.children)]
+                r = r.children[1]
             end
-            l = l.children[1]
-            r = r.children[1]
         end
     end
+
     left
 end
 

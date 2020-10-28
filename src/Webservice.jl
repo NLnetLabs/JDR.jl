@@ -59,15 +59,31 @@ function asn(req::HTTP.Request)
     end
 end
 
+const PREFIX_RESULT_MAX = 20
 function prefix(req::HTTP.Request)
-    # /api/v1/prefix/1.2.3.4%2F24, get and unescape prefix
-    prefix = HTTP.URIs.splitpath(req.target)[4] 
-    prefix = HTTP.URIs.unescapeuri(prefix)
-    prefix = IPNet(prefix)
-    res = RPKI.search(LOOKUP[], prefix)
+    # /api/v1/prefix/1.2.3.4/24, get and unescape prefix
+    parts = HTTP.URIs.splitpath(req.target)
+    prefix = if length(parts) == 4
+        # no prefixlen passed
+        IPNet(parts[4])
+    elseif length(parts) > 4
+        _prefix = HTTP.URIs.splitpath(req.target)[4] 
+        _prefixlen = HTTP.URIs.splitpath(req.target)[5] 
+        IPNet(_prefix*'/'*_prefixlen)
+    else
+        throw("error: illegal prefix request")
+    end
+         
+    res = collect(RPKI.search(LOOKUP[], prefix))
+    if length(res) > PREFIX_RESULT_MAX
+        @warn "more than $(PREFIX_RESULT_MAX) results ($(length(res))) for /prefix search on '$(prefix)', limiting .."
+        res = Iterators.take(res, PREFIX_RESULT_MAX)
+    else
+        @info "prefix search on '$(prefix)': $(length(res)) result(s)"
+    end
 
-    if length(HTTP.URIs.splitpath(req.target)) > 4 && 
-        HTTP.URIs.splitpath(req.target)[5]  == "raw"
+    if length(HTTP.URIs.splitpath(req.target)) > 5 && 
+        HTTP.URIs.splitpath(req.target)[6]  == "raw"
         @info "RAW request"
         return [to_root(r) for r in res]
     else
@@ -75,14 +91,15 @@ function prefix(req::HTTP.Request)
     end
 end
 
+const FILENAME_RESULT_MAX = 20
 function filename(req::HTTP.Request)
     # /api/v1/filename/somefilename, get and unescape filename
     filename = HTTP.URIs.splitpath(req.target)[4]
     filename = HTTP.URIs.unescapeuri(filename)
     res = RPKI.search(LOOKUP[], filename)
-    if length(res) > 10
-        @warn "more than 10 results ($(length(res))) for /filename search on '$(filename)', limiting .."
-        res = map(e->e.second, (Iterators.take(res, 10)))
+    if length(res) > FILENAME_RESULT_MAX
+        @warn "more than $(FILENAME_RESULT_MAX) results ($(length(res))) for /filename search on '$(filename)', limiting .."
+        res = map(e->e.second, (Iterators.take(res, FILENAME_RESULT_MAX)))
     else
         @info "filename search on '$(filename)': $(length(res)) result(s)"
     end

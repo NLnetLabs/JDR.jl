@@ -211,6 +211,7 @@ import .RPKI:check_resources
 function check_resources(o::RPKIObject{ROA}, tpi::TmpParseInfo)
     # TODO: check out intersect(t1::IntervalTree, t2::IntervalTree) and find any
     # underclaims?
+    o.object.resources_valid = true
     for v in o.object.vrps
         #@debug "checking $(v)"
         interval = Interval{Integer}(minimum(v.prefix), maximum(v.prefix))
@@ -226,11 +227,12 @@ function check_resources(o::RPKIObject{ROA}, tpi::TmpParseInfo)
         elseif length(matches) == 0
             @warn "no match for interval $(interval), illegal VRP $(v)"
             remark_resourceIssue!(o, "VRP not covered by resources in EE cert")
-            throw("stop here")
+            o.object.resources_valid = false
         else
             if !(matches[1].first <= Integer(v.prefix[1]) <= Integer(v.prefix[end]) <= matches[1].last)
                 @warn "VRP not properly covered by resources in EE cert"
                 remark_resourceIssue!(o, "VRP not properly covered by resources in EE cert")
+                o.object.resources_valid = false
             end
         end
     end

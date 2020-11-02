@@ -212,18 +212,14 @@ Base.show(io::IO, vrp::VRP) = println(io, vrp.prefix, "-$(vrp.maxlength)")
 mutable struct ROA
     asid::Integer
     vrps::Vector{VRP}
-    #prefixes_v6::IPPrefixesOrRanges # on the EE cert
-    #prefixes_v4::IPPrefixesOrRanges # on the EE cert
+    resources_valid::Union{Nothing,Bool}
     prefixes_v6_intervaltree::IntervalTree{Integer, Interval{Integer}}
     prefixes_v4_intervaltree::IntervalTree{Integer, Interval{Integer}}
-    rsa_modulus::BigInt
-    rsa_exp::Int
 end
 ROA() = ROA(0, [],
-            #IPPrefixesOrRanges(),
-            #IPPrefixesOrRanges(),
+            nothing,
             IntervalTree{Integer, Interval{Integer}}(),
             IntervalTree{Integer, Interval{Integer}}(),
-            0, 0)
+           )
 
 end # module

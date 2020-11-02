@@ -61,6 +61,7 @@ end
 # and perhaps, on the RPKINode level, create a pointer to the covering CER
 import .RPKI:check_resources
 function check_resources(o::RPKIObject{CER}, tpi::TmpParseInfo)
+    o.object.resources_valid = true
     if !o.object.selfsigned
         if isempty(o.object.ASNs) && !o.object.inherit_ASNs
             #@error "empty ASNs and no inheritance? $(o.filename)" maxlog=3
@@ -77,15 +78,15 @@ function check_resources(o::RPKIObject{CER}, tpi::TmpParseInfo)
                 end
             end
 
+            o.object.resources_valid = false
             @error "illegal ASNs in $(o.filename)"
             @debug o.object.ASNs
             @debug tpi.certStack[end-1].ASNs
-            throw("illegal resources")
+            #throw("illegal resources")
         end
     end
 
     # now for the prefixes
-    # TODO merge somehow with the ASN loop above?
     # TODO what do we do if the object is self signed?
     if !o.object.selfsigned
         certStackOffset_v6 = certStackOffset_v4 = 1
@@ -94,7 +95,6 @@ function check_resources(o::RPKIObject{CER}, tpi::TmpParseInfo)
                 #@warn "v6 prefixes empty, but inherit bool is not set.."
                 #@error "empty v6 prefixes undefined inheritance? $(o.filename)"
             elseif !(o.object.inherit_v6_prefixes)
-                @warn "v6 prefixes empty, inherit bool set to false.."
                 @error "empty v6 prefixes and no inheritance? $(o.filename)"
                 ResourceIssue!(o, "No IPv6 prefixes and no inherit flag set")
             end
@@ -110,7 +110,6 @@ function check_resources(o::RPKIObject{CER}, tpi::TmpParseInfo)
                 #@warn "v4 prefixes empty, but inherit bool is not set.."
                 #@error "empty v4 prefixes undefined inheritance? $(o.filename)"
             elseif !(o.object.inherit_v4_prefixes)
-                @warn "v4 prefixes empty, inherit bool set to false.."
                 @error "empty v4 prefixes and no inheritance? $(o.filename)"
                 ResourceIssue!(o, "No IPv4 prefixes and no inherit flag set")
             end
@@ -129,6 +128,7 @@ function check_resources(o::RPKIObject{CER}, tpi::TmpParseInfo)
             if !(p.first <= c.first <= c.last <= p.last)
                 @warn "illegal IP resource on $(o.filename)"
                 remark_resourceIssue!(o, "Illegal IP resource $(c)")
+                o.object.resources_valid = false
             end
         end
 
@@ -139,6 +139,7 @@ function check_resources(o::RPKIObject{CER}, tpi::TmpParseInfo)
             if !(p.first <= c.first <= c.last <= p.last)
                 @warn "illegal IP resource on $(o.filename)"
                 remark_resourceIssue!(o, "Illegal IP resource $(c)")
+                o.object.resources_valid = false
             end
         end
         

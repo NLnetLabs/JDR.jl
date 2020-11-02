@@ -167,6 +167,8 @@ mutable struct CER
 
     inherit_ASNs::Bool
     ASNs::AsIdsOrRanges
+
+    resources_valid::Union{Nothing,Bool}
 end
 CER() = CER(0, nothing, nothing,
             "", "", "", nothing, nothing, 0, 0, "", "",
@@ -174,7 +176,8 @@ CER() = CER(0, nothing, nothing,
             #IPPrefixesOrRanges(), IPPrefixesOrRanges(),
             IntervalTree{Integer, Interval{Integer}}(),
             IntervalTree{Integer, Interval{Integer}}(),
-            false, AsIdsOrRanges())
+            false, AsIdsOrRanges(),
+            nothing)
 
 function Base.show(io::IO, cer::CER)
     print(io, "  pubpoint: ", cer.pubpoint, '\n')

@@ -193,8 +193,8 @@ function check_cert(o::RPKIObject{ROA}, tpi::TmpParseInfo)
     tbs_raw = read(o.filename, tpi.eeCert.tag.offset_in_file + tpi.eeCert.tag.len + 4 - 1)[tpi.eeCert.tag.offset_in_file+0:end]
     my_hash = bytes2hex(sha256(tbs_raw))
 
-    # decrypt tpi.eeSig with tpi.ca_rsaModulus and tpi.ca_rsaExponent
-    v = powermod(to_bigint(tpi.eeSig.tag.value[2:end]), tpi.ca_rsaExponent[end], tpi.ca_rsaModulus[end])
+    # decrypt tpi.eeSig 
+    v = powermod(to_bigint(tpi.eeSig.tag.value[2:end]), tpi.certStack[end].rsa_exp,tpi.certStack[end].rsa_modulus)
     v.size = 4
     v_str = string(v, base=16, pad=64)
     

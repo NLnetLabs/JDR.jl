@@ -104,8 +104,6 @@ mutable struct TmpParseInfo
     saHash::String
 
     caCert::Union{Nothing,ASN.Node}
-    ca_rsaExponent::Vector{Integer} # stack
-    ca_rsaModulus::Vector{BigInt} # stack
     issuer::Vector{String} # stack
 
     eeCert::Union{Nothing,ASN.Node}
@@ -128,8 +126,6 @@ TmpParseInfo(;lookup=Lookup(),nicenames::Bool=true,stripTree=false) = TmpParseIn
                                                     "",
 
                                                     nothing,
-                                                    [],
-                                                    [],
                                                     [],
 
                                                     nothing,

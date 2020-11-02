@@ -393,18 +393,8 @@ end
     # 256 bytes + the first byte indicating unused bits == 257
     @assert encaps_modulus.tag.len == 257
     if o.object isa CER
-        # OLD, maybe remove:
         o.object.rsa_modulus   = to_bigint(encaps_modulus.tag.value[2:end])
         o.object.rsa_exp       = ASN1.value(encaps_exponent.tag)
-        # for use in RPKI::process_cer/mft/roa()
-
-        #tpi.ca_rsaModulus   = to_bigint(encaps_modulus.tag.value[2:end])
-        #tpi.ca_rsaExponent  = encaps_exponent
-
-        # attempt to use a stack
-        #@debug ("push, now $(length(tpi.ca_rsaModulus))")
-        push!(tpi.ca_rsaModulus, to_bigint(encaps_modulus.tag.value[2:end]) )
-        push!(tpi.ca_rsaExponent, ASN1.value(encaps_exponent.tag))
     end
     if o.object isa ROA || o.object isa MFT
         tpi.ee_rsaExponent = encaps_exponent

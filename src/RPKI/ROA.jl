@@ -110,7 +110,7 @@ end
         node[2].nicename = "maxLength"
         #@assert node[2].tag.len == 1
         if node[2].tag.value[1] == maxlength
-            info!(node[2], "redundant maxLength")
+            #remark_ASN1Issue!(node[2], "redundant maxLength")
         else
             maxlength = node[2].tag.value[1]
         end

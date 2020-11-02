@@ -5,7 +5,7 @@ export split_scheme_uri, split_rrdp_path
 export Remark, RemarkLevel, RemarkCounts, RemarkCounts_t, count_remarks
 export dbg!, info!, warn!, err!
 export remark_encodingIssue!, remark_ASN1Issue!, remark_manifestIssue!, remark_missingFile!, remark_validityIssue!, remark_resourceIssue!, remark_loopIssue!
-export @oid
+export @oid, oid_to_str
 
 
 function split_scheme_uri(uri::String) :: Tuple{String, String}
@@ -130,6 +130,40 @@ macro oid(s)
     end
     
     res2
+end
+
+function oid_to_str(raw::Vector{UInt8}) :: String
+    # pre-fill with the 0, so we can overwrite it with the
+    # actual object identifier after splitting up the first subidentifier
+    subids = Int[0] 
+
+    tmp = UInt32(0)
+    for idx in (1:length(raw))
+        tmp |= UInt32(raw[idx] & 0x7f)
+        if raw[idx] & 0x80 == 0x80 # first bit set? then this is a multibyte subidentifier
+            tmp <<= 7
+        else
+            push!(subids, tmp)
+            tmp = UInt32(0)
+        end
+        idx =+ 1
+    end
+
+    # construct first subidentifier from first two object identifiers
+    # subid = (first*40) + second
+    if subids[2] >= 80
+        subids[1] = 2
+        subids[2] -= 80
+    elseif subids[2] >= 40
+        subids[1] = 1
+        subids[2] -= 40
+    else
+        # is this possible?
+        # x=0, y = subid[2] 
+        # so actually we do not need to do anything
+    end
+
+    join(subids, ".") 
 end
 
 

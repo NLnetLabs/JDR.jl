@@ -22,7 +22,7 @@ end
 
     if length(node.children) == 2
         tagisa(node[2], ASN1.NULL)
-        info!(node[2], "this NULL SHOULD be absent (RFC4055)")
+        remark_ASN1Issue!(node[2], "this NULL SHOULD be absent (RFC4055)")
     end
 end
 
@@ -44,7 +44,7 @@ end
     else
         # already parsed, but can we spot the chunked OCTETSTRING case?
         if length(node[1].children) > 1
-            warn!(node[1], "chunked OCTETSTRINGs ? TODO doublecheck me")
+            remark_encodingIssue!(node[1], "fragmented OCTETSTRING, CER instead of DER?")
             #@debug "found multiple children in node[1]"
             concatted = collect(Iterators.flatten([n.tag.value for n in node[1].children]))
             buf = DER.Buf(concatted)
@@ -57,7 +57,7 @@ end
      
     childcount(node[1], 1)
     eContent = if node[1,1].tag isa Tag{ASN1.OCTETSTRING} 
-        warn!(node[1,1], "nested OCTETSTRING, BER instead of DER")
+        remark_encodingIssue!(node[1,1], "nested OCTETSTRING, BER instead of DER")
         # we need to do a second pass on this then
         DER.parse_append!(DER.Buf(node[1,1].tag.value), node[1,1])
         node[1,1,1]

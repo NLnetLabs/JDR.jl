@@ -41,10 +41,7 @@ end
 function tag_OID(node::Node, v::Vector{UInt8})
     tagisa(node, ASN.OID)
     if !(node.tag.value == v)
-        #FIXME: we need a nice string repr of v here!
-        #as this part will be an exception, we can handle the allocation penalty
-        #warn!(node, "expected OID to be '$(v)', got '$(ASN.value(node.tag))'")
-        warn!(node, "expected OID to be '$(v)', got $(node.tag.value)")
+        remark_ASN1Issue!(node, "expected OID to be '$(oid_to_str(v))', got $(oid_to_str(node.tag.value))")
         #@warn "expected OID to be '$(v)', got $(ASN.value(node.tag))"
     end
 end
@@ -52,7 +49,7 @@ end
 function childcount(node::Node, num::Integer) :: Bool #TODO can we use "> 1" here? maybe with an Expr?
     valid = true
     if !(length(node.children) == num)
-        warn!(node, "expected $(num) children, found $(length(node.children))")
+        remark_ASN1Issue!(node, "expected $(num) children, found $(length(node.children))")
         valid = false
     end
     node.validated = true
@@ -107,7 +104,7 @@ function containAttributeTypeAndValue(node::Node, oid::Vector{UInt8}, expected_t
             for t in accepted_types
                 if c[2].tag isa Tag{t}
                     c.validated = c[1].validated = c[2].validated = true
-                    warn!(c[2], "RFC6487: MUST be PRINTABLESTRING instead of $(t)")
+                    remark_ASN1Issue!(c[2], "RFC6487: MUST be PRINTABLESTRING instead of $(t)")
                     return c[2]
                 end
             end

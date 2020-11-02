@@ -64,7 +64,7 @@ function check_resources(o::RPKIObject{CER}, tpi::TmpParseInfo)
     if !o.object.selfsigned
         if isempty(o.object.ASNs) && !o.object.inherit_ASNs
             #@error "empty ASNs and no inheritance? $(o.filename)" maxlog=3
-            warn!(o, "empty ASNs but no inherit")
+            remark_ASN1Issue!(o, "empty ASNs but no inherit")
         end
         if !covered(o.object.ASNs , tpi.certStack[end-1].ASNs)
             # not covered, so check for inherited ASNs in parent certificates

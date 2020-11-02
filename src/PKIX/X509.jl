@@ -9,7 +9,7 @@ using Sockets
 import ...PKIX.@check
 
 const MANDATORY_EXTENSIONS = Vector{Pair{Vector{UInt8}, String}}([
-                                                    @oid("2.5.29.14") => "basicConstraints",
+                                                    @oid("2.5.29.14") => "subjectKeyIdentifier",
                                                     @oid("2.5.29.15") =>  "keyUsage",
                                                     @oid("1.3.6.1.5.5.7.1.11") =>  "subjectInfoAccess",
                                                     @oid("2.5.29.32") =>  "certificatePolicies",
@@ -214,6 +214,27 @@ end
     end
 end
 
+@check "subjectKeyIdentifier" begin
+end
+
+@check "certificatePolicies" begin
+end
+
+@check "basicConstraints" begin
+end
+
+@check "keyUsage" begin
+end
+
+@check "cRLDistributionPoints" begin
+end
+
+@check "authorityInfoAccess" begin
+end
+
+@check "authorityKeyIdentifier" begin
+end
+
 function check_ASN1_extension(oid::Vector{UInt8}, o::RPKIObject{T}, node::Node, tpi::TmpParseInfo) where T
     if oid == @oid("1.3.6.1.5.5.7.1.11")
         check_ASN1_subjectInfoAccess(o, node, tpi)
@@ -221,8 +242,22 @@ function check_ASN1_extension(oid::Vector{UInt8}, o::RPKIObject{T}, node::Node, 
         check_ASN1_ipAddrBlocks(o, node, tpi)
     elseif oid == @oid("1.3.6.1.5.5.7.1.8")
         check_ASN1_autonomousSysIds(o, node, tpi)
+    elseif oid == @oid("2.5.29.14")
+        check_ASN1_subjectKeyIdentifier(o, node, tpi)
+    elseif oid == @oid("2.5.29.32")
+        check_ASN1_certificatePolicies(o, node, tpi)
+    elseif oid == @oid("2.5.29.19")
+        check_ASN1_basicConstraints(o, node, tpi)
+    elseif oid == @oid("2.5.29.15")
+        check_ASN1_keyUsage(o, node, tpi)
+    elseif oid == @oid("2.5.29.31")
+        check_ASN1_cRLDistributionPoints(o, node, tpi)
+    elseif oid == @oid("1.3.6.1.5.5.7.1.1")
+        check_ASN1_authorityInfoAccess(o, node, tpi)
+    elseif oid == @oid("2.5.29.35")
+        check_ASN1_authorityKeyIdentifier(o, node, tpi)
     else
-        @warn "Unknown oid $(oid) passed to X509::check_extension" maxlog=10
+        @warn "Unknown oid $(oid_to_str(oid)) passed to X509::check_extension" maxlog=10
         warn!(node, "Unknown extension")
     end
 

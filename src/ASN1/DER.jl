@@ -131,11 +131,11 @@ function _parse!(tag, buf, indef_stack::Stack)
     if isa(tag, Tag{OCTETSTRING})
         if tag.constructed
             #TODO what about constructed BITSTRINGs, are those allowed?
-            info!(me, "constructed OCTETSTRING, not allowed in DER")
+            remark_encodingIssue!(me, "constructed OCTETSTRING, not allowed in DER")
         end
     end
     if tag.len_indef
-        info!(me, "indefinite length, not allowed in DER")
+        remark_encodingIssue!(me, "indefinite length, not allowed in DER")
     end
     #if tag isa Tag{CONTEXT_SPECIFIC} && tag.constructed && ! tag.len_indef
     #    @debug "got a constructed CONTEXT_SPECIFIC of definite length $(tag.len)"

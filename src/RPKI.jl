@@ -332,9 +332,6 @@ function process_cer(cer_fn::String, lookup::Lookup, tpi::TmpParseInfo) :: RPKIN
     cer_node.remark_counts_me += count_remarks(cer_obj)
 
     add_filename!(lookup, cer_fn, cer_node)
-    #@debug "end of process_cer, popping rsaModulus, $(length(tpi.ca_rsaModulus)) left on stack"
-    pop!(tpi.ca_rsaModulus)
-    pop!(tpi.ca_rsaExponent)
     pop!(tpi.issuer)
     pop!(tpi.certStack)
     cer_node

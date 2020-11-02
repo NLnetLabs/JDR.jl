@@ -431,7 +431,7 @@ const MANDATORY_EXTENSIONS_EE = Vector{Vector{UInt8}}([
 @check "extensions" begin
     tagis_contextspecific(node, 0x3)
 
-    mandatory_extensions = Vector{Vector{UInt8}}()
+    #mandatory_extensions = Vector{Vector{UInt8}}()
 
     # in order as listed in RFC6487:
     # 2.5.29.19 basicConstraints
@@ -445,7 +445,7 @@ const MANDATORY_EXTENSIONS_EE = Vector{Vector{UInt8}}([
     
 
     # Subject Key Identifier, MUST appear
-    push!(mandatory_extensions, @oid "2.5.29.14")
+    #push!(mandatory_extensions, @oid "2.5.29.14")
 
     # Authority Key Identifier
 	# RFC 6487:
@@ -467,7 +467,7 @@ const MANDATORY_EXTENSIONS_EE = Vector{Vector{UInt8}}([
 	#  In EE certificates, the digitalSignature bit MUST be set to TRUE and
 	#  MUST be the only bit set to TRUE.
     #2.5.29.15 keyUsage
-    push!(mandatory_extensions, @oid "2.5.29.15")
+    #push!(mandatory_extensions, @oid "2.5.29.15")
 
 	# Extended Key Usage
 	# may only appear in specific certs
@@ -487,7 +487,7 @@ const MANDATORY_EXTENSIONS_EE = Vector{Vector{UInt8}}([
     # Subject Information Access, MUST be present
     # 1.3.6.1.5.5.7.1.11 subjectInfoAccess
     ## SIA for CA Certificates MUST be present, MUST be non-critical
-    push!(mandatory_extensions, @oid "1.3.6.1.5.5.7.1.11")
+    #push!(mandatory_extensions, @oid "1.3.6.1.5.5.7.1.11")
     ### MUST have an caRepository (OID 1.3.6.1.5.5.7.48.5)
     ### MUST have a rpkiManifest (OID 1.3.6.1.5.5.7.48.10) pointing to an rsync uri
     # TODO rrdp stuff is in another RFC
@@ -499,7 +499,7 @@ const MANDATORY_EXTENSIONS_EE = Vector{Vector{UInt8}}([
     # Certificate Policies MUST present+critical
     # MUST contain one policy, RFC6484
     # 2.5.29.32 certificatePolicies
-    push!(mandatory_extensions, @oid "2.5.29.32")
+    #push!(mandatory_extensions, @oid "2.5.29.32")
     # MUST contain exactly one, 1.3.6.1.5.5.7.14.2 resourceCertificatePolicy
 
     # IP + AS resources

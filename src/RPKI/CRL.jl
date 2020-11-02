@@ -184,9 +184,11 @@ function check_cert(o::RPKIObject{CRL}, tpi::TmpParseInfo) :: RPKI.RPKIObject{CR
     my_hash = bytes2hex(sha256(tbs_raw))
 
     # compare hashes
-    if v_str != my_hash
-        @error "invalid signature for" o.filename
+    if v_str == my_hash
+        o.sig_valid = true
+    else
         remark_validityIssue!(o, "invalid signature")
+        o.sig_valid = false
     end
     
     o

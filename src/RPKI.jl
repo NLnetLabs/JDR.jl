@@ -281,12 +281,11 @@ function process_cer(cer_fn::String, lookup::Lookup, tpi::TmpParseInfo) :: RPKIN
     mft_fn = joinpath(REPO_DIR, mft_host, mft_path)
     cer_node = RPKINode(cer_obj)
 
-    if tpi.certValid
+    if cer_obj.sig_valid 
         push!(lookup.valid_certs, cer_node)
     else
         push!(lookup.invalid_certs, cer_node)
     end
-    tpi.certValid = nothing
 
     if !(ca_host in keys(lookup.pubpoints))
         lookup.pubpoints[ca_host] = cer_node

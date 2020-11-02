@@ -53,7 +53,12 @@ function check_cert(o::RPKIObject{CER}, tpi::TmpParseInfo) :: RPKI.RPKIObject{CE
 
     # this only described whether the signature is valid or not! no resource
     # checks done at this point
-    tpi.certValid = v_str == my_hash
+    if v_str == my_hash
+        o.sig_valid = true
+    else
+        remark_validityIssue!(o, "invalid signature")
+        o.sig_valid = false
+    end
     o
 end
 

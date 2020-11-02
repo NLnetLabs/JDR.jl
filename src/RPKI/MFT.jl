@@ -150,8 +150,12 @@ function check_cert(o::RPKIObject{MFT}, tpi::TmpParseInfo)
     v_str = string(v, base=16, pad=64)
     
     # compare hashes
-    if v_str != my_hash
+    if v_str == my_hash
+        o.sig_valid = true
+    else
         @error "invalid signature for" o.filename
+        remark_validityIssue!(o, "invalid signature")
+        o.sig_valid = false
     end
 
     # compare subject with SKI

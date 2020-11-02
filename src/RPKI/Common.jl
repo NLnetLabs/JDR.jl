@@ -17,6 +17,7 @@ mutable struct RPKIObject{T}
     object::T
     remarks::Union{Nothing, Vector{Remark}}
     remarks_tree::Union{Nothing, Vector{Remark}}
+    sig_valid::Union{Nothing, Bool}
 end
 
 
@@ -32,7 +33,7 @@ end
 
 
 function RPKIObject{T}(filename::String, tree::Node) where T 
-    RPKIObject{T}(filename, tree, T(), nothing, nothing)
+    RPKIObject{T}(filename, tree, T(), nothing, nothing, nothing)
 end
 
 # TODO:
@@ -113,7 +114,6 @@ mutable struct TmpParseInfo
     eeSig::Union{Nothing,ASN.Node}
     #certStack::Vector{RPKI.CER} # to replace all the other separate fields here
     certStack::Vector{Any} # TODO rearrange include/modules so we can actually use type RPKI.CER here
-    certValid::Union{Nothing,Bool}
 
     # for ROA:
     afi::UInt32
@@ -133,7 +133,6 @@ TmpParseInfo(;lookup=Lookup(),nicenames::Bool=true,stripTree=false) = TmpParseIn
                                                     nothing,
                                                     nothing,
                                                     [],
-                                                    nothing,
                                                     0x0)
 
 

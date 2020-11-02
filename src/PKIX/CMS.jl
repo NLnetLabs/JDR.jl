@@ -65,7 +65,7 @@ end
         node[1,1]
     else
         @error("unexpected tag $(tagtype(node[1,1])) in $(o.filename)")
-        err!(node[1,1], "unexpected tag $(tagtype(node[1,1]))")
+        remark_ASN1Error!(node[1,1], "unexpected tag $(tagtype(node[1,1]))")
         return
     end
     tpi.eContent = eContent
@@ -84,7 +84,7 @@ end
             node.nicename *= " (ROA)"
         end
     else
-        err!(node, "unexpected OID for this file")
+        remark_ASN1Error!(node[1,1], "unexpected OID for this filetype")
     end
 end
 @check "encapContentInfo" begin
@@ -190,7 +190,7 @@ end
         node.validated = true
     else
         @error "invalid signature for $(o.filename)"
-        err!(o, "Signature invalid")
+        remark_validityIssue!(o, "signature invalid")
         push!(tpi.lookup.invalid_signatures, o)
     end
 end

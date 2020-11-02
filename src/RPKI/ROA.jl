@@ -38,7 +38,7 @@ function rawv4_to_roa(o::RPKIObject{ROA}, roa_ipaddress::Node) :: RPKIObject{ROA
         @assert roa_ipaddress[2].tag.len == 1
         #if ASN1.value(roa_ipaddress[2].tag) == maxlength
         if roa_ipaddress[2].tag.value[1] == maxlength
-            info!(roa_ipaddress[2], "redundant maxLength")
+            #info!(roa_ipaddress[2], "redundant maxLength")
         else
             maxlength = roa_ipaddress[2].tag.value[1]
         end
@@ -65,7 +65,7 @@ function rawv6_to_roa(o::RPKIObject{ROA}, roa_ipaddress::Node) :: RPKIObject{ROA
             value(roa_ipaddress[2].tag)
         end
         if explicit_len == maxlength
-            info!(roa_ipaddress[2], "redundant maxLength")
+            #info!(roa_ipaddress[2], "redundant maxLength")
         else
             maxlength = explicit_len
         end
@@ -81,7 +81,7 @@ end
     childcount(node, 1)
     tagisa(node[1], ASN1.INTEGER)
     if value(node[1].tag) == 0
-        info!(node[1], "version explicitly set to 0 while that is the default")
+        #info!(node[1], "version explicitly set to 0 while that is the default")
     end
 end
 
@@ -125,14 +125,14 @@ end
         tpi.afi = reinterpret(UInt16, reverse(node[1].tag.value))[1]
         if ! (tpi.afi in [1,2])
             @error "invalid AFI in ROA"
-            err!(node[1], "addressFamily MUST be either 0002 for IPv6 or 0001 for IPv4")
+            remark_ASN1Error!(node[1], "addressFamily MUST be either 0002 for IPv6 or 0001 for IPv4")
         end
 
         addresses = node[2]
         tagisa(addresses, ASN1.SEQUENCE)
         addresses.nicename = "addresses"
         if length(addresses.children) == 0
-            err!(addresses, "there should be at least one ROAIPAddress here")
+            remark_ASN1Error!(addresses, "there should be at least one ROAIPAddress here")
         end
         if tpi.afi == 1 # IPv4
             node[1].nicename = "addressFamily: IPv4"
@@ -147,7 +147,7 @@ end
     tagisa(node, ASN1.SEQUENCE)
 
     if length(node.children) == 0
-        err!(node, "there should be at least one ROAIPAddressFamily here")
+        remark_ASN1Error!(node, "there should be at least one ROAIPAddressFamily here")
     end
     for roa_afi in node.children
         (@__MODULE__).check_ASN1_ROAIPAddressFamily(o, roa_afi, tpi)

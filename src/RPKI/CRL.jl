@@ -101,7 +101,7 @@ function check_ASN1_extension(oid::Vector{UInt8}, o::RPKIObject{T}, node::Node, 
         check_ASN1_cRLNumber(o, node, tpi)
     else
         @warn "Unknown oid $(oid) passed to CRL::check_extension" maxlog=10
-        warn!(node, "Unknown extension")
+        remark_ASN1Issue!(node, "Unknown extension")
     end
 end
 @check "crlExtensions" begin
@@ -186,7 +186,7 @@ function check_cert(o::RPKIObject{CRL}, tpi::TmpParseInfo) :: RPKI.RPKIObject{CR
     # compare hashes
     if v_str != my_hash
         @error "invalid signature for" o.filename
-        err!(o, "invalid signature")
+        remark_validityIssue!(o, "invalid signature")
     end
     
     o

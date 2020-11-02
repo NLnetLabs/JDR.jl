@@ -59,10 +59,10 @@ const MANDATORY_EXTENSIONS = Vector{Pair{Vector{UInt8}, String}}([
     end
     if o.object isa CER
         if !carepo_present
-            err!(node, "missing essential caRepository")
+            remark_ASN1Error!(node, "missing essential caRepository")
         end
         if !manifest_present
-            err!(node, "missing essential rpkiManifest")
+            remark_ASN1Error!(node, "missing essential rpkiManifest")
         end
     end
 end
@@ -118,7 +118,7 @@ AFI_V6 = 0x02
                     o.object.inherit_v6_prefixes = true
                 end
             else
-                warn!(ipaddrblock[2], "expected either SEQUENCE OF or NULL here")
+                remark_ASN1Issue!(ipaddrblock[2], "expected either SEQUENCE OF or NULL here")
             end
         elseif afi == AFI_V4
             # now, or a NULL -> inherit
@@ -159,7 +159,7 @@ AFI_V6 = 0x02
                     o.object.inherit_v4_prefixes = true
                 end
             else
-                warn!(ipaddrblock[2], "expected either SEQUENCE OF or NULL here")
+                remark_ASN1Issue!(ipaddrblock[2], "expected either SEQUENCE OF or NULL here")
             end
         else
             #TODO make this a @error and Remark
@@ -199,17 +199,17 @@ end
                         asid_or_range[1].validated = true
                         asid_or_range[2].validated = true
                     else
-                        warn!(asid_or_range[1], "unexpected tag number $(asid_or_range[1].tag.number)")
+                        remark_ASN1Issue!(asid_or_range[1], "unexpected tag number $(asid_or_range[1].tag.number)")
                     end
                 end #for-loop asid_or_range
             else
-                warn!(asidentifierchoice[1], "expected either a SEQUENCE OF or a NULL here")
+                remark_ASN1Issue!(asidentifierchoice[1], "expected either a SEQUENCE OF or a NULL here")
             end
 
         elseif asidentifierchoice.tag.number == 1
             throw("implement rdi for ASIdentifierChoice")
         else
-            warn!(asidentifierchoice, "Unknown Context-Specific tag number, expecting 0 or 1")
+            remark_ASN1Error!(asidentifierchoice, "Unknown Context-Specific tag number, expecting 0 or 1")
         end
     end
 end
@@ -258,7 +258,7 @@ function check_ASN1_extension(oid::Vector{UInt8}, o::RPKIObject{T}, node::Node, 
         check_ASN1_authorityKeyIdentifier(o, node, tpi)
     else
         @warn "Unknown oid $(oid_to_str(oid)) passed to X509::check_extension" maxlog=10
-        warn!(node, "Unknown extension")
+        remark_ASN1Issue!(node, "Unknown extension")
     end
 
 end

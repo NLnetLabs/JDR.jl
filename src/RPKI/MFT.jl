@@ -45,7 +45,7 @@ length(::Nothing) = 0 #used in childcount from validation_common.jl
     childcount(node, 1)
     tagisa(node[1], ASN1.INTEGER)
     if value(node[1].tag) == 0
-        info!(node[1], "version explicitly set to 0 while that is the default")
+        #info!(node[1], "version explicitly set to 0 while that is the default")
     end
 end
 
@@ -59,7 +59,7 @@ end
         o.object.this_update = (@__MODULE__).gentime_to_ts(node.tag.value)
     catch e
         if e isa ArgumentError
-            err!(o, "Could not parase GENTIME in thisUpdate field")
+            remark_ASN1Error!(o, "Could not parase GENTIME in thisUpdate field")
         else
             @error e
         end
@@ -71,7 +71,7 @@ end
         o.object.next_update = (@__MODULE__).gentime_to_ts(node.tag.value)
     catch e
         if e isa ArgumentError
-            err!(o, "Could not parase GENTIME in nextUpdate field")
+            remark_ASN1Error!(o, "Could not parase GENTIME in nextUpdate field")
         else
             @error e
         end

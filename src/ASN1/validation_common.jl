@@ -8,7 +8,7 @@ export new_bitstring_to_v4prefix, new_bitstring_to_v6prefix, new_bitstrings_to_v
 # TODO implement optional custom remark::String
 function tagisa(node::Node, t::Type)
     if !(node.tag isa Tag{t})
-        warn!(node, "expected this to be a $(nameof(t))")
+        remark_ASN1Issue!(node, "expected this to be a $(nameof(t))")
         return false
     else
         return node.validated = true
@@ -16,7 +16,7 @@ function tagisa(node::Node, t::Type)
 end
 function tagis_contextspecific(node::Node, tagnum::UInt8)
     if !(node.tag isa Tag{ASN.CONTEXT_SPECIFIC} && node.tag.number == tagnum)
-        warn!(node, "expected this to be a Context-Specific tag number $(tagnum)")
+        remark_ASN1Issue!(node, "expected this to be a Context-Specific tag number $(tagnum)")
     else
         node.validated = true
     end
@@ -28,13 +28,13 @@ function tagisa(node::Node, ts::Vector{DataType})
             return
         end
     end
-    warn!(node, "unexpected type $(nameof(typeof(node.tag).parameters[1]))")
+    remark_ASN1Issue!(node, "unexpected type $(nameof(typeof(node.tag).parameters[1]))")
 end
 
 function tagvalue(node::Node, t::Type, v::Any)
     tagisa(node, t)
     if !(ASN.value(node.tag) == v)
-        warn!(node, "expected value to be '$(v)', got '$(ASN.value(node.tag))'")
+        remark_ASN1Issue!(node, "expected value to be '$(v)', got '$(ASN.value(node.tag))'")
     end
 end
 
@@ -57,7 +57,7 @@ function childcount(node::Node, num::Integer) :: Bool #TODO can we use "> 1" her
 end
 function childcount(node::Node, range::UnitRange{Int}) #TODO can we use "> 1" here? maybe with an Expr?
     if !(length(node.children) in range)
-        warn!(node, "expected $(minimum(range)) to $(maximum(range)) children, found $(length(node.children))")
+        remark_ASN1Issue!(node, "expected $(minimum(range)) to $(maximum(range)) children, found $(length(node.children))")
     end
     node.validated = true
 end
@@ -71,7 +71,7 @@ function childrencontain(node::Node, t::Type)
         end
     end
     if !found
-        warn!(node, "expected child node of type $(nameof(t))")
+        remark_ASN1Issue!(node, "expected child node of type $(nameof(t))")
     end
 end
 
@@ -83,7 +83,7 @@ function childrencontainvalue(node::Node, t::Type, v::Any)
         end
     end
     if !found
-        warn!(node, "expected child node of type $(nameof(t)) and value $(v)")
+        remark_ASN1Issue!(node, "expected child node of type $(nameof(t)) and value $(v)")
     end
 end
 
@@ -111,7 +111,7 @@ function containAttributeTypeAndValue(node::Node, oid::Vector{UInt8}, expected_t
 
         end
     end
-    warn!(node, "expected child node OID $(oid)")
+    remark_ASN1Issue!(node, "expected child node OID $(oid)")
     nothing
 end
 
@@ -119,21 +119,11 @@ function check_extensions(tree::Node, oids::Vector{Pair{Vector{UInt8},String}})
     oids_found = get_extension_oids(tree)
     for (oid, nicename) in oids
         if !(oid in oids_found)
-            warn!(tree, "expected Extension '$(nicename)' with OID $(oid)")
+            remark_ASN1Issue!(tree, "expected Extension '$(nicename)' with OID $(oid)")
         end
     end
 end
 
-function depr_check_extensions(tree::Node, oids::Vector{Vector{UInt8}}) 
-    oids_found = get_extension_oids(tree)
-    for o in oids
-        if !(o in oids_found)
-            warn!(tree, "expected Extension with OID $(o)")
-        end
-    end
-end
-
-#function get_extension_oids(tree::Node) :: Vector{String}
 function get_extension_oids(tree::Node) :: Vector{Vector{UInt8}}
     tagisa(tree[1], ASN.SEQUENCE)
 
@@ -147,7 +137,6 @@ function get_extension_oids(tree::Node) :: Vector{Vector{UInt8}}
     oids_found
 end
 
-#function get_extensions(tree::Node) :: Dict{String,Node}
 function get_extensions(tree::Node) :: Dict{Vector{UInt8},Node}
     tagisa(tree[1], ASN.SEQUENCE)
 

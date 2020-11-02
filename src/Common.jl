@@ -4,7 +4,7 @@ using IPNets
 export split_scheme_uri, split_rrdp_path
 export Remark, RemarkLevel, RemarkCounts, RemarkCounts_t, count_remarks
 export dbg!, info!, warn!, err!
-export remark_encodingIssue!, remark_ASN1Issue!, remark_manifestIssue!, remark_missingFile!, remark_validityIssue!, remark_resourceIssue!, remark_loopIssue!
+export remark_encodingIssue!, remark_ASN1Error!, remark_ASN1Issue!, remark_manifestIssue!, remark_missingFile!, remark_validityIssue!, remark_resourceIssue!, remark_loopIssue!
 export @oid, oid_to_str
 
 
@@ -69,6 +69,7 @@ err!(o::Any, msg::String)  	= remark!(o, ERR, ASN1Issue, msg)
 remark_encodingIssue!(o::Any, msg::String) = remark!(o, WARN, EncodingIssue, msg)
 remark_ASN1Issue!(o::Any, msg::String) = remark!(o, WARN, ASN1Issue, msg)
 # ERR level helpers:
+remark_ASN1Error!(o::Any, msg::String) = remark!(o, ERR, ASN1Issue, msg)
 remark_manifestIssue!(o::Any, msg::String) = remark!(o, ERR, ManifestIssue, msg)
 remark_missingFile!(o::Any, msg::String) = remark!(o, ERR, MissingFile, msg)
 remark_validityIssue!(o::Any, msg::String) = remark!(o, ERR, ValidityIssue, msg)

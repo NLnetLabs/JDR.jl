@@ -209,7 +209,6 @@ end
 
 import .RPKI:check_resources
 function check_resources(o::RPKIObject{ROA}, tpi::TmpParseInfo)
-    # TODO: check whether the prefix is INSIDE the matches
     # TODO: check out intersect(t1::IntervalTree, t2::IntervalTree) and find any
     # underclaims?
     for v in o.object.vrps
@@ -220,22 +219,19 @@ function check_resources(o::RPKIObject{ROA}, tpi::TmpParseInfo)
         elseif v.prefix isa IPv4Net
             collect(intersect(o.object.prefixes_v4_intervaltree, interval))
         else
-            throw("should not be here")
+            throw("illegal AFI in VRP")
         end
         if length(matches) > 1
-            #@info "multiple matches for $(v)"
+            @warn "ROA resource check: multiple matches for $(v)"
         elseif length(matches) == 0
             @warn "no match for interval $(interval), illegal VRP $(v)"
-            #@debug o.filename
-            #@debug o.object.prefixes_v6_intervaltree
-            #for i in values(o.object.prefixes_v6_intervaltree)
-            #    @debug i
-            #    @debug IPv6(i.first), IPv6(i.last)
-            #end
             remark_resourceIssue!(o, "VRP not covered by resources in EE cert")
             throw("stop here")
         else
-            # all good!
+            if !(matches[1].first <= Integer(v.prefix[1]) <= Integer(v.prefix[end]) <= matches[1].last)
+                @warn "VRP not properly covered by resources in EE cert"
+                remark_resourceIssue!(o, "VRP not properly covered by resources in EE cert")
+            end
         end
     end
 end

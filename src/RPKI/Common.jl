@@ -222,13 +222,12 @@ mutable struct ROA
     prefixes_v4_intervaltree::IntervalTree{Integer, Interval{Integer}}
     rsa_modulus::BigInt
     rsa_exp::Int
-    local_eContent_hash::String
 end
 ROA() = ROA(0, [],
             #IPPrefixesOrRanges(),
             #IPPrefixesOrRanges(),
             IntervalTree{Integer, Interval{Integer}}(),
             IntervalTree{Integer, Interval{Integer}}(),
-            0, 0, "EMPTY_LOCAL_HASH")
+            0, 0)
 
 end # module

@@ -50,6 +50,7 @@ function asn(req::HTTP.Request)
     asid = HTTP.URIs.splitpath(req.target)[4] 
     res = RPKI.search(LOOKUP[], RPKI.AutSysNum(asid))
 
+    @info "ASN search on '$(asid)': $(length(res)) result(s)"
     if length(HTTP.URIs.splitpath(req.target)) > 4 && 
         HTTP.URIs.splitpath(req.target)[5]  == "raw"
         @info "RAW request"
@@ -111,6 +112,8 @@ function object(req::HTTP.Request)
     object = HTTP.URIs.splitpath(req.target)[4] 
     object = HTTP.URIs.unescapeuri(object)
     res = RPKI.search(LOOKUP[], object)
+    @info "Object call for '$(object)': $(length(res)) result(s)"
+    @info "returning $(first(res).second.obj.filename)"
     
     ObjectDetails(first(res).second.obj, first(res).second.remark_counts_me)
 end

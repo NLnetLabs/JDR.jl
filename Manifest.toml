@@ -75,6 +75,12 @@ version = "0.5.0"
 deps = ["Markdown"]
 uuid = "b77e0a4c-d291-57a0-90e8-8db25a27a240"
 
+[[IntervalTrees]]
+deps = ["InteractiveUtils", "Profile", "Random", "Test"]
+git-tree-sha1 = "6c9fcd87677231ae293f6806fad928c216ab6658"
+uuid = "524e6230-43b7-53ae-be76-1e9e4d08d11b"
+version = "1.0.0"
+
 [[IteratorInterfaceExtensions]]
 git-tree-sha1 = "a3f24677c21f5bbe9d2a714f95dcd58337fb2856"
 uuid = "82899510-4779-5014-852e-03e436cf321d"

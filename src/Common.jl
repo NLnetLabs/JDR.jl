@@ -3,7 +3,7 @@ using IPNets
 
 export split_scheme_uri, split_rrdp_path
 export Remark, RemarkLevel, RemarkCounts, RemarkCounts_t, count_remarks
-export dbg!, info!, warn!, err!
+#export dbg!, info!, warn!, err!
 export remark_encodingIssue!, remark_ASN1Error!, remark_ASN1Issue!, remark_manifestIssue!, remark_missingFile!, remark_validityIssue!, remark_resourceIssue!, remark_loopIssue!
 export @oid, oid_to_str
 
@@ -58,12 +58,6 @@ function remark!(o::Any, lvl::RemarkLevel, type::RemarkType, msg::String)
 	end	
 	push!(o.remarks, Remark(lvl, type, msg))
 end
-
-# TODO: check all uses of these functions are indeed ASN1Issues
-dbg!(o::Any, msg::String) 	= remark!(o, DBG, ASN1Issue, msg)
-info!(o::Any, msg::String) 	= remark!(o, INFO, ASN1Issue, msg)
-warn!(o::Any, msg::String) 	= remark!(o, WARN, ASN1Issue, msg)
-err!(o::Any, msg::String)  	= remark!(o, ERR, ASN1Issue, msg)
 
 # WARN level helpers:
 remark_encodingIssue!(o::Any, msg::String) = remark!(o, WARN, EncodingIssue, msg)

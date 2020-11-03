@@ -184,11 +184,11 @@ function Base.show(io::IO, cer::CER)
     print(io, "  rrdp: ", cer.rrdp_notify, '\n')
     printstyled(io, "  ASNs: \n")
     print(io, "    ", join(cer.ASNs, ","), "\n")
-    printstyled(io, "  IPv6 prefixes ($(length(cer.prefixes_v6))): \n")
+    #printstyled(io, "  IPv6 prefixes ($(length(cer.prefixes_v6))): \n")
     #for p in cer.prefixes_v6
     #    print(io, "    ", p, '\n')
     #end
-    printstyled(io, "  IPv4 prefixes ($(length(cer.prefixes_v4))): \n")
+    #printstyled(io, "  IPv4 prefixes ($(length(cer.prefixes_v4))): \n")
     #for p in cer.prefixes_v4
     #    print(io, "    ", p, '\n')
     #end

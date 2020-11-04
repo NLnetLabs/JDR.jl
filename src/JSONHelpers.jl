@@ -8,7 +8,7 @@ using ..JDR.Common
 using ..JDR.RPKICommon
 using ..ASN1
 
-export ObjectDetails, to_root, to_vue_branch, to_vue_tree, to_vue_pubpoints, length
+export ObjectDetails, to_root, to_vue_branch, to_vue_tree, to_vue_pubpoints, length, get_vue_leaf_node
 
 
 JSON2.@format RPKI.RPKINode begin
@@ -178,8 +178,35 @@ JSON2.@format VueNode begin
 end
 
 
+function get_vue_leaf_node(node::RPKI.RPKINode) ::RPKINode
+    if node.obj.object isa CRL
+        @assert length(node.siblings) == 1
+        @assert node.siblings[1].obj.object isa CER
+        @assert length(node.siblings[1].children) == 1
+        @assert node.siblings[1].children[1].obj.object isa MFT
+        node.siblings[1].children[1]
+    elseif node.obj.object isa CER
+        @assert length(node.children) == 1
+        @assert node.children[1].obj.object isa MFT
+        node.children[1]
+    else
+        node
+    end
+end
+
 function to_vue_branch(node::RPKI.RPKINode)
-    nodes = root_to(node)[2:end]
+    # make sure we 'end' on a ROA or CER:
+    # MFT and CRLs are mates, in the vue tree terminology
+    # MFT is a child of the CER in RPKINode terminology, CRL a sibling of the CER
+    #
+    # to get the 'full' last vue node, we need to go from the MFT back to the
+    # root, because if we go from the CER, we miss the MFT (as the MFT is the
+    # child of the CER)
+    
+    node = get_vue_leaf_node(node)
+
+    nodes = root_to(node)[2:end] # start at 2 to skip the RPKINode root
+
     first_cer = VueNode([], [], basename(nodes[1].obj.filename), ObjectSlim(nodes[1].obj, nodes[1].remark_counts_me, nodes[1].remark_counts_children), nothing)
     root = VueNode([first_cer], [], "root", nothing, nothing)
     current = root
@@ -249,7 +276,6 @@ function _pubpoints!(pp_tree::VueNode, tree::RPKI.RPKINode, current_pp::String)
 end
 
 function to_vue_pubpoints(tree::RPKI.RPKINode)
-    #pp_tree = RPKINode(nothing, [], "root")
     pp_tree = VueNode([], [], "root", nothing, nothing)
     for c in tree.children
         if ! isnothing(c.obj) && c.obj isa RPKI.RPKIObject{CER}
@@ -320,6 +346,13 @@ function to_vue_tree(branches::Vector)
 
         done = false
         while ! done
+            # r.children should never be empty. For ROA results (after an ASN or
+            # prefix search), the ROAs on the right will be attached to the left
+            # branch as soon as their direct parent (the CER) is pushed and we
+            # `continue` out of the loop.
+            # For other results (search on filename), we should have used
+            # to_vue_leaf_node before doing any branch+tree generation.
+
             if isempty(r.children)
                 throw("illegal code path")
             end

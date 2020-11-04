@@ -110,7 +110,19 @@ function filename(req::HTTP.Request)
     else
         @info "filename search on '$(filename)': $(length(res)) result(s)"
     end
-    to_vue_tree(map(to_vue_branch, values(res)))
+
+    # because we can match on e.g. parts of a directory name, the results can
+    # contain any object type. To get a proper vue tree, make sure we 'end' on
+    # MFTs:
+    # 1. get proper leaf nodes (if not a ROA, should be a MFT)
+    # 2. remove any duplicates
+    # 3. create the branches and the tree
+    
+    values(res) .|>
+        get_vue_leaf_node |>
+        unique .|>
+        to_vue_branch |>
+        to_vue_tree
 end
 
 function object(req::HTTP.Request)
@@ -349,7 +361,7 @@ function JSONHandler(req::HTTP.Request)
         showerror(stderr,e, catch_backtrace())
         return HTTP.Response(500,
                              [("Content-Type" => "application/json")];
-                             body="{'error': '$(e)'}"
+                             body="{\"error\": \"$(e)\"}"
                             )
     finally
         if islocked(UPDATELK)

@@ -364,7 +364,7 @@ function JSONHandler(req::HTTP.Request)
                              body="{\"error\": \"$(e)\"}"
                             )
     finally
-        if islocked(UPDATELK)
+        if islocked(UPDATELK) && UPDATELK.locked_by === current_task()
             @debug "in JSONHandler finally clause: unlocking UPDATELK"
             unlock(UPDATELK)
         end

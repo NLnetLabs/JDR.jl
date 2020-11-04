@@ -346,15 +346,20 @@ function to_vue_tree(branches::Vector)
 
         done = false
         while ! done
-            # r.children should never be empty. For ROA results (after an ASN or
+            # r.children can be empty. Not for ROA results (after an ASN or
             # prefix search), the ROAs on the right will be attached to the left
             # branch as soon as their direct parent (the CER) is pushed and we
             # `continue` out of the loop.
-            # For other results (search on filename), we should have used
+            # But for other results (search on filename), we should have used
             # to_vue_leaf_node before doing any branch+tree generation.
 
             if isempty(r.children)
-                throw("illegal code path")
+                # assuming we are merging e.g. filename search results
+                @debug "pushing $(r.name) to $(prev_l.name) children"
+                push!(prev_l.children, r)
+                done = true
+                continue
+                #throw("illegal code path")
             end
 
             # As long as the right node is the same as the left, we do nothing

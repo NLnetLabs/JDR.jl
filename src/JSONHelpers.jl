@@ -228,7 +228,6 @@ function _pubpoints!(pp_tree::VueNode, tree::RPKI.RPKINode, current_pp::String)
             if this_pp != current_pp
                 # check if this_pp exists on the same level
                 if this_pp in [c2.name for c2 in pp_tree.children]
-                    @debug "new but duplicate: $(this_pp)"
                     _pubpoints!(pp_tree, c, this_pp)
                 else
                     #TODO check remark_counts_me, should we take the

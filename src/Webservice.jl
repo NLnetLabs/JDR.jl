@@ -252,7 +252,6 @@ end
 function status_check()
     @debug "status_check(), length of PP2Atlas[] = $(length(PP2Atlas[]))"
     for pp in keys(LOOKUP[].pubpoints)
-        @debug "for pp $(pp)"
         if ! (pp in keys(PP2Atlas[]))
             @error "$(pp) in Lookup but not in Atlas measurements"
             continue
@@ -325,25 +324,39 @@ function JSONHandler(req::HTTP.Request)
     _tstart = now()
     @info "[$(_tstart)] request: $(req.target)"
 
-    # first check if there's any request body
-    body = IOBuffer(HTTP.payload(req))
-    lock(UPDATELK)
-    if eof(body)
-        # no request body
-        response_body = HTTP.Handlers.handle(ROUTER, req)
-    else
-        # there's a body, so pass it on to the handler we dispatch to
-        response_body = handle(ROUTER, req, JSON2.read(body))
-    end
-    unlock(UPDATELK)
+    try
+        # first check if there's any request body
+        body = IOBuffer(HTTP.payload(req))
+        lock(UPDATELK)
+        if eof(body)
+            # no request body
+            response_body = HTTP.Handlers.handle(ROUTER, req)
+        else
+            # there's a body, so pass it on to the handler we dispatch to
+            response_body = handle(ROUTER, req, JSON2.read(body))
+        end
+        unlock(UPDATELK)
 
-    # wrap the response in an envelope
-    response = Envelope(LAST_UPDATE[], LAST_UPDATE_SERIAL[], now(UTC), response_body)
-    @info "[$(now())] returning response, took $(now() - _tstart)"
-    return HTTP.Response(200,
-                         [("Content-Type" => "application/json")];
-                         body=JSON2.write(response)
-                        )
+        # wrap the response in an envelope
+        response = Envelope(LAST_UPDATE[], LAST_UPDATE_SERIAL[], now(UTC), response_body)
+        @info "[$(now())] returning response, took $(now() - _tstart)"
+        return HTTP.Response(200,
+                             [("Content-Type" => "application/json")];
+                             body=JSON2.write(response)
+                            )
+    catch e
+        @error "something when wrong, showing stacktrace but continuing service"
+        showerror(stderr,e, catch_backtrace())
+        return HTTP.Response(500,
+                             [("Content-Type" => "application/json")];
+                             body="{'error': '$(e)'}"
+                            )
+    finally
+        if islocked(UPDATELK)
+            @debug "in JSONHandler finally clause: unlocking UPDATELK"
+            unlock(UPDATELK)
+        end
+    end
 end
 
 function updater()

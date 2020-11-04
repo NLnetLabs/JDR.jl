@@ -5,11 +5,14 @@ using JSON2
 using Atlas
 
 using IPNets
+using FileWatching
+using ThreadPools
 
 using JDR
 using JDR.Common
 using JDR.RPKICommon
 using JDR.JSONHelpers
+
 
 const ROUTER = HTTP.Router()
 const APIV = "/api/v1"
@@ -17,6 +20,9 @@ const LAST_UPDATE = Ref(now(UTC))
 const LAST_UPDATE_SERIAL = Ref(0)
 const TREE = Ref(RPKI.RPKINode())
 const LOOKUP = Ref(RPKI.Lookup())
+
+const WATCH_FN = "/tmp/rpkicache.updated"
+const UPDATELK = ReentrantLock()
 
 const ATLAS_BILL_TO = "ripe@luukhendriks.eu"
 
@@ -133,14 +139,20 @@ end
 function _generate_msm_definitions(cer::RPKI.CER; params...) #:: Vector{Atlas.Definition}
     definitions = Vector()
     host_rsync, _ = split_scheme_uri(cer.pubpoint)
-    push!(definitions, Ping6(host_rsync; skip_dns_check=true, tags=["jdr"], params...))
-    push!(definitions, Ping4(host_rsync; skip_dns_check=true, tags=["jdr"], params...))
+    common_params = Dict(
+                         :resolve_on_probe => true,
+                         :skip_dns_check => true,
+                         :tags => ["jdr"],
+                         :interval => 900,
+                        )
+    push!(definitions, Ping6(host_rsync; common_params..., params...))
+    push!(definitions, Ping4(host_rsync; common_params..., params...))
 
     if !isempty(cer.rrdp_notify)
         rrdp_host, rrdp_path = split_rrdp_path(cer.rrdp_notify)
         if rrdp_host != host_rsync
-            push!(definitions, Ping6(rrdp_host; skip_dns_check=true, tags=["jdr"], params...))
-            push!(definitions, Ping4(rrdp_host; skip_dns_check=true, tags=["jdr"], params...))
+            push!(definitions, Ping6(rrdp_host; common_params..., params...))
+            push!(definitions, Ping4(rrdp_host; common_params..., params...))
         end
         # RIPE Atlas only allows HTTP measurements towards Atlas Anchors..
         # push!(definitions, HTTP6(cer.obj.object.rrdp_notify))
@@ -163,7 +175,7 @@ end
 # generate_msm() is a helper to create a HTTP POST curl (or equivalent) call, to
 # make measurements for all pubpoints currently in the RPKI repository
 # wget http://localhost:8081/api/v1/generate_msm -O- | jq '.["data"]' > atlas_new_measurement.json
-# noglob curl --dump-header - -H "Content-Type: application/json" -H "Accept: application/json" -X POST -d @ atlas_new_measurement.json \
+# noglob curl --dump-header - -H "Content-Type: application/json" -H "Accept: application/json" -X POST -d @atlas_new_measurement.json \
 #  https://atlas.ripe.net/api/v2/measurements//?key=YOUR_ATLAS_API_KEY
 function generate_msm(req::HTTP.Request)
     @info "generate_msm()"
@@ -207,12 +219,22 @@ function renew_msm()
         # create one api call to add new ping6/ping4 for all these pubpoints
         # use the existing group_id
         new_msm = Atlas.CreateMeasurement()
+        probes = Probes(; type = "msm", value=current_msm.id)
+        add_probes(new_msm, probes)
+        _params = Dict(
+                       :group_id=>current_msm.id,
+                       :resolve_on_probe => true,
+                       :skip_dns_check => true,
+                       :tags => ["jdr"],
+                       :interval => 900,
+                      )
         for new_pp in missing_pps
-            Atlas.add_definition(new_msm, Atlas.Ping6(new_pp))
-            Atlas.add_definition(new_msm, Atlas.Ping4(new_pp))
+            Atlas.add_definition(new_msm, Atlas.Ping6(new_pp; _params...))
+            Atlas.add_definition(new_msm, Atlas.Ping4(new_pp; _params...))
         end
-        Atlas.add_probes(new_msm, _probe_selection())
         @debug new_msm
+        # and now POST to the Atlas API:
+        Atlas.start_measurement(new_msm)
     else
         @info "got measurements for all pubpoints"
     end
@@ -237,9 +259,13 @@ function status_check()
         end
         PPSTATUS[][pp] = PPStatus()
         for msm in PP2Atlas[][pp]
-            @debug "updating PPSTATUS for $(pp) based on $(msm.id)"
-            status = Atlas.get_statuscheck(Atlas.Measurement(msm.id))
-            setproperty!(PPSTATUS[][pp], Symbol(msm.type, msm.af), status)
+            try
+                @debug "updating PPSTATUS for $(pp) based on $(msm.id)"
+                status = Atlas.get_statuscheck(Atlas.Measurement(msm.id))
+                setproperty!(PPSTATUS[][pp], Symbol(msm.type, msm.af), status)
+            catch e
+                @error e
+            end
         end
 
     end
@@ -247,19 +273,22 @@ function status_check()
 end
 
 function update()
-    @info "update()"
+    @info "update() on thread $(Threads.threadid())"
     @info "resetting Common.remarkTID"
     Common.resetRemarkTID()
     @assert Common.remarkTID == 0
 
-    (tree, lookup) = fetch(Threads.@spawn(RPKI.retrieve_all(TAL_URLS)))
-    #(tree, lookup) = RPKI.retrieve_all(TAL_URLS)
+    @time (tree, lookup) = RPKI.retrieve_all(TAL_URLS; stripTree=true, nicenames=false)
+    lock(UPDATELK)
     TREE[] = tree
     LOOKUP[] = lookup
+    unlock(UPDATELK)
+
     @info "update() calling renew_msm()"
     renew_msm()
     @info "update() calling status_check()"
     status_check()
+
     set_last_update()
     @info "update() done, serial: $(LAST_UPDATE_SERIAL[])"
 end
@@ -293,22 +322,24 @@ function set_last_update()
 end
 
 function JSONHandler(req::HTTP.Request)
-    @info "[$(now())] request: $(req.target)"
+    _tstart = now()
+    @info "[$(_tstart)] request: $(req.target)"
 
     # first check if there's any request body
     body = IOBuffer(HTTP.payload(req))
+    lock(UPDATELK)
     if eof(body)
         # no request body
         response_body = HTTP.Handlers.handle(ROUTER, req)
     else
         # there's a body, so pass it on to the handler we dispatch to
         response_body = handle(ROUTER, req, JSON2.read(body))
-        #@error "request with body, not implemented"
     end
+    unlock(UPDATELK)
 
     # wrap the response in an envelope
-    #return HTTP.Response(200, JSON2.write(response_body))
     response = Envelope(LAST_UPDATE[], LAST_UPDATE_SERIAL[], now(UTC), response_body)
+    @info "[$(now())] returning response, took $(now() - _tstart)"
     return HTTP.Response(200,
                          [("Content-Type" => "application/json")];
                          body=JSON2.write(response)
@@ -316,11 +347,23 @@ function JSONHandler(req::HTTP.Request)
 end
 
 function updater()
+    @info "updater spawned on thread $(Threads.threadid())"
     while true
-        @time update()
-        @info "updater(): update() done, going to sleep again"
-        sleep(5*60)
-        @info "updater(): sleep done, running update()"
+        # watch file, to be touched whenever the RPKI repo on disk is updated
+        try 
+            _ = watch_file(WATCH_FN)
+            @info "updater(): sleep done, running update()"
+            @time update()
+            @info "updater(): update() done, going to sleep again"
+        catch e
+            if e isa IOError
+                @error "updater() IOerror:", e
+                @info "updater going to sleep for 10 seconds"
+                sleep(10)
+            else
+                @error "updater(), not an IOerror", e
+            end
+        end
     end
 end
 
@@ -328,7 +371,12 @@ function get_atlas_info()
     pp2atlas = Dict{String}{Vector{NamedTuple}}()
     #TODO: hardcoding page_size is not nice
     jdr_tagged = Atlas.get_my(Dict("tags" => "jdr", "page_size" => "200"))
-    @assert length(unique([r.group_id for r in jdr_tagged.results])) == 1
+    if length(unique([r.group_id for r in jdr_tagged.results])) == 0 
+        @error "no Atlas group measurement found for JDR"
+        return
+    elseif length(unique([r.group_id for r in jdr_tagged.results])) > 1
+        @warn "got more than one group id for JDR tagged Atlas measurements"
+    end
     @info "got $(length(jdr_tagged.results)) measurements tagged 'jdr' from Atlas"
     group_id = jdr_tagged.results[1].group_id
     for r in jdr_tagged.results
@@ -342,16 +390,37 @@ function get_atlas_info()
     return PP2Atlas[] = pp2atlas
 end
 
+serverhandle = nothing
+using Sockets
 function start()
-    @info "starting webservice on CPU $(Threads.threadid()) out of $(Threads.nthreads()) available"
-    @info "init() ..."
+    global serverhandle
     _init()
-    @info "init() done" 
 
-    @info "fetching RIPE Atlas info"
-    get_atlas_info()
-    @async updater()
-    HTTP.serve(JSONHandler, "::1", 8081)
+    # first run before we let the updater() handle everything
+    touch(WATCH_FN)
+    update()
+
+    ThreadPools.@tspawnat 2 updater()
+
+    @info "starting webservice on CPU 1 out of $(Threads.nthreads()) available"
+
+    serverhandle = Sockets.listen(IPv6("::1"), 8081)
+    ThreadPools.@tspawnat 1 begin
+        try
+            HTTP.serve(JSONHandler, server=serverhandle)
+        catch e
+            @error "in start()", e
+        end
+    end
+end
+
+function stop()
+    global serverhandle
+    close(serverhandle)
+end
+function restart()
+    stop()
+    start()
 end
 
 end # module

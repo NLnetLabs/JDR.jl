@@ -272,7 +272,7 @@ function status_check()
         for msm in PP2Atlas[][pp]
             try
                 @debug "updating PPSTATUS for $(pp) based on $(msm.id)"
-                status = Atlas.get_statuscheck(Atlas.Measurement(msm.id))
+                status = Atlas.get_statuscheck(Atlas.Measurement(msm.id), pta=3)
                 setproperty!(PPSTATUS[][pp], Symbol(msm.type, msm.af), status)
             catch e
                 @error e

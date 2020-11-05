@@ -168,6 +168,8 @@ function check_ASN1(o::RPKIObject{CRL}, tpi::TmpParseInfo) :: RPKIObject{CRL}
     childcount(o.tree, 3)
 
     check_ASN1_tbsCertList(o, o.tree.children[1], tpi)
+    X509.check_ASN1_signatureAlgorithm(o, o.tree.children[2], tpi)
+    X509.check_ASN1_signatureValue(o, o.tree.children[3], tpi)
 
     o
 end

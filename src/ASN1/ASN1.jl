@@ -9,7 +9,7 @@ using .ASN
 
 # re-exports from ASN:
 export Node, Tag
-export tagisa, tagvalue, tag_OID, tagis_contextspecific, childcount
+export tagisa, tagvalue, tag_OID, tag_OIDs, tagis_contextspecific, childcount
 export containAttributeTypeAndValue
 export get_extensions, check_extensions
 

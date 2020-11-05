@@ -1,5 +1,5 @@
 using IPNets
-export tagvalue, tagisa, tag_OID, childcount, containAttributeTypeAndValue
+export tagvalue, tagisa, tag_OID, tag_OIDs, childcount, containAttributeTypeAndValue
 export tagis_contextspecific, check_extensions, get_extensions
 export to_bigint, bitstring_to_v4prefix, bitstring_to_v6prefix
 export bitstrings_to_v4range, bitstrings_to_v6range
@@ -45,6 +45,17 @@ function tag_OID(node::Node, v::Vector{UInt8})
         #@warn "expected OID to be '$(v)', got $(ASN.value(node.tag))"
     end
 end
+
+function tag_OIDs(node::Node, oids::Vector{Vector{UInt8}})
+    tagisa(node, ASN.OID)
+    for oid in oids 
+        if (node.tag.value == oid)
+            return
+        end
+    end
+    remark_ASN1Issue!(node, "unexpected OID, expecting one of: $(join(oid_to_str.(oids), ", "))")
+end
+
 
 function childcount(node::Node, num::Integer) :: Bool #TODO can we use "> 1" here? maybe with an Expr?
     valid = true

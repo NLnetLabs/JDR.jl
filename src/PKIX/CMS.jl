@@ -16,13 +16,13 @@ end
 
 @check "digestAlgorithm" begin
     tagisa(node, ASN1.SEQUENCE)
-    tag_OID(node[1], @oid("2.16.840.1.101.3.4.2.1"))
+    tag_OID(node[1], @oid("2.16.840.1.101.3.4.2.1")) # SHA-256 RFC5754 sec 2.2
     # TODO: This field MUST contain the same algorithm identifier as the
     #    signature field in the sequence tbsCertificate (Section 4.1.2.3).
 
     if length(node.children) == 2
         tagisa(node[2], ASN1.NULL)
-        remark_ASN1Issue!(node[2], "this NULL SHOULD be absent (RFC4055)")
+        remark_ASN1Issue!(node[2], "parameters MUST be absent (RFC5754)")
     end
 end
 
@@ -174,11 +174,10 @@ end
 end
 
 @check "signatureAlgorithm" begin
-    # copied from X509.jl "algorithm"
     tagisa(node, ASN1.SEQUENCE)
-    # FIXME: RFC6485 is not quite clear on which OID we should expect here..
-    tag_OID(node[1], @oid "1.2.840.113549.1.1.1")
-    tagisa(node[2], ASN1.NULL)
+    # two OIDs allowed, https://tools.ietf.org/html/rfc7935#section-7
+    tag_OIDs(node[1], [@oid("1.2.840.113549.1.1.1"), @oid("1.2.840.113549.1.1.11")])
+    tagisa(node[2], ASN1.NULL) # here, the parameters MUST be present and MUST be NULL according to 3370#4.2.1
 end
 
 @check "signature" begin

@@ -17,6 +17,9 @@ end
 @check "digestAlgorithm" begin
     tagisa(node, ASN1.SEQUENCE)
     tag_OID(node[1], @oid("2.16.840.1.101.3.4.2.1")) # SHA-256 RFC5754 sec 2.2
+    if tpi.setNicenames
+        node[1].nicevalue = oid_to_str(node[1].tag.value)
+    end
     # TODO: This field MUST contain the same algorithm identifier as the
     #    signature field in the sequence tbsCertificate (Section 4.1.2.3).
 

@@ -287,6 +287,9 @@ end
     tagisa(node, ASN1.SEQUENCE)
 
     tag_OID(node[1], @oid "1.2.840.113549.1.1.11") # sha256WithRSAEncryption
+    if tpi.setNicenames
+        node[1].nicevalue = oid_to_str(node[1].tag.value)
+    end
     # here, the parameters MUST be present and MUST be NULL (RFC4055)
     if childcount(node, 2)
         tagisa(node[2], ASN1.NULL) # TODO be more explicit in the remark
@@ -566,6 +569,9 @@ end
     tagisa(node, ASN1.SEQUENCE)
 
     tag_OID(node[1], @oid "1.2.840.113549.1.1.11") # sha256WithRSAEncryption
+    if tpi.setNicenames
+        node[1].nicevalue = oid_to_str(node[1].tag.value)
+    end
     # here, the parameters MUST be present and MUST be NULL (RFC4055)
     if childcount(node, 2)
         tagisa(node[2], ASN1.NULL)

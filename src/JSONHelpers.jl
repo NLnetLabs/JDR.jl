@@ -186,9 +186,14 @@ function get_vue_leaf_node(node::RPKI.RPKINode) ::RPKINode
         @assert node.siblings[1].children[1].obj.object isa MFT
         node.siblings[1].children[1]
     elseif node.obj.object isa CER
-        @assert length(node.children) == 1
-        @assert node.children[1].obj.object isa MFT
-        node.children[1]
+        if !isempty(node.children)
+            @assert length(node.children) == 1
+            @assert node.children[1].obj.object isa MFT
+            node.children[1]
+        else
+            @warn "CER node but no children?", node.obj.filename
+            node
+        end
     else
         node
     end

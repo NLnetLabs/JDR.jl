@@ -286,7 +286,8 @@ end
 @check "signature" begin
     tagisa(node, ASN1.SEQUENCE)
 
-    tag_OID(node[1], @oid "1.2.840.113549.1.1.11")
+    tag_OID(node[1], @oid "1.2.840.113549.1.1.11") # sha256WithRSAEncryption
+    # here, the parameters MUST be present and MUST be NULL (RFC4055)
     if childcount(node, 2)
         tagisa(node[2], ASN1.NULL) # TODO be more explicit in the remark
     end
@@ -557,6 +558,22 @@ end
     else
         throw(ErrorException("what object?"))
     end
+end
+
+@check "signatureAlgorithm" begin
+    # equal to @check "signature"
+   
+    tagisa(node, ASN1.SEQUENCE)
+
+    tag_OID(node[1], @oid "1.2.840.113549.1.1.11") # sha256WithRSAEncryption
+    # here, the parameters MUST be present and MUST be NULL (RFC4055)
+    if childcount(node, 2)
+        tagisa(node[2], ASN1.NULL)
+    end
+end
+
+@check "signatureValue" begin
+    tagisa(node, ASN1.BITSTRING)
 end
 
 

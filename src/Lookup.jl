@@ -99,3 +99,30 @@ function Base.show(io::IO, l::Lookup)
     println(io, "invalid_certs: ", length(l.invalid_certs))
     println(io, "valid_certs: ", length(l.valid_certs))
 end
+
+##############################
+# Helpers 
+##############################
+
+using StatsBase
+using Query
+
+function remarks_in_subtree(tree::RPKINode) :: Vector{Pair{Remark, RPKINode}}
+    tree |> @filter(!isnothing(_.obj)) |> @filter(!isnothing(_.obj.remarks)) |>
+        @map([r => _ for r in _.obj.remarks]) |>
+        Iterators.flatten |>
+        collect
+end
+
+function remarks_per_repo(l::Lookup, repo::String) :: Vector{Pair{Remark, RPKINode}}
+    if !(repo in keys(l.pubpoints))
+        @error "$(repo) not in Lookup.pubpoints"
+        return nothing
+    end
+    subtree = l.pubpoints[repo]
+    remarks_in_subtree(subtree)
+end
+
+function remarktypes_per_repo(l::Lookup, repo::String) :: Dict{Common.RemarkType, Integer}
+    remarks_per_repo(l, repo) |> @map(_[1].type) |> collect |> countmap
+end

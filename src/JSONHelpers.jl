@@ -13,6 +13,7 @@ export ObjectDetails, to_root, to_vue_branch, to_vue_tree, to_vue_pubpoints, len
 
 JSON2.@format RPKI.RPKINode begin
         parent => (;exclude=true,)
+        siblings => (;exclude=true,)
 end
 
 JSON2.@format RPKI.RPKIObject{T} where T begin

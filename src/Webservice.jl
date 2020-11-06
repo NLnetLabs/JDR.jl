@@ -7,6 +7,7 @@ using Atlas
 using IPNets
 using FileWatching
 using ThreadPools
+using Query
 
 using JDR
 using JDR.Common
@@ -146,6 +147,23 @@ function ppstatus(req::HTTP.Request)
     PPSTATUS[]
 end
 
+function repostats(req::HTTP.Request)
+    # /api/v1/repostats, 
+    #repo = HTTP.URIs.splitpath(req.target)[4] 
+    #repo = HTTP.URIs.unescapeuri(repo)
+    @debug "repostats call"
+
+    # for all the repositories (pubpoints)
+    # get the remarks_per_repo
+    # and map each remark to the detail URL of the RPKINode
+    keys(LOOKUP[].pubpoints) |>
+        @map(_ => map(p->
+                      p.first => JSONHelpers.details_url(p.second.obj.filename),
+                      RPKICommon.remarks_per_repo(LOOKUP[], _)
+                     )
+            ) |>
+        collect
+end
 
 
 function _generate_msm_definitions(cer::RPKI.CER; params...) #:: Vector{Atlas.Definition}
@@ -315,6 +333,7 @@ function _init()
     HTTP.@register(ROUTER, "GET", APIV*"/filename/*", filename)
     HTTP.@register(ROUTER, "GET", APIV*"/pp/", pubpoints)
     HTTP.@register(ROUTER, "GET", APIV*"/ppstatus/", ppstatus)
+    HTTP.@register(ROUTER, "GET", APIV*"/repostats/", repostats)
     HTTP.@register(ROUTER, "GET", APIV*"/generate_msm/", generate_msm)
 
     HTTP.@register(ROUTER, "GET", APIV*"/update", update)

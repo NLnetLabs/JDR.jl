@@ -10,6 +10,7 @@ export RPKIObject, RPKINode, TmpParseInfo, Lookup, print_ASN1
 export CER, MFT, ROA, CRL
 export VRP
 export root_to
+export iterate
 
 mutable struct RPKIObject{T}
     filename::String
@@ -54,6 +55,27 @@ RPKINode() = RPKINode(nothing, RPKINode[], RPKINode[], nothing, RemarkCounts(), 
 RPKINode(o::RPKIObject) = RPKINode(nothing, RPKINode[], RPKINode[], o, RemarkCounts(), RemarkCounts())
 RPKINode(s::String) = RPKINode(nothing, RPKINode[], RPKINode[], s, RemarkCounts(), RemarkCounts())
 
+import Base: iterate
+Base.IteratorSize(::RPKINode) = Base.SizeUnknown()
+function iterate(n::RPKINode, to_check=RPKINode[n])
+    if isnothing(n) 
+        return nothing
+    end
+    if isempty(to_check)
+        return nothing
+    end
+
+    res = popfirst!(to_check)
+    #
+    # CER and CRLs are siblings, and can cause an infinite loop if we simply
+    # always append .siblings to to_check.
+    # But, CRLs are also the child of a MFT. By not appending the siblings, we
+    # prevent the infinite loop, and still get all the RPKINodes without any
+    # duplicates.
+
+    Base.append!(to_check, [res.children...])
+    return res, to_check
+end
 
 function root_to(n::RPKINode)
     res = [n]

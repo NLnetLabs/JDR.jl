@@ -70,26 +70,25 @@ import .RPKI:check_resources
 function check_resources(o::RPKIObject{CER}, tpi::TmpParseInfo)
     o.object.resources_valid = true
     if !o.object.selfsigned
-        if isempty(o.object.ASNs) && !o.object.inherit_ASNs
-            #@error "empty ASNs and no inheritance? $(o.filename)" maxlog=3
-            remark_ASN1Issue!(o, "empty ASNs but no inherit")
-        end
         if !covered(o.object.ASNs , tpi.certStack[end-1].ASNs)
+            _covered = false
             # not covered, so check for inherited ASNs in parent certificates
-            @assert tpi.certStack[end-1].inherit_ASNs
             for parent in reverse(tpi.certStack[1:end-2])
                 if !parent.inherit_ASNs
-                    @assert covered(o.object.ASNs, parent.ASNs)
-                    #@debug "$(o.filename) covered by $(parent.issuer)"
-                    return
+                    if !covered(o.object.ASNs, parent.ASNs)
+                        @warn "illegal ASNs for $(o.filename)"
+                        remark_validityIssue!(o, "illegal ASNs")
+                        o.object.resources_valid = false
+                    end
+                    _covered = true
+                    break
                 end
             end
-
-            o.object.resources_valid = false
-            @error "illegal ASNs in $(o.filename)"
-            @debug o.object.ASNs
-            @debug tpi.certStack[end-1].ASNs
-            #throw("illegal resources")
+            if !_covered
+                # The only way to reach this is if any of the RIR certs has no
+                # ASNs (which is already wrong) and also no inheritance
+                @error "ASN inheritance chain illegal for $(o.filename)"
+            end
         end
     end
 
@@ -103,7 +102,7 @@ function check_resources(o::RPKIObject{CER}, tpi::TmpParseInfo)
                 #@error "empty v6 prefixes undefined inheritance? $(o.filename)"
             elseif !(o.object.inherit_v6_prefixes)
                 @error "empty v6 prefixes and no inheritance? $(o.filename)"
-                ResourceIssue!(o, "No IPv6 prefixes and no inherit flag set")
+                remark_resourceIssue!(o, "No IPv6 prefixes and no inherit flag set")
             end
         else
             while tpi.certStack[end-certStackOffset_v6].inherit_v6_prefixes
@@ -118,7 +117,7 @@ function check_resources(o::RPKIObject{CER}, tpi::TmpParseInfo)
                 #@error "empty v4 prefixes undefined inheritance? $(o.filename)"
             elseif !(o.object.inherit_v4_prefixes)
                 @error "empty v4 prefixes and no inheritance? $(o.filename)"
-                ResourceIssue!(o, "No IPv4 prefixes and no inherit flag set")
+                remark_resourceIssue!(o, "No IPv4 prefixes and no inherit flag set")
             end
         else
             while tpi.certStack[end-certStackOffset_v4].inherit_v4_prefixes

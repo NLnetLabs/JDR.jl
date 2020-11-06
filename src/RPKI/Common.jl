@@ -246,4 +246,13 @@ ROA() = ROA(0, [],
             IntervalTree{Integer, Interval{Integer}}(),
            )
 
+
+mutable struct CRL 
+    revoked_serials::Vector{Integer}
+    thisUpdate::Union{Nothing, DateTime}
+    nextUpdate::Union{Nothing, DateTime}
+end
+CRL() = CRL([], nothing, nothing)
+Base.show(io::IO, crl::CRL) = print(io, crl.thisUpdate, " -> ", crl.nextUpdate, "\n", crl.revoked_serials)
+
 end # module

@@ -383,7 +383,7 @@ function JSONHandler(req::HTTP.Request)
         showerror(stderr,e, catch_backtrace())
         return HTTP.Response(500,
                              [("Content-Type" => "application/json")];
-                             body="{\"error\": \"$(e)\"}"
+                             body=JSON2.write(Dict("error" => e))
                             )
     finally
         if islocked(UPDATELK) && UPDATELK.locked_by === current_task()

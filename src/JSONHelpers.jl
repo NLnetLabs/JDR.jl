@@ -9,6 +9,7 @@ using ..JDR.RPKICommon
 using ..ASN1
 
 export ObjectDetails, to_root, to_vue_branch, to_vue_tree, to_vue_pubpoints, length, get_vue_leaf_node
+export RemarkDeeplink
 
 
 JSON2.@format RPKI.RPKINode begin
@@ -71,6 +72,16 @@ struct ObjectSlim{T}
     remark_counts_me::RemarkCounts_t
     remark_counts_children::RemarkCounts_t
 end
+
+
+struct RemarkDeeplink
+    lvl::RemarkLevel
+    type::RemarkType
+    msg::String
+    tid::Int
+    url::String
+end
+RemarkDeeplink(r::Remark, url::String) = RemarkDeeplink(r.lvl, r.type, r.msg, r.tid, url)
 
 const DOMAIN = "http://localhost:8081/" # TODO move this into separate config
 

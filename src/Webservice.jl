@@ -157,12 +157,15 @@ function repostats(req::HTTP.Request)
     # get the remarks_per_repo
     # and map each remark to the detail URL of the RPKINode
     keys(LOOKUP[].pubpoints) |>
-        @map(_ => map(p->
-                      p.first => JSONHelpers.details_url(p.second.obj.filename),
-                      RPKICommon.remarks_per_repo(LOOKUP[], _)
-                     )
-            ) |>
-        collect
+    @map(_ => Dict("remarks" => 
+                                 map(p->
+                                     RemarkDeeplink(p.first, JSONHelpers.details_url(p.second.obj.filename)),
+                                     RPKICommon.remarks_per_repo(LOOKUP[], _)
+                                    )
+                  )
+    ) |>
+    collect
+
 end
 
 

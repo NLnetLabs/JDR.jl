@@ -2,7 +2,7 @@ module Common
 using IPNets
 
 export split_scheme_uri, split_rrdp_path
-export Remark, RemarkLevel, RemarkCounts, RemarkCounts_t, count_remarks
+export Remark, RemarkLevel, RemarkType, RemarkCounts, RemarkCounts_t, count_remarks
 #export dbg!, info!, warn!, err!
 export remark_encodingIssue!, remark_ASN1Error!, remark_ASN1Issue!, remark_manifestIssue!, remark_missingFile!, remark_validityIssue!, remark_resourceIssue!, remark_loopIssue!
 export @oid, oid_to_str

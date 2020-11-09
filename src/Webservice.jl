@@ -132,6 +132,10 @@ function object(req::HTTP.Request)
     object = HTTP.URIs.unescapeuri(object)
     res = RPKI.search(LOOKUP[], object)
     @info "Object call for '$(object)': $(length(res)) result(s)"
+    if isempty(res)
+        @warn "no results, returning empty array"
+        return []
+    end
     @info "returning $(first(res).second.obj.filename)"
     
     ObjectDetails(first(res).second.obj, first(res).second.remark_counts_me)

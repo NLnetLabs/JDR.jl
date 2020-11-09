@@ -351,6 +351,13 @@ struct Envelope
     serial::Integer
     timestamp::DateTime
     data::Any
+    error::Union{Nothing, Any}
+end
+
+Envelope(l, s, t, d) = Envelope(l, s, t, d, nothing)
+
+JSON2.@format Envelope begin
+    error => (omitempty=true,)
 end
 
 function set_last_update()
@@ -385,9 +392,10 @@ function JSONHandler(req::HTTP.Request)
     catch e
         @error "something when wrong, showing stacktrace but continuing service"
         showerror(stderr,e, catch_backtrace())
+        response = Envelope(LAST_UPDATE[], LAST_UPDATE_SERIAL[], now(UTC), nothing, e)
         return HTTP.Response(500,
                              [("Content-Type" => "application/json")];
-                             body=JSON2.write(Dict("error" => e))
+                             body=JSON2.write(response)
                             )
     finally
         if islocked(UPDATELK) && UPDATELK.locked_by === current_task()

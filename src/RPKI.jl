@@ -279,12 +279,14 @@ function process_cer(cer_fn::String, lookup::Lookup, tpi::TmpParseInfo) :: RPKIN
     if !(ca_host in keys(lookup.pubpoints))
         lookup.pubpoints[ca_host] = cer_node
     end
+    #= # for now, do not add the RRDP hosts to lookup.pubpoints
     if !(isempty(cer_obj.object.rrdp_notify))
         (rrdp_host, _) = split_rrdp_path(cer_obj.object.rrdp_notify)
         if !(rrdp_host in keys(lookup.pubpoints))
             lookup.pubpoints[rrdp_host] = cer_node
         end
     end
+    =#
 
     cer_node.remark_counts_me = count_remarks(cer_obj.tree)
     if tpi.stripTree

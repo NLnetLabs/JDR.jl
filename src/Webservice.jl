@@ -149,7 +149,7 @@ function repostats(req::HTTP.Request)
     # for all the repositories (pubpoints)
     # get the remarks_per_repo
     # and map each remark to the detail URL of the RPKINode
-    keys(LOOKUP[].pubpoints) |>
+    res = keys(LOOKUP[].pubpoints) |>
     @map(_ => Dict("remarks" => 
                                  map(p->
                                      RemarkDeeplink(p.first, JSONHelpers.details_url(p.second.obj.filename)),
@@ -159,6 +159,10 @@ function repostats(req::HTTP.Request)
     ) |>
     collect
 
+    #@filter(!isempty(_.second["remarks"])) |> # filter out repos with no remarks
+    sort!(res, by=e->length(e.second["remarks"]), rev=true)
+
+    res
 end
 
 

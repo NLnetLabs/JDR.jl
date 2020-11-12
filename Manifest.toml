@@ -8,7 +8,7 @@ version = "1.3.0"
 
 [[Atlas]]
 deps = ["HTTP", "JSON2"]
-path = "../Atlas"
+path = "../Atlas.jl"
 uuid = "fffdd0fa-cd2d-464f-a959-2e2d5749a296"
 version = "0.1.0"
 

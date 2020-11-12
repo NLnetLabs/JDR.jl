@@ -17,6 +17,7 @@ ripe       = "rsync://rpki.ripe.net/ta/ripe-ncc-ta.cer"
 [webservice]
 port = 8081
 domain = "http://localhost:8081/"
+atlas_api_key = ""
 
 """)
 

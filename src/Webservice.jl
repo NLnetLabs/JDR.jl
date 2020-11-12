@@ -15,6 +15,7 @@ using JDR.RPKICommon
 using JDR.JSONHelpers
 
 
+Atlas.set_api_key(JDR.CFG["webservice"]["atlas_api_key"])
 const ROUTER = HTTP.Router()
 const APIV = "/api/v1"
 const LAST_UPDATE = Ref(now(UTC))

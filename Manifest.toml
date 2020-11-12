@@ -291,6 +291,12 @@ git-tree-sha1 = "7bab7d4eb46b225b35179632852b595a3162cb61"
 uuid = "2913bbd2-ae8a-5f71-8c99-4fb6c76f3a91"
 version = "0.33.2"
 
+[[TOML]]
+deps = ["Dates"]
+git-tree-sha1 = "d0ac7eaad0fb9f6ba023a1d743edca974ae637c4"
+uuid = "fa267f1f-6049-4f14-aa54-33bafae1ed76"
+version = "1.0.0"
+
 [[TableShowUtils]]
 deps = ["DataValues", "Dates", "JSON", "Markdown", "Test"]
 git-tree-sha1 = "14c54e1e96431fb87f0d2f5983f090f1b9d06457"

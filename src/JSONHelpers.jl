@@ -4,6 +4,7 @@ using IPNets
 using HTTP
 using Dates
 using ..RPKI
+using ..JDR
 using ..JDR.Common
 using ..JDR.RPKICommon
 using ..ASN1
@@ -83,7 +84,7 @@ struct RemarkDeeplink
 end
 RemarkDeeplink(r::Remark, url::String) = RemarkDeeplink(r.lvl, r.type, r.msg, r.tid, url)
 
-const DOMAIN = "http://localhost:8081/" # TODO move this into separate config
+const DOMAIN = JDR.CFG["webservice"]["domain"]
 
 details_url(filename::String) = DOMAIN * "api/v1/object/" * HTTP.escapeuri(filename)
 function ObjectSlim(r::RPKI.RPKIObject, rcm::RemarkCounts_t, rcc::RemarkCounts_t) 

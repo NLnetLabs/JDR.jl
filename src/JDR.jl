@@ -1,5 +1,8 @@
 module JDR
 
+include("Config.jl")
+import .Config.CFG
+
 include("Common.jl")
 using .Common
 

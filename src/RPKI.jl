@@ -1,6 +1,7 @@
 module RPKI
-using ...JDR.Common
-using ...JDR.RPKICommon
+using ..JDR
+using ..JDR.Common
+using ..JDR.RPKICommon
 using ..ASN1
 using ..PrefixTrees
 
@@ -69,19 +70,7 @@ function check(::RPKIObject{T}) where {T}
 end
 
 
-# Retrieving and validating the entire repository 
-
-# start at the RIR TAs
-const TAL_URLS = Dict(
-    :afrinic    => "rsync://rpki.afrinic.net/repository/AfriNIC.cer",
-    :apnic      => "rsync://rpki.apnic.net/repository/apnic-rpki-root-iana-origin.cer",
-    :arin       => "rsync://rpki.arin.net/repository/arin-rpki-ta.cer",
-    :lacnic     => "rsync://repository.lacnic.net/rpki/lacnic/rta-lacnic-rpki.cer",
-    :ripe       => "rsync://rpki.ripe.net/ta/ripe-ncc-ta.cer",
-    #:ripetest   => "rsync://localcert.ripe.net/ta/ripe-ncc-pilot.cer",
-    #:apnictest  => "rsync://rpki-testbed.apnic.net/repository/apnic-rpki-root-iana-origin-test.cer"
-)
-REPO_DIR = joinpath(homedir(), ".rpki-cache/repository/rsync")
+const REPO_DIR = JDR.CFG["rpki"]["rsyncrepo"]
 
 function add_roa!(lookup::Lookup, roanode::RPKINode)
     # add ASN
@@ -337,7 +326,7 @@ function process_cer(cer_fn::String, lookup::Lookup, tpi::TmpParseInfo) :: RPKIN
     cer_node
 end
 
-function retrieve_all(tal_urls=TAL_URLS; stripTree::Bool=false, nicenames=true) :: Tuple{RPKINode, Lookup}
+function retrieve_all(tal_urls=JDR.CFG["rpki"]["tals"]; stripTree::Bool=false, nicenames=true) :: Tuple{RPKINode, Lookup}
     lookup = Lookup()
     root = RPKINode()
     for (rir, rsync_url) in tal_urls

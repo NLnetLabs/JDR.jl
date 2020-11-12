@@ -37,17 +37,6 @@ const PPSTATUS = Ref(Dict{String}{PPStatus}())
 const PP2Atlas = Ref(Dict{String}{Vector{NamedTuple}}())
 
 
-const TAL_URLS = Dict(
-    :afrinic    => "rsync://rpki.afrinic.net/repository/AfriNIC.cer",
-    :apnic      => "rsync://rpki.apnic.net/repository/apnic-rpki-root-iana-origin.cer",
-    :arin       => "rsync://rpki.arin.net/repository/arin-rpki-ta.cer",
-    :lacnic     => "rsync://repository.lacnic.net/rpki/lacnic/rta-lacnic-rpki.cer",
-    :ripe       => "rsync://rpki.ripe.net/ta/ripe-ncc-ta.cer",
-    :ripetest   => "rsync://localcert.ripe.net/ta/RIPE-NCC-TA-TEST.cer",
-    :apnictest  => "rsync://rpki-testbed.apnic.net/repository/apnic-rpki-root-iana-origin-test.cer"
-)
-
-
 ##############################
 # Endpoints
 ##############################
@@ -314,7 +303,7 @@ function update()
     Common.resetRemarkTID()
     @assert Common.remarkTID == 0
 
-    @time (tree, lookup) = RPKI.retrieve_all(TAL_URLS; stripTree=true, nicenames=false)
+    @time (tree, lookup) = RPKI.retrieve_all(JDR.CFG["rpki"]["tals"]; stripTree=true, nicenames=false)
     lock(UPDATELK)
     TREE[] = tree
     LOOKUP[] = lookup
@@ -463,7 +452,7 @@ function start()
 
     @info "starting webservice on CPU 1 out of $(Threads.nthreads()) available"
 
-    serverhandle = Sockets.listen(IPv6("::1"), 8081)
+    serverhandle = Sockets.listen(IPv6("::1"), JDR.CFG["webservice"]["port"])
     ThreadPools.@tspawnat 1 begin
         try
             HTTP.serve(JSONHandler, server=serverhandle)

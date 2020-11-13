@@ -107,6 +107,25 @@ end
 using StatsBase
 using Query
 
+function get_pubpoint(node::RPKINode) :: String
+    if isnothing(node.obj)
+        return "root"
+    end
+    return if node.obj.object isa CER
+        (host, _) = split_scheme_uri(node.obj.object.pubpoint)
+        host
+    elseif node.obj.object isa MFT || node.obj.object isa CRL
+        @assert node.parent.obj.object isa CER
+        (host, _) = split_scheme_uri(node.parent.obj.object.pubpoint)
+        host
+    elseif node.obj.object isa ROA
+        @assert node.parent.parent.obj.object isa CER
+        (host, _) = split_scheme_uri(node.parent.parent.obj.object.pubpoint)
+        host
+    end
+end
+
+
 function remarks_in_subtree(tree::RPKINode) :: Vector{Pair{Remark, RPKINode}}
     tree |> @filter(!isnothing(_.obj)) |> @filter(!isnothing(_.obj.remarks)) |>
         @map([r => _ for r in _.obj.remarks]) |>
@@ -114,15 +133,17 @@ function remarks_in_subtree(tree::RPKINode) :: Vector{Pair{Remark, RPKINode}}
         collect
 end
 
-function remarks_per_repo(l::Lookup, repo::String) :: Vector{Pair{Remark, RPKINode}}
-    if !(repo in keys(l.pubpoints))
-        @error "$(repo) not in Lookup.pubpoints"
-        return nothing
+function remarks_per_repo(tree::RPKINode) :: Dict{String}{Vector{Pair{Remark, RPKINode}}}
+    nodes::Vector{RPKINode} = tree |> @filter(!isnothing(_.obj)) |> @filter(!isnothing(_.obj.remarks)) |> collect
+    res = Dict{String}{Vector{Pair{Remark, RPKINode}}}()
+    for n in nodes
+        pp = get_pubpoint(n)
+        if !(pp in keys(res))
+            res[pp] = []
+        end
+        for r in n.obj.remarks
+            push!(res[pp], r => n)
+        end
     end
-    subtree = l.pubpoints[repo]
-    remarks_in_subtree(subtree)
-end
-
-function remarktypes_per_repo(l::Lookup, repo::String) :: Dict{Common.RemarkType, Integer}
-    remarks_per_repo(l, repo) |> @map(_[1].type) |> collect |> countmap
+   res 
 end

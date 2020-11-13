@@ -150,14 +150,15 @@ function repostats(req::HTTP.Request)
     # for all the repositories (pubpoints)
     # get the remarks_per_repo
     # and map each remark to the detail URL of the RPKINode
+    remarks = RPKICommon.remarks_per_repo(TREE[])
     res = keys(LOOKUP[].pubpoints) |>
     @map(_ => Dict("remarks" => 
-                                 map(p->
-                                     RemarkDeeplink(p.first, JSONHelpers.details_url(p.second.obj.filename)),
-                                     RPKICommon.remarks_per_repo(LOOKUP[], _)
-                                    )
+                   map(p->
+                       RemarkDeeplink(p.first, JSONHelpers.details_url(p.second.obj.filename)),
+                       get(remarks, _, [])
+                      )
                   )
-    ) |>
+        ) |>
     collect
 
     #@filter(!isempty(_.second["remarks"])) |> # filter out repos with no remarks

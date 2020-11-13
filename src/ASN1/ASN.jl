@@ -6,7 +6,7 @@ export Tag, AbstractTag, Node, AbstractNode
 export value, print_node, append!, iter, lazy_iter
 export child, getindex, tagtype
 
-export  Unimplemented, InvalidTag, SEQUENCE, SET, RESERVED_ENC, OCTETSTRING,
+export  Unimplemented, InvalidTag, SEQUENCE, SET, RESERVED_ENC, OCTETSTRING, BOOLEAN
         BITSTRING, PRINTABLESTRING, UTF8STRING, CONTEXT_SPECIFIC, INTEGER, NULL, UTCTIME, GENTIME, OID, IA5STRING
 
 
@@ -273,7 +273,7 @@ function Base.show(io::IO, n::Node)
             print(io, n.tag)
         end
         if !isnothing(n.nicevalue)
-            print(n.nicevalue)
+            printstyled(io, n.nicevalue; color=:magenta)
         end
         if !isnothing(n.remarks) && !isempty(n.remarks)
             printstyled(io, " [$(length(n.remarks))] "; color=:red)

@@ -215,15 +215,42 @@ end
 end
 
 @check "subjectKeyIdentifier" begin
+    if tpi.setNicenames
+        node.nicevalue = bytes2hex(node.tag.value)
+    end
 end
 
 @check "certificatePolicies" begin
+    # second pass
+    DER.parse_append!(DER.Buf(node.tag.value), node)
+    tagisa(node[1], ASN1.SEQUENCE)
+    for c in node[1].children
+        tagisa(c, ASN1.SEQUENCE)
+        tagisa(c[1], ASN1.OID)
+        if tpi.setNicenames
+            c[1].nicevalue = oid_to_str(c[1].tag.value)
+        end
+    end
 end
 
 @check "basicConstraints" begin
+    # second pass
+    DER.parse_append!(DER.Buf(node.tag.value), node)
+    tagisa(node[1], ASN1.SEQUENCE)
+    tagisa(node[1,1], ASN1.BOOLEAN)
+    if tpi.setNicenames
+        node[1,1].nicename = "cA"
+    end
 end
 
 @check "keyUsage" begin
+    # second pass
+    DER.parse_append!(DER.Buf(node.tag.value), node)
+    tagisa(node, ASN1.OCTETSTRING)
+    tagisa(node[1], ASN1.BITSTRING)
+    if tpi.setNicenames
+        node[1].nicevalue = ASN1.value(node[1].tag)
+    end
 end
 
 @check "cRLDistributionPoints" begin
@@ -363,6 +390,9 @@ end
     subject = containAttributeTypeAndValue(node[1], @oid("2.5.4.3"), ASN1.PRINTABLESTRING, [ASN1.UTF8STRING])
     #@debug "CER, subject:" ASN1.value(subject.tag)
 
+    if tpi.setNicenames
+        node.nicevalue = ASN1.value(subject.tag)
+    end
     if o.object isa CER
         o.object.subject = ASN1.value(subject.tag)
         o.object.selfsigned = o.object.issuer == o.object.subject
@@ -374,6 +404,9 @@ end
     # FIXME: RFC6485 is not quite clear on which OID we should expect here..
     tag_OID(node[1], @oid "1.2.840.113549.1.1.1")
     tagisa(node[2], ASN1.NULL)
+    if tpi.setNicenames
+        node[1].nicevalue = oid_to_str(node[1].tag.value)
+    end
 end
 
 @check "subjectPublicKey" begin

@@ -107,6 +107,8 @@ end
         @info "More than one certificate in $(o.filename)?"
     end
     X509.check_ASN1_tbsCertificate(o, node[1,1], tpi)
+    X509.check_ASN1_signatureAlgorithm(o, node[1,2], tpi)
+    X509.check_ASN1_signatureValue(o, node[1,3], tpi)
     tpi.eeSig = node[1,3]
 end
 

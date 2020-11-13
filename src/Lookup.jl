@@ -9,7 +9,7 @@ struct Lookup
     missing_files::Dict{String}{RPKINode} # split up between CER and MFT?
     prefix_tree_v6::PrefixTree{RPKINode}
     prefix_tree_v4::PrefixTree{RPKINode}
-    pubpoints::Dict{String}{RPKINode}
+    pubpoints::Dict{String}{Pair{Int,Set{RPKINode}}}
     too_specific::Vector{RPKINode}
     invalid_signatures::Vector{RPKIObject{T} where T} # TODO refactor to RPKINode
     invalid_certs::Vector{RPKINode}
@@ -18,7 +18,8 @@ end
 Lookup() = Lookup(Dict(), Dict(), Dict(),
                   PrefixTree{RPKINode}(),
                   PrefixTree{RPKINode}(),
-                  Dict(), Vector(), Vector(), Vector(), Vector())
+                  Dict{String}{Pair{Int,Set{RPKINode}}}(),
+                  Vector(), Vector(), Vector(), Vector())
 
 function add_filename!(l::Lookup, fn::String, node::RPKINode)
     l.filenames[fn] = node

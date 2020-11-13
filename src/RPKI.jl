@@ -276,8 +276,19 @@ function process_cer(cer_fn::String, lookup::Lookup, tpi::TmpParseInfo) :: RPKIN
         push!(lookup.invalid_certs, cer_node)
     end
 
+    depth = length(tpi.certStack)
     if !(ca_host in keys(lookup.pubpoints))
-        lookup.pubpoints[ca_host] = cer_node
+        lookup.pubpoints[ca_host] = depth => cer_node
+    else
+        (_d, _) = lookup.pubpoints[ca_host]
+        if depth < _d
+            @debug "existing pubpoint $(ca_host) at lower degree $(depth) instead of $(_d)"
+            lookup.pubpoints[ca_host] = Pair(depth, cer_node)
+        elseif depth == _d
+            #@debug "existing pubpoint $(ca_host) at similar depth $(depth)"
+            (_, set) = lookup.pubpoints[ca_host] 
+            push!(set, cer_node)
+        end
     end
     #= # for now, do not add the RRDP hosts to lookup.pubpoints
     if !(isempty(cer_obj.object.rrdp_notify))

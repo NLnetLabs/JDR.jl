@@ -165,7 +165,7 @@ function process_mft(mft_fn::String, lookup::Lookup, tpi::TmpParseInfo, cer_node
 
     for f in mft_obj.object.files
         if !isfile(joinpath(mft_dir, f))
-            @warn "Missing file: $(f)"
+            @warn "[$(RPKICommon.get_pubpoint(cer_node))] Missing file: $(f)"
             Mft.add_missing_file(mft_obj.object, f)
             add_missing_filename!(lookup, joinpath(mft_dir, f), mft_node)
             remark_missingFile!(mft_obj, "Listed in manifest but missing on file system: $(f)")
@@ -308,7 +308,7 @@ function process_cer(cer_fn::String, lookup::Lookup, tpi::TmpParseInfo) :: RPKIN
     #TODO: should we still process through the directory, even though there was
     #no manifest?
     if !isfile(mft_fn)
-        @error "manifest $(basename(mft_fn)) not found"
+        @error "[$(RPKICommon.get_pubpoint(cer_node))] manifest $(basename(mft_fn)) not found"
         add_missing_filename!(lookup, mft_fn, cer_node)
         remark_missingFile!(cer_obj, "Manifest file $(basename(mft_fn)) not in repo")
     else

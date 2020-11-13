@@ -215,8 +215,10 @@ end
 end
 
 @check "subjectKeyIdentifier" begin
+    # second pass
+    DER.parse_append!(DER.Buf(node.tag.value), node)
     if tpi.setNicenames
-        node.nicevalue = bytes2hex(node.tag.value)
+        node[1].nicevalue = bytes2hex(node[1].tag.value)
     end
 end
 
@@ -254,12 +256,49 @@ end
 end
 
 @check "cRLDistributionPoints" begin
+    # second pass
+    DER.parse_append!(DER.Buf(node.tag.value), node)
+    tagisa(node[1], ASN1.SEQUENCE)
+    for c in node[1].children
+        tagisa(c, ASN1.SEQUENCE)
+        tagisa(c[1], ASN1.CONTEXT_SPECIFIC)
+        if c[1].tag.number == 0
+            #distributionPoint
+            if c[1,1].tag.number == 0
+                #fullName
+                if c[1,1,1].tag.number == 6
+                    # uniformResourceIdentifier
+                    if tpi.setNicenames
+                        c[1,1,1].nicevalue = String(copy(c[1,1,1].tag.value))
+                    end
+                end
+            end
+        end
+    end
 end
 
 @check "authorityInfoAccess" begin
+    DER.parse_append!(DER.Buf(node.tag.value), node)
+    tagisa(node[1], ASN1.SEQUENCE)
+    for c in node[1].children
+        tagisa(c, ASN1.SEQUENCE)
+        # expecting 1.3.6.1.5.5.7.48.2 == id-ad-caIssuers
+        tag_OID(c[1], @oid("1.3.6.1.5.5.7.48.2"))
+        tagisa(c[2], ASN1.CONTEXT_SPECIFIC)
+        if tpi.setNicenames
+            c[2].nicevalue = String(copy(c[2].tag.value))
+        end
+    end
 end
 
 @check "authorityKeyIdentifier" begin
+    # second pass
+    DER.parse_append!(DER.Buf(node.tag.value), node)
+    tagisa(node[1], ASN1.SEQUENCE)
+    tagisa(node[1,1], ASN1.CONTEXT_SPECIFIC)
+    if tpi.setNicenames
+        node[1,1].nicevalue = bytes2hex(node[1,1].tag.value)
+    end
 end
 
 function check_ASN1_extension(oid::Vector{UInt8}, o::RPKIObject{T}, node::Node, tpi::TmpParseInfo) where T

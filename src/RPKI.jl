@@ -141,6 +141,8 @@ function process_mft(mft_fn::String, lookup::Lookup, tpi::TmpParseInfo, cer_node
     #    @warn "$(mft_fn) already seen, loop?"
     #    throw("possible loop in $(mft_fn)" )
     #end
+    mft_dir = dirname(mft_fn)
+    tpi.cwd = mft_dir
     mft_obj::RPKIObject{MFT} = try 
         check_ASN1(RPKIObject{MFT}(mft_fn), tpi)
     catch e 
@@ -148,7 +150,6 @@ function process_mft(mft_fn::String, lookup::Lookup, tpi::TmpParseInfo, cer_node
         @error "MFT: error with $(mft_fn)"
         return RPKINode()
     end
-    mft_dir = dirname(mft_fn)
     listed_files = Vector{RPKINode}()
 	crl_count = 0
 

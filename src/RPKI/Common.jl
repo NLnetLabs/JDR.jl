@@ -137,6 +137,8 @@ mutable struct TmpParseInfo
     #certStack::Vector{RPKI.CER} # to replace all the other separate fields here
     certStack::Vector{Any} # TODO rearrange include/modules so we can actually use type RPKI.CER here
 
+    # used in MFT to check file hashes
+    cwd::String
     # for ROA:
     afi::UInt32
 end
@@ -155,6 +157,7 @@ TmpParseInfo(;lookup=Lookup(),nicenames::Bool=true,stripTree=false) = TmpParseIn
                                                     nothing,
                                                     nothing,
                                                     [],
+                                                    "",
                                                     0x0)
 
 

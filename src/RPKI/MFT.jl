@@ -84,14 +84,28 @@ end
 
 @check "fileList" begin
     tagisa(node, ASN1.SEQUENCE)
-    #@debug "manifest files: $(length(node.children))"
     for file_and_hash in node.children
         tagisa(file_and_hash, ASN1.SEQUENCE)
         tagisa(file_and_hash[1], ASN1.IA5STRING)
         tagisa(file_and_hash[2], ASN1.BITSTRING)
-        push!(o.object.files, ASN1.value(file_and_hash[1].tag))
+
+        filename = ASN1.value(file_and_hash[1].tag)
+        push!(o.object.files, filename)
+
+        full_fn = tpi.cwd*'/'*filename
+        if isfile(full_fn) # TODO redundancy with process_mft in RPKI.jl
+            open(full_fn) do fh
+                local_hash = sha256(fh)
+                if file_and_hash[2].tag.len != 33
+                    @warn "illegal file hash length in $(o.filename) for filename $(filename)"
+                    remark_ASN1Error!(file_and_hash[2], "Expecting length of 33")
+                elseif local_hash != file_and_hash[2].tag.value[end-31:end]
+                    @warn "invalid hash for", full_fn
+                    remark_manifestIssue!(o, "Invalid hash for $(filename)")
+                end
+            end
+        end
     end
-    #@debug "pushed files: $(length(o.object.files))"
 end
 
 @check "manifest" begin

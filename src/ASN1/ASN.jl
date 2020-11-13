@@ -6,7 +6,7 @@ export Tag, AbstractTag, Node, AbstractNode
 export value, print_node, append!, iter, lazy_iter
 export child, getindex, tagtype
 
-export  Unimplemented, InvalidTag, SEQUENCE, SET, RESERVED_ENC, OCTETSTRING, BOOLEAN
+export  Unimplemented, InvalidTag, SEQUENCE, SET, RESERVED_ENC, OCTETSTRING, BOOLEAN,
         BITSTRING, PRINTABLESTRING, UTF8STRING, CONTEXT_SPECIFIC, INTEGER, NULL, UTCTIME, GENTIME, OID, IA5STRING
 
 

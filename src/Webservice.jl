@@ -406,9 +406,9 @@ function updater()
         # watch file, to be touched whenever the RPKI repo on disk is updated
         try 
             _ = watch_file(WATCH_FN)
-            @info "updater(): sleep done, running update()"
+            @info "[$(now())] updater(): sleep done, running update()"
             @time update()
-            @info "updater(): update() done, going to sleep again"
+            @info "[$(now())] updater(): update() done, going to sleep again"
         catch e
             if e isa IOError
                 @error "updater() IOerror:", e

@@ -174,7 +174,8 @@ end
 function AutSysNum(s::String) 
     m = match(r"(ASN?)?(\d+)"i, s)
     if m === nothing
-        @error "can not parse $(s)"
+        @error "can not parse '$(s)' into AutSysNum"
+        throw("AutSysNum parse error")
     else
         AutSysNum(parse(UInt32, m.captures[end]))
     end

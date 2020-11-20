@@ -315,10 +315,15 @@ function update()
     LOOKUP[] = lookup
     unlock(UPDATELK)
 
-    @info "update() calling renew_msm()"
-    renew_msm()
-    @info "update() calling status_check()"
-    status_check()
+    try
+        @info "update() calling renew_msm()"
+        renew_msm()
+        @info "update() calling status_check()"
+        status_check()
+    catch e
+        @error "Something went wrong while trying to fetch RIPE Atlas measurements"
+        @error e
+    end
 
     set_last_update()
     @info "update() done, serial: $(LAST_UPDATE_SERIAL[])"

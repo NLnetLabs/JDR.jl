@@ -141,6 +141,20 @@ function ppstatus(req::HTTP.Request)
     PPSTATUS[]
 end
 
+function uris(req::HTTP.Request)
+    LOOKUP[].pubpoints |>
+    @map(_.second[2]) |> # get all Set(RPKINode)s
+        @map(
+             map(n->n.obj.object, collect(_)) # get the actual RPKIObject{CER}
+            ) |>
+        Iterators.flatten |>
+        @map(
+            Dict(:name => RPKICommon.split_scheme_uri(_.pubpoint)[1],
+                 :rsync => _.pubpoint,
+                 :rrdp => _.rrdp_notify) ) |>
+        collect
+end
+
 function repostats(req::HTTP.Request)
     # /api/v1/repostats, 
     #repo = HTTP.URIs.splitpath(req.target)[4] 
@@ -344,6 +358,9 @@ function _init()
     HTTP.@register(ROUTER, "GET", APIV*"/generate_msm/", generate_msm)
 
     HTTP.@register(ROUTER, "GET", APIV*"/update", update)
+
+
+    HTTP.@register(ROUTER, "GET", APIV*"/uris", uris)
 end
 
 struct Envelope

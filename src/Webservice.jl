@@ -473,7 +473,9 @@ function start()
     _init()
 
     # first run before we let the updater() handle everything
-    touch(WATCH_FN)
+    if !isfile(WATCH_FN)
+        touch(WATCH_FN)
+    end
     update()
 
     ThreadPools.@tspawnat 2 updater()

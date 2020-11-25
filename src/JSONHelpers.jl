@@ -36,6 +36,7 @@ end
 # howto: https://github.com/quinnj/JSON2.jl/issues/12
 struct ObjectDetails{T}
     filename::String
+    path::String
     tree::RPKI.Node
     object::T
     objecttype::String
@@ -53,6 +54,7 @@ function ObjectDetails(r::RPKI.RPKIObject, rc::RemarkCounts_t)
     RPKI.collect_remarks_from_asn1!(tmp, tmp.tree)
     
     d = ObjectDetails(r.filename,
+                      dirname(r.filename),
                       tmp.tree,
                       r.object,
                       string(nameof(typeof(r.object))),

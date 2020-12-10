@@ -117,6 +117,7 @@ end
 include("../Lookup.jl")
 
 mutable struct TmpParseInfo
+    repodir::String
     lookup::Lookup
     setNicenames::Bool
     stripTree::Bool
@@ -142,7 +143,7 @@ mutable struct TmpParseInfo
     # for ROA:
     afi::UInt32
 end
-TmpParseInfo(;lookup=Lookup(),nicenames::Bool=true,stripTree=false) = TmpParseInfo(lookup, nicenames, stripTree,
+TmpParseInfo(;repodir=JDR.CFG["rpki"]["rsyncrepo"],lookup=Lookup(),nicenames::Bool=true,stripTree=false) = TmpParseInfo(repodir, lookup, nicenames, stripTree,
                                                     [],
                                                     [],
                                                     nothing,

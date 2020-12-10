@@ -70,8 +70,6 @@ function check(::RPKIObject{T}) where {T}
 end
 
 
-const REPO_DIR = JDR.CFG["rpki"]["rsyncrepo"]
-
 function add_roa!(lookup::Lookup, roanode::RPKINode)
     # add ASN
     # TODO do we also want to add CERs here?
@@ -265,10 +263,10 @@ function process_cer(cer_fn::String, lookup::Lookup, tpi::TmpParseInfo) :: RPKIN
     check_resources(cer_obj, tpi)
 
     (ca_host, ca_path) = split_scheme_uri(cer_obj.object.pubpoint)
-    ca_dir = joinpath(REPO_DIR, ca_host, ca_path)
+    ca_dir = joinpath(tpi.repodir, ca_host, ca_path)
     
     mft_host, mft_path = split_scheme_uri(cer_obj.object.manifest)
-    mft_fn = joinpath(REPO_DIR, mft_host, mft_path)
+    mft_fn = joinpath(tpi.repodir, mft_host, mft_path)
     cer_node = RPKINode(cer_obj)
 
     if cer_obj.sig_valid 

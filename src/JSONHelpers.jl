@@ -86,9 +86,7 @@ struct RemarkDeeplink
 end
 RemarkDeeplink(r::Remark, url::String) = RemarkDeeplink(r.lvl, r.type, r.msg, r.tid, url)
 
-const DOMAIN = JDR.CFG["webservice"]["domain"]
-
-details_url(filename::String) = DOMAIN * "api/v1/object/" * HTTP.escapeuri(filename)
+details_url(filename::String) = JDR.CFG["webservice"]["domain"] * "/api/v1/object/" * HTTP.escapeuri(filename)
 function ObjectSlim(r::RPKI.RPKIObject, rcm::RemarkCounts_t, rcc::RemarkCounts_t) 
     ObjectSlim(r.filename,
                details_url(r.filename),

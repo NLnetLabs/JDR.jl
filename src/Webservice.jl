@@ -15,7 +15,6 @@ using JDR.RPKICommon
 using JDR.JSONHelpers
 
 
-Atlas.set_api_key(JDR.CFG["webservice"]["atlas_api_key"])
 const ROUTER = HTTP.Router()
 const APIV = "/api/v1"
 const LAST_UPDATE = Ref(now(UTC))
@@ -469,6 +468,9 @@ end
 serverhandle = nothing
 using Sockets
 function start()
+    JDR.Config.generate_config()
+    @debug "Active configuration:", JDR.CFG
+    Atlas.set_api_key(JDR.CFG["webservice"]["atlas_api_key"])
     global serverhandle
     _init()
 

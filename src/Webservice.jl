@@ -151,6 +151,7 @@ function uris(req::HTTP.Request)
             Dict(:name => RPKICommon.split_scheme_uri(_.pubpoint)[1],
                  :rsync => _.pubpoint,
                  :rrdp => _.rrdp_notify) ) |>
+        es -> unique(e->e[:name], es) |>
         collect
 end
 

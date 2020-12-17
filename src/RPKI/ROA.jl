@@ -216,6 +216,54 @@ function check_resources(o::RPKIObject{ROA}, tpi::TmpParseInfo)
     # TODO: check out intersect(t1::IntervalTree, t2::IntervalTree) and find any
     # underclaims?
     o.object.resources_valid = true
+
+
+    # first, check the resources on the EE are properly covered by the resources
+    # in the parent CER
+    # TODO: check: can the parent cer have inherit set instead of listing actual
+    # resources?
+
+    #v6:
+    if !isempty(o.object.prefixes_v6_intervaltree)
+        overlap_v6 = collect(intersect(tpi.certStack[end].prefixes_v6_intervaltree, o.object.prefixes_v6_intervaltree))
+        if length(overlap_v6) == 0
+            @warn "IPv6 resource on EE in $(o.filename) not covered by parent certificate $(tpi.certStack[end].subject)"
+            remark_resourceIssue!(o, "IPv6 resource on EE not covered by parent certificate")
+            o.object.resources_valid = false
+        else
+            for (p, ee) in overlap_v6
+                if !(p.first <= ee.first <= ee.last <= p.last)
+                    @warn "IPv6 resource on EE in $(o.filename) not properly covered by parent certificate"
+                    remark_resourceIssue!(o, "Illegal IP resource $(ee)")
+                    o.object.resources_valid = false
+                end
+            end
+        end
+    end
+    #v4:
+    if !isempty(o.object.prefixes_v4_intervaltree)
+        overlap_v4 = collect(intersect(tpi.certStack[end].prefixes_v4_intervaltree, o.object.prefixes_v4_intervaltree))
+        if length(overlap_v4) == 0
+            @warn "IPv4 resource on EE in $(o.filename) not covered by parent certificate $(tpi.certStack[end].subject)"
+            remark_resourceIssue!(o, "IPv4 resource on EE not covered by parent certificate")
+            o.object.resources_valid = false
+        else
+            for (p, ee) in overlap_v4
+                if !(p.first <= ee.first <= ee.last <= p.last)
+                    @warn "IPv4 resource on EE in $(o.filename) not properly covered by parent certificate"
+                    remark_resourceIssue!(o, "Illegal IP resource $(ee)")
+                    o.object.resources_valid = false
+                end
+            end
+        end
+    end
+
+
+    # --
+
+    # now that we know the validity of the resources on the EE, verify that the
+    # VRPs are covered by the resources on the EE
+
     for v in o.object.vrps
         #@debug "checking $(v)"
         interval = Interval{Integer}(minimum(v.prefix), maximum(v.prefix))

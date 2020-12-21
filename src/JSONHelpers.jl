@@ -1,6 +1,7 @@
 module JSONHelpers
 using JSON2
 using IPNets
+using Sockets
 using HTTP
 using Dates
 using ..RPKI
@@ -9,9 +10,15 @@ using ..JDR.Common
 using ..JDR.RPKICommon
 using ..ASN1
 
+using IntervalTrees # for IP prefixes on certificates
+
 export ObjectDetails, to_root, to_vue_branch, to_vue_tree, to_vue_pubpoints, length, get_vue_leaf_node
 export RemarkDeeplink
 
+
+details_url(filename::String) = JDR.CFG["webservice"]["domain"] * "/api/v1/object/" * HTTP.escapeuri(filename)
+details_url(n::RPKINode) = details_url(n.obj.filename)
+details_url(o::RPKIObject{T}) where T = details_url(o.filename)
 
 JSON2.@format RPKI.RPKINode begin
         parent => (;exclude=true,)
@@ -23,13 +30,20 @@ JSON2.@format RPKI.RPKIObject{T} where T begin
 end
 
 JSON2.@format RPKI.ROA begin
-        prefixes_v6_intervaltree => (;exclude=true,)
-        prefixes_v4_intervaltree => (;exclude=true,)
+        resources_v6 => (;exclude=true,)
+        resources_v4 => (;exclude=true,)
 end
-JSON2.@format RPKI.CER begin
-        prefixes_v6_intervaltree => (;exclude=true,)
-        prefixes_v4_intervaltree => (;exclude=true,)
-end
+
+# this gives back the full CER/ROA:
+#JSON2.write(io::IO, i::IntervalValue{<:IPAddr, T}) where T = JSON2.write(io, (string(i) => value(i)))
+# this attempts to only link to the detail_url:
+JSON2.write(io::IO, i::IntervalValue{<:IPAddr, T}) where T = JSON2.write(io, (string(i) => map(details_url, value(i))))
+JSON2.write(io::IO, it::IntervalTree{T, IntervalValue{T, U}}) where {T<:IPAddr, U} = JSON2.write(io, collect(it))
+
+#JSON2.@format RPKI.CER begin
+#        resources_v6 => (;exclude=true,)
+#        resources_v4 => (;jsontype=Array,)
+#end
 
 # custom view for RPKIObject{T}
 # includes the tree, but does not link to parent or children
@@ -86,7 +100,6 @@ struct RemarkDeeplink
 end
 RemarkDeeplink(r::Remark, url::String) = RemarkDeeplink(r.lvl, r.type, r.msg, r.tid, url)
 
-details_url(filename::String) = JDR.CFG["webservice"]["domain"] * "/api/v1/object/" * HTTP.escapeuri(filename)
 function ObjectSlim(r::RPKI.RPKIObject, rcm::RemarkCounts_t, rcc::RemarkCounts_t) 
     ObjectSlim(r.filename,
                details_url(r.filename),

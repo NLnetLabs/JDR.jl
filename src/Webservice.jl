@@ -324,6 +324,8 @@ function update()
     @assert Common.remarkTID == 0
 
     @time (tree, lookup) = RPKI.retrieve_all(JDR.CFG["rpki"]["tals"]; stripTree=true, nicenames=false)
+    RPKI.link_resources!.(tree.children)
+    @debug "linked!"
     lock(UPDATELK)
     TREE[] = tree
     LOOKUP[] = lookup

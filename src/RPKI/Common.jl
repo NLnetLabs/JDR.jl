@@ -1,13 +1,16 @@
 module RPKICommon
 
 
+using ..JDR
 using ..JDR.Common
 using ..ASN1.ASN
 using Dates
 using IntervalTrees
+using Sockets
 
 export RPKIObject, RPKINode, TmpParseInfo, Lookup, print_ASN1
 export CER, MFT, ROA, CRL
+export add_resource!
 export VRP
 export root_to
 export iterate
@@ -21,6 +24,7 @@ mutable struct RPKIObject{T}
     sig_valid::Union{Nothing, Bool}
 end
 
+function add_resource!(::T, ::U, ::U) where {T,U} end
 
 function Base.show(io::IO, obj::RPKIObject{T}) where T
     print(io, "RPKIObject type: ", nameof(typeof(obj).parameters[1]), '\n')
@@ -185,10 +189,11 @@ mutable struct CER
 
     inherit_v6_prefixes::Union{Nothing, Bool}
     inherit_v4_prefixes::Union{Nothing, Bool}
-    #prefixes_v6::IPPrefixesOrRanges
-    #prefixes_v4::IPPrefixesOrRanges
-    prefixes_v6_intervaltree::IntervalTree{Integer, Interval{Integer}}
-    prefixes_v4_intervaltree::IntervalTree{Integer, Interval{Integer}}
+    #prefixes_v6_intervaltree::IntervalTree{Integer, Interval{Integer}}
+    #prefixes_v4_intervaltree::IntervalTree{Integer, Interval{Integer}}
+    resources_v6::IntervalTree{IPv6, IntervalValue{IPv6, Vector{RPKINode}}}
+    resources_v4::IntervalTree{IPv4, IntervalValue{IPv4, Vector{RPKINode}}}
+
 
     inherit_ASNs::Bool
     ASNs::AsIdsOrRanges
@@ -199,8 +204,8 @@ CER() = CER(0, nothing, nothing,
             "", "", "", nothing, nothing, 0, 0, "", "",
             nothing, nothing,
             #IPPrefixesOrRanges(), IPPrefixesOrRanges(),
-            IntervalTree{Integer, Interval{Integer}}(),
-            IntervalTree{Integer, Interval{Integer}}(),
+            IntervalTree{IPv6, IntervalValue{IPv6, Vector{RPKINode}}}(),
+            IntervalTree{IPv4, IntervalValue{IPv4, Vector{RPKINode}}}(),
             false, AsIdsOrRanges(),
             nothing)
 
@@ -241,13 +246,13 @@ mutable struct ROA
     asid::Integer
     vrps::Vector{VRP}
     resources_valid::Union{Nothing,Bool}
-    prefixes_v6_intervaltree::IntervalTree{Integer, Interval{Integer}}
-    prefixes_v4_intervaltree::IntervalTree{Integer, Interval{Integer}}
+    resources_v6::IntervalTree{IPv6, IntervalValue{IPv6, Vector{VRP}}}
+    resources_v4::IntervalTree{IPv4, IntervalValue{IPv4, Vector{VRP}}}
 end
 ROA() = ROA(0, [],
             nothing,
-            IntervalTree{Integer, Interval{Integer}}(),
-            IntervalTree{Integer, Interval{Integer}}(),
+            IntervalTree{IPv6, IntervalValue{IPv6, Vector{VRP}}}(),
+            IntervalTree{IPv4, IntervalValue{IPv4, Vector{VRP}}}(),
            )
 
 

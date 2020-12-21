@@ -94,16 +94,21 @@ AFI_V6 = 0x02
                         # we expect two BITSTRINGs in this SEQUENCE
                         tagisa(ipaddress_or_range[1], ASN1.BITSTRING)
                         tagisa(ipaddress_or_range[2], ASN1.BITSTRING)
-                            (minaddr, maxaddr) = new_bitstrings_to_v6range(
+                            (minaddr, maxaddr) = bitstrings_to_v6range(
                                                                            ipaddress_or_range[1].tag.value,
                                                                            ipaddress_or_range[2].tag.value
                                                                           )
-                            push!(o.object.prefixes_v6_intervaltree, Interval{Integer}(minaddr, maxaddr))
+                            #push!(o.object.prefixes_v6_intervaltree, Interval{Integer}(minaddr, maxaddr))
+                            #push!(o.object.resources_v6, IntervalValue(IPv6(minaddr), IPv6(maxaddr), []))
+                            add_resource!(o.object, IPv6(minaddr), IPv6(maxaddr))
                     elseif ipaddress_or_range.tag isa Tag{ASN1.BITSTRING}
                         # else if it is a BITSTRING, we have an IPAddress (prefix)
                         ipaddress_or_range.validated = true
                         bitstring = ipaddress_or_range.tag.value
-                        push!(o.object.prefixes_v6_intervaltree, Interval{Integer}(new_bitstring_to_v6prefix(bitstring)...))
+                        #push!(o.object.prefixes_v6_intervaltree, Interval{Integer}(new_bitstring_to_v6prefix(bitstring)...))
+                        (minaddr, maxaddr) = bitstring_to_v6prefix(bitstring)
+                        #push!(o.object.resources_v6, IntervalValue(IPv6(minaddr), IPv6(maxaddr), []))
+                        add_resource!(o.object, IPv6(minaddr), IPv6(maxaddr))
                     else
                         @error "unexpected tag number $(ipaddress_or_range.tag.number)"
                     end
@@ -135,16 +140,21 @@ AFI_V6 = 0x02
                         # we expect two BITSTRINGs in this SEQUENCE
                         tagisa(ipaddress_or_range[1], ASN1.BITSTRING)
                         tagisa(ipaddress_or_range[2], ASN1.BITSTRING)
-                            (minaddr, maxaddr) = new_bitstrings_to_v4range(
+                            (minaddr, maxaddr) = bitstrings_to_v4range(
                                                                            ipaddress_or_range[1].tag.value,
                                                                            ipaddress_or_range[2].tag.value
                                                                           )
-                        push!(o.object.prefixes_v4_intervaltree, Interval{Integer}(minaddr, maxaddr))
+                        #push!(o.object.prefixes_v4_intervaltree, Interval{Integer}(minaddr, maxaddr))
+                        #push!(o.object.resources_v4, IntervalValue(IPv4(minaddr), IPv4(maxaddr), []))
+                        add_resource!(o.object, IPv4(minaddr), IPv4(maxaddr))
                     elseif ipaddress_or_range.tag isa Tag{ASN1.BITSTRING}
                         # else if it is a BITSTRING, we have an IPAddress (prefix)
                         ipaddress_or_range.validated = true
                         bitstring = ipaddress_or_range.tag.value
-                        push!(o.object.prefixes_v4_intervaltree, Interval{Integer}(new_bitstring_to_v4prefix(bitstring)...))
+                        #push!(o.object.prefixes_v4_intervaltree, Interval{Integer}(new_bitstring_to_v4prefix(bitstring)...))
+                        (minaddr, maxaddr) = bitstring_to_v4prefix(bitstring)
+                        #push!(o.object.resources_v4, IntervalValue(IPv4(minaddr), IPv4(maxaddr), []))
+                        add_resource!(o.object, IPv4(minaddr), IPv4(maxaddr))
                     else
                         @error "unexpected tag number $(ipaddress_or_range.tag.number)"
                     end

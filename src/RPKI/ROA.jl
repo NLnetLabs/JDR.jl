@@ -29,7 +29,7 @@ function rawv4_to_roa(o::RPKIObject{ROA}, roa_ipaddress::Node) :: RPKIObject{ROA
     tagisa(roa_ipaddress, ASN1.SEQUENCE)
     tagisa(roa_ipaddress[1], ASN1.BITSTRING)
 
-    prefix = bitstring_to_v4prefix(roa_ipaddress[1].tag.value)
+    prefix = bitstring_to_ipv4net(roa_ipaddress[1].tag.value)
     maxlength = prefix.netmask #FIXME @code_warntype ?
 
     # optional maxLength:
@@ -50,7 +50,7 @@ function rawv6_to_roa(o::RPKIObject{ROA}, roa_ipaddress::Node) :: RPKIObject{ROA
     tagisa(roa_ipaddress, ASN1.SEQUENCE)
     tagisa(roa_ipaddress[1], ASN1.BITSTRING)
 
-    prefix = bitstring_to_v6prefix(roa_ipaddress[1].tag.value)
+    prefix = bitstring_to_ipv6net(roa_ipaddress[1].tag.value)
     maxlength = prefix.netmask
 
     # optional maxLength:
@@ -95,9 +95,9 @@ end
     node[1].nicename = "address"
 
     prefix = if tpi.afi == 1
-        bitstring_to_v4prefix(node[1].tag.value)
+        bitstring_to_ipv4net(node[1].tag.value)
     elseif tpi.afi == 2
-        bitstring_to_v6prefix(node[1].tag.value)
+        bitstring_to_ipv6net(node[1].tag.value)
     else
         throw("illegal AFI in check_ASN1_ROAIPAddress")
     end
@@ -211,6 +211,14 @@ function check_cert(o::RPKIObject{ROA}, tpi::TmpParseInfo)
     # TODO
 end
 
+import .RPKI.add_resource!
+function add_resource!(roa::ROA, minaddr::IPv6, maxaddr::IPv6)
+	push!(roa.resources_v6, IntervalValue(minaddr, maxaddr, VRP[]))
+end
+function add_resource!(roa::ROA, minaddr::IPv4, maxaddr::IPv4)
+	push!(roa.resources_v4, IntervalValue(minaddr, maxaddr, VRP[]))
+end
+
 import .RPKI:check_resources
 function check_resources(o::RPKIObject{ROA}, tpi::TmpParseInfo)
     # TODO: check out intersect(t1::IntervalTree, t2::IntervalTree) and find any
@@ -224,8 +232,8 @@ function check_resources(o::RPKIObject{ROA}, tpi::TmpParseInfo)
     # resources?
 
     #v6:
-    if !isempty(o.object.prefixes_v6_intervaltree)
-        overlap_v6 = collect(intersect(tpi.certStack[end].prefixes_v6_intervaltree, o.object.prefixes_v6_intervaltree))
+    if !isempty(o.object.resources_v6)
+        overlap_v6 = collect(intersect(tpi.certStack[end].resources_v6, o.object.resources_v6))
         if length(overlap_v6) == 0
             @warn "IPv6 resource on EE in $(o.filename) not covered by parent certificate $(tpi.certStack[end].subject)"
             remark_resourceIssue!(o, "IPv6 resource on EE not covered by parent certificate")
@@ -241,8 +249,8 @@ function check_resources(o::RPKIObject{ROA}, tpi::TmpParseInfo)
         end
     end
     #v4:
-    if !isempty(o.object.prefixes_v4_intervaltree)
-        overlap_v4 = collect(intersect(tpi.certStack[end].prefixes_v4_intervaltree, o.object.prefixes_v4_intervaltree))
+    if !isempty(o.object.resources_v4)
+        overlap_v4 = collect(intersect(tpi.certStack[end].resources_v4, o.object.resources_v4))
         if length(overlap_v4) == 0
             @warn "IPv4 resource on EE in $(o.filename) not covered by parent certificate $(tpi.certStack[end].subject)"
             remark_resourceIssue!(o, "IPv4 resource on EE not covered by parent certificate")
@@ -266,22 +274,23 @@ function check_resources(o::RPKIObject{ROA}, tpi::TmpParseInfo)
 
     for v in o.object.vrps
         #@debug "checking $(v)"
-        interval = Interval{Integer}(minimum(v.prefix), maximum(v.prefix))
+        #interval = Interval{IPAddr}(minimum(v.prefix), maximum(v.prefix))
         matches = if v.prefix isa IPv6Net
-            collect(intersect(o.object.prefixes_v6_intervaltree, interval))
+            collect(intersect(o.object.resources_v6, Interval{IPv6}(minimum(v.prefix), maximum(v.prefix))))
         elseif v.prefix isa IPv4Net
-            collect(intersect(o.object.prefixes_v4_intervaltree, interval))
+            #collect(intersect(o.object.resources_v4, interval))
+            collect(intersect(o.object.resources_v4, Interval{IPv4}(minimum(v.prefix), maximum(v.prefix))))
         else
             throw("illegal AFI in VRP")
         end
         if length(matches) > 1
             @warn "ROA resource check: multiple matches for $(v)"
         elseif length(matches) == 0
-            @warn "no match for interval $(interval), illegal VRP $(v)"
+            @warn "no match, illegal VRP $(v)"
             remark_resourceIssue!(o, "VRP not covered by resources in EE cert")
             o.object.resources_valid = false
         else
-            if !(matches[1].first <= Integer(v.prefix[1]) <= Integer(v.prefix[end]) <= matches[1].last)
+            if !(matches[1].first <= v.prefix[1] <= v.prefix[end] <= matches[1].last)
                 @warn "VRP not properly covered by resources in EE cert"
                 remark_resourceIssue!(o, "VRP not properly covered by resources in EE cert")
                 o.object.resources_valid = false

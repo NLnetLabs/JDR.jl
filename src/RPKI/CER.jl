@@ -2,13 +2,15 @@ module Cer
 
 using ...JDR.Common
 using ...RPKI
+using ...RPKICommon
 using ...ASN1
 using ...PKIX.X509
 using SHA
 using IntervalTrees
-using IPNets
+using IPNets # FIXME refactor this out
+using Sockets
 
-export check_ASN1, check_cert, check_resources
+export check_ASN1, check_cert, check_resources, add_resource!
 
 import .RPKI:check_ASN1
 function check_ASN1(o::RPKIObject{CER}, tpi::TmpParseInfo=TmpParseInfo()) :: RPKIObject{CER}
@@ -64,8 +66,15 @@ function check_cert(o::RPKIObject{CER}, tpi::TmpParseInfo) :: RPKI.RPKIObject{CE
     o
 end
 
-# TODO: add a resourcesValid flag somewhere
-# and perhaps, on the RPKINode level, create a pointer to the covering CER
+import .RPKI.add_resource!
+function add_resource!(cer::CER, minaddr::IPv6, maxaddr::IPv6)
+	push!(cer.resources_v6, IntervalValue(minaddr, maxaddr, RPKINode[]))
+end
+function add_resource!(cer::CER, minaddr::IPv4, maxaddr::IPv4)
+	push!(cer.resources_v4, IntervalValue(minaddr, maxaddr, RPKINode[]))
+end
+
+
 import .RPKI:check_resources
 function check_resources(o::RPKIObject{CER}, tpi::TmpParseInfo)
     o.object.resources_valid = true
@@ -96,7 +105,7 @@ function check_resources(o::RPKIObject{CER}, tpi::TmpParseInfo)
     # TODO what do we do if the object is self signed?
     if !o.object.selfsigned
         certStackOffset_v6 = certStackOffset_v4 = 1
-        if isempty(o.object.prefixes_v6_intervaltree) 
+        if isempty(o.object.resources_v6) 
             if isnothing(o.object.inherit_v6_prefixes)
                 #@warn "v6 prefixes empty, but inherit bool is not set.."
                 #@error "empty v6 prefixes undefined inheritance? $(o.filename)"
@@ -106,12 +115,12 @@ function check_resources(o::RPKIObject{CER}, tpi::TmpParseInfo)
             end
         else
             while tpi.certStack[end-certStackOffset_v6].inherit_v6_prefixes
-                @assert length(tpi.certStack[end-certStackOffset_v6].prefixes_v6_intervaltree) == 0
+                @assert length(tpi.certStack[end-certStackOffset_v6].resources_v6) == 0
                 #@debug "parent says inherit_prefixes, increasing offset to $(certStackOffset+1)"
                 certStackOffset_v6 += 1
             end
         end
-        if isempty(o.object.prefixes_v4_intervaltree) 
+        if isempty(o.object.resources_v4) 
             if isnothing(o.object.inherit_v4_prefixes)
                 #@warn "v4 prefixes empty, but inherit bool is not set.."
                 #@error "empty v4 prefixes undefined inheritance? $(o.filename)"
@@ -121,35 +130,25 @@ function check_resources(o::RPKIObject{CER}, tpi::TmpParseInfo)
             end
         else
             while tpi.certStack[end-certStackOffset_v4].inherit_v4_prefixes
-                @assert length(tpi.certStack[end-certStackOffset_v4].prefixes_v4_intervaltree) == 0
+                @assert length(tpi.certStack[end-certStackOffset_v4].resources_v4) == 0
                 #@debug "parent says inherit_prefixes, increasing offset to $(certStackOffset+1)"
                 certStackOffset_v4 += 1
             end
         end
         
         # IPv6:
-        overlap_v6 = collect(intersect(tpi.certStack[end-certStackOffset_v6].prefixes_v6_intervaltree, o.object.prefixes_v6_intervaltree))
-        #@assert length(overlap_v6) == length(o.object.prefixes_v6_intervaltree)
-        for (p, c) in overlap_v6
-            if !(p.first <= c.first <= c.last <= p.last)
+		Common.check_coverage(tpi.certStack[end-certStackOffset_v6].resources_v6, o.object.resources_v6) do
                 @warn "illegal IP resource on $(o.filename)"
-                remark_resourceIssue!(o, "Illegal IP resource $(c)")
+                remark_resourceIssue!(o, "Illegal IPv6 resource $(c)")
                 o.object.resources_valid = false
-            end
         end
 
         # IPv4:
-        overlap_v4 = collect(intersect(tpi.certStack[end-certStackOffset_v4].prefixes_v4_intervaltree, o.object.prefixes_v4_intervaltree))
-        #@assert length(overlap_v4) == length(o.object.prefixes_v4_intervaltree)
-        for (p, c) in overlap_v4
-            if !(p.first <= c.first <= c.last <= p.last)
+        Common.check_coverage(tpi.certStack[end-certStackOffset_v4].resources_v4, o.object.resources_v4) do
                 @warn "illegal IP resource on $(o.filename)"
-                remark_resourceIssue!(o, "Illegal IP resource $(c)")
+                remark_resourceIssue!(o, "Illegal IPv4 resource $(c)")
                 o.object.resources_valid = false
-            end
         end
-        
-
     end
 
 end

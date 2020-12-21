@@ -243,6 +243,25 @@ function process_mft(mft_fn::String, lookup::Lookup, tpi::TmpParseInfo, cer_node
     mft_node
 end
 
+function link_resources!(cer::RPKINode)
+    if isempty(cer.children)
+        return
+    end
+    for child in filter(x->x.obj.object isa Union{CER,ROA}, cer.children[1].children)
+        overlap = intersect(cer.obj.object.resources_v6, child.obj.object.resources_v6)
+        for (p, c) in overlap
+            push!(p.value, child) # add RPKINode pointing to child to this interval.value
+        end
+        overlap = intersect(cer.obj.object.resources_v4, child.obj.object.resources_v4)
+        for (p, c) in overlap
+            push!(p.value, child) # add RPKINode pointing to child to this interval.value
+        end
+        if child.obj.object isa CER
+            link_resources!(child)
+        end
+    end
+end
+
 function process_cer(cer_fn::String, lookup::Lookup, tpi::TmpParseInfo) :: RPKINode
     #@debug "process_cer for $(basename(cer_fn))"
     # now, for each .cer, get the CA Repo and 'sync' again

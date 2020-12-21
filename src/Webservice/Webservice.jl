@@ -13,7 +13,7 @@ using JDR
 using JDR.Common
 using JDR.RPKICommon
 include("JSONHelpers.jl")
-#using .JSONHelpers
+include("CleanLogger.jl")
 
 
 const ROUTER = HTTP.Router()
@@ -473,6 +473,7 @@ serverhandle = nothing
 using Sockets
 function start()
     JDR.Config.generate_config()
+    init_logger()
     @debug "Active configuration:", JDR.CFG
     Atlas.set_api_key(JDR.CFG["webservice"]["atlas_api_key"])
     global serverhandle

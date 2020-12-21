@@ -21,8 +21,9 @@ rsyncrepo   = "$(ENV["HOME"])/.rpki-cache/repository/rsync"
 
 [webservice]
 port = 8081
-domain = "http://localhost:8081/"
+domain = "http://localhost:8081" # NB: no trailing slash here
 atlas_api_key = ""
+logfile = "/tmp/jdr.log"
 
 """)
 

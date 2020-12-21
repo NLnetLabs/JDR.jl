@@ -334,9 +334,9 @@ function update()
 
     try
         @info "update() calling renew_msm()"
-        #renew_msm()
+        renew_msm()
         @info "update() calling status_check()"
-        #status_check()
+        status_check()
     catch e
         @error "Something went wrong while trying to fetch RIPE Atlas measurements"
         @error e

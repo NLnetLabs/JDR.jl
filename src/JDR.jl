@@ -23,7 +23,4 @@ include("RPKI.jl")
 using .RPKI
 export print_ASN1
 
-# Only for webservice:
-include("JSONHelpers.jl")
-
 end # module

@@ -1,22 +1,7 @@
-#module JSONHelpers
-#using JSON2
-#using IPNets
-using Sockets
-#using HTTP
-#using Dates
-#using ..RPKI
-#using ..JDR
-#using ..JDR.Common
-#using ..JDR.RPKICommon
-#using ...JDR.ASN1
-
 using JDR.ASN1
 
+using Sockets
 using IntervalTrees # for IP prefixes on certificates
-
-#export ObjectDetails, to_root, to_vue_branch, to_vue_tree, to_vue_pubpoints, length, get_vue_leaf_node
-#export RemarkDeeplink
-
 
 details_url(filename::String) = JDR.CFG["webservice"]["domain"] * "/api/v1/object/" * HTTP.escapeuri(filename)
 details_url(n::RPKINode) = details_url(n.obj.filename)
@@ -38,14 +23,9 @@ end
 
 # this gives back the full CER/ROA:
 #JSON2.write(io::IO, i::IntervalValue{<:IPAddr, T}) where T = JSON2.write(io, (string(i) => value(i)))
-# this attempts to only link to the detail_url:
+# and this only the link to the detail_urls:
 JSON2.write(io::IO, i::IntervalValue{<:IPAddr, T}) where T = JSON2.write(io, (string(i) => map(details_url, value(i))))
 JSON2.write(io::IO, it::IntervalTree{T, IntervalValue{T, U}}) where {T<:IPAddr, U} = JSON2.write(io, collect(it))
-
-#JSON2.@format RPKI.CER begin
-#        resources_v6 => (;exclude=true,)
-#        resources_v4 => (;jsontype=Array,)
-#end
 
 # custom view for RPKIObject{T}
 # includes the tree, but does not link to parent or children

@@ -258,10 +258,10 @@ ROA() = ROA(0, [],
 
 mutable struct CRL 
     revoked_serials::Vector{Integer}
-    thisUpdate::Union{Nothing, DateTime}
-    nextUpdate::Union{Nothing, DateTime}
+    this_update::Union{Nothing, DateTime}
+    next_update::Union{Nothing, DateTime}
 end
 CRL() = CRL([], nothing, nothing)
-Base.show(io::IO, crl::CRL) = print(io, crl.thisUpdate, " -> ", crl.nextUpdate, "\n", crl.revoked_serials)
+Base.show(io::IO, crl::CRL) = print(io, crl.this_update, " -> ", crl.next_update, "\n", crl.revoked_serials)
 
 end # module

@@ -47,11 +47,11 @@ end
 end
 @check "thisUpdate" begin
     tagisa(node, [ASN1.UTCTIME, ASN1.GENTIME])
-    o.object.thisUpdate = ASN1.value(node.tag)
+    o.object.this_update = ASN1.value(node.tag)
 end
 @check "nextUpdate" begin
     tagisa(node, [ASN1.UTCTIME, ASN1.GENTIME])
-    o.object.nextUpdate = ASN1.value(node.tag)
+    o.object.next_update = ASN1.value(node.tag)
 end
 
 @check "revokedCertificates" begin

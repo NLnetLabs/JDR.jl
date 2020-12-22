@@ -388,6 +388,7 @@ function _init()
     HTTP.@register(ROUTER, "GET", APIV*"/pp/", pubpoints)
     HTTP.@register(ROUTER, "GET", APIV*"/ppstatus/", ppstatus)
     HTTP.@register(ROUTER, "GET", APIV*"/repostats/", repostats)
+    HTTP.@register(ROUTER, "GET", APIV*"/newsince/", newsince)
     HTTP.@register(ROUTER, "GET", APIV*"/newsince/*", newsince)
 
 

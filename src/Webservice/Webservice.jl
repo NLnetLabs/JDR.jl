@@ -182,6 +182,36 @@ function repostats(req::HTTP.Request)
     res
 end
 
+function newsince(req::HTTP.Request)
+    # /api/v1/newsince/timeperiod/filtertype
+    splitted = HTTP.URIs.splitpath(req.target)
+    timeperiod = Minute(60)
+    if length(splitted) >= 4
+        try 
+            timeperiod = Minute(parse(Int, splitted[4]))
+        catch
+            @debug "invalid integer passed to /newsince, defaulting to $(timeperiod)"
+        end
+    end
+    filtertype = if length(splitted) >= 5
+        if uppercase(splitted[5]) == "CER"
+            RPKI.CER
+        elseif uppercase(splitted[5]) == "MFT"
+            RPKI.MFT
+        elseif uppercase(splitted[5]) == "CRL"
+            RPKI.CRL
+        else
+            nothing
+        end
+    end
+    RPKI.new_since(TREE[], timeperiod) |>
+        @filter(isnothing(filtertype) || _.obj.object isa filtertype) .|>
+        get_vue_leaf_node |>
+        unique .|>
+        to_vue_branch |>
+        to_vue_tree
+end
+
 
 function _generate_msm_definitions(cer::RPKI.CER; params...) #:: Vector{Atlas.Definition}
     definitions = Vector()
@@ -358,6 +388,9 @@ function _init()
     HTTP.@register(ROUTER, "GET", APIV*"/pp/", pubpoints)
     HTTP.@register(ROUTER, "GET", APIV*"/ppstatus/", ppstatus)
     HTTP.@register(ROUTER, "GET", APIV*"/repostats/", repostats)
+    HTTP.@register(ROUTER, "GET", APIV*"/newsince/*", newsince)
+
+
     HTTP.@register(ROUTER, "GET", APIV*"/generate_msm/", generate_msm)
 
     HTTP.@register(ROUTER, "GET", APIV*"/update", update)

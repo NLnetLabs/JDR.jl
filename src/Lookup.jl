@@ -1,6 +1,7 @@
 using IPNets
 using ...PrefixTrees
 export search
+export new_since
 export add_filename!, add_missing_filename!
 
 struct Lookup
@@ -147,4 +148,13 @@ function remarks_per_repo(tree::RPKINode) :: Dict{String}{Vector{Pair{Remark, RP
         end
     end
    res 
+end
+
+function new_since(tree::RPKINode, tp::TimePeriod=Hour(1)) :: Vector{RPKINode}
+    tree |>
+    @filter(!isnothing(_.obj)) |>
+    @filter(_.obj.object isa CER && _.obj.object.notBefore > now(UTC) - tp ||
+            _.obj.object isa MFT && _.obj.object.this_update > now(UTC) - tp ||
+            _.obj.object isa CRL && _.obj.object.this_update > now(UTC) - tp) |>
+    collect
 end

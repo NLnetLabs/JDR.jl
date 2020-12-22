@@ -24,7 +24,7 @@ end
 # this gives back the full CER/ROA:
 #JSON2.write(io::IO, i::IntervalValue{<:IPAddr, T}) where T = JSON2.write(io, (string(i) => value(i)))
 # and this only the link to the detail_urls:
-JSON2.write(io::IO, i::IntervalValue{<:IPAddr, T}) where T = JSON2.write(io, (string(i) => map(details_url, value(i))))
+JSON2.write(io::IO, i::IntervalValue{<:IPAddr, T}) where T = JSON2.write(io, (string(i) => map(e->e.obj.filename, value(i))))
 JSON2.write(io::IO, it::IntervalTree{T, IntervalValue{T, U}}) where {T<:IPAddr, U} = JSON2.write(io, collect(it))
 
 # custom view for RPKIObject{T}

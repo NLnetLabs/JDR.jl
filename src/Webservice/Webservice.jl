@@ -169,7 +169,7 @@ function repostats(req::HTTP.Request)
     res = keys(LOOKUP[].pubpoints) |>
     @map(_ => Dict("remarks" => 
                    map(p->
-                       RemarkDeeplink(p.first, JSONHelpers.details_url(p.second.obj.filename)),
+                       RemarkDeeplink(p.first, details_url(p.second.obj.filename)),
                        get(remarks, _, [])
                       )
                   )

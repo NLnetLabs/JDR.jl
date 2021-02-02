@@ -555,6 +555,7 @@ function DEPR_get_atlas_info()
     end
     return PP2Atlas[] = pp2atlas
 end
+=#
 
 serverhandle = nothing
 using Sockets

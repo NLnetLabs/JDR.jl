@@ -26,16 +26,16 @@ const LOOKUP = Ref(RPKI.Lookup())
 const WATCH_FN = "/tmp/rpkicache.updated"
 const UPDATELK = ReentrantLock()
 
-const ATLAS_BILL_TO = "ripe@luukhendriks.eu"
 
-mutable struct PPStatus
-    ping6::Union{Nothing, Atlas.StatusCheckResult}
-    ping4::Union{Nothing, Atlas.StatusCheckResult}
-end
-PPStatus() = PPStatus(nothing, nothing)
+#mutable struct PPStatus
+#    ping6::Union{Nothing, Atlas.StatusCheckResult}
+#    ping4::Union{Nothing, Atlas.StatusCheckResult}
+#end
+#PPStatus() = PPStatus(nothing, nothing)
 
-const PPSTATUS = Ref(Dict{String}{PPStatus}())
-const PP2Atlas = Ref(Dict{String}{Vector{NamedTuple}}())
+#const PPSTATUS = Ref(Dict{String}{PPStatus}())
+const PPSTATUS = Ref{Dict}(Dict())
+#const PP2Atlas = Ref(Dict{String}{Vector{NamedTuple}}())
 
 
 ##############################
@@ -213,6 +213,7 @@ function newsince(req::HTTP.Request)
 end
 
 
+#= # not needed anymore because the NCC takes care of the measurements now
 function _generate_msm_definitions(cer::RPKI.CER; params...) #:: Vector{Atlas.Definition}
     definitions = Vector()
     host_rsync, _ = split_scheme_uri(cer.pubpoint)
@@ -268,7 +269,10 @@ function generate_msm(req::HTTP.Request)
     new_msm
 end
 
-function get_current_msm() :: Atlas.Measurement
+=#
+
+#= # RIPE NCC is doing everything for us now
+function DEPRget_current_msm() :: Atlas.Measurement
     # fetch based on tag 'jdr'
     # determine and return group id
     current = Atlas.get_my(Dict("tags" => "jdr", "page_size" => "200"))
@@ -278,6 +282,8 @@ function get_current_msm() :: Atlas.Measurement
     @debug "post assert"
     Atlas.Measurement(current.results[1].group_id)
 end
+=#
+#= # TODO: extract the check to see if we are missing things
 function renew_msm()
     # determine missing pp from current msm
     # setdiff returns what is in the first argument but not in the second
@@ -321,11 +327,31 @@ function renew_msm()
     missing_pps
 end
 
+=#
+
 
 ##############################
 # Background workers/helpers 
 ##############################
 
+
+include("atlas.jl")
+
+"""
+Fetches the latest measurement results from RIPE Atlas, evaluates which
+repositories have network level issues, and store the results in PPSTATUS[].
+
+"""
+function update_repostatus()
+    msms = fetch_measurements()
+    @time df = fetch_results(msms) |> create_df
+    df = join_msm_def(df, msms);
+
+    PPSTATUS[] = ppstatus(df)
+end
+
+
+#=
 function status_check()
     @debug "status_check(), length of PP2Atlas[] = $(length(PP2Atlas[]))"
     for pp in keys(LOOKUP[].pubpoints)
@@ -347,6 +373,7 @@ function status_check()
     end
     @info "end of status_check"
 end
+=#
 
 function update()
     @info "update() on thread $(Threads.threadid())"
@@ -363,10 +390,18 @@ function update()
     unlock(UPDATELK)
 
     try
-        @info "update() calling renew_msm()"
-        renew_msm()
-        @info "update() calling status_check()"
-        status_check()
+        #= OLD remove
+        #@info "skipping renew_msm(), using rpki-repositories-bundle msm"
+        #@info "update() calling renew_msm()"
+        #renew_msm()
+        #get_atlas_info()
+        #@info "update() calling status_check()"
+        #status_check()
+        =#
+        
+        # TMP commented out for dev
+        @info "updating repository status based on RIPE Atlas measurements"
+        update_repostatus()
     catch e
         @error "Something went wrong while trying to fetch RIPE Atlas measurements"
         @error e
@@ -392,7 +427,7 @@ function _init()
     HTTP.@register(ROUTER, "GET", APIV*"/newsince/*", newsince)
 
 
-    HTTP.@register(ROUTER, "GET", APIV*"/generate_msm/", generate_msm)
+    #HTTP.@register(ROUTER, "GET", APIV*"/generate_msm/", generate_msm)
 
     HTTP.@register(ROUTER, "GET", APIV*"/update", update)
 
@@ -480,19 +515,21 @@ function updater()
     end
 end
 
-function get_atlas_info()
+#=
+function DEPR_get_atlas_info()
     pp2atlas = Dict{String}{Vector{NamedTuple}}()
     #TODO: hardcoding page_size is not nice
-    jdr_tagged = Atlas.get_my(Dict("tags" => "jdr", "page_size" => "200"))
-    if length(unique([r.group_id for r in jdr_tagged.results])) == 0 
+    #jdr_tagged = Atlas.get_my(Dict("tags" => "jdr", "page_size" => "200"))
+    msms = Atlas.get_measurement(Dict("tags" => "rpki-repositories-bundle", "page_size" => "500"))
+    if length(unique([r.group_id for r in msms.results])) == 0 
         @error "no Atlas group measurement found for JDR"
         return
-    elseif length(unique([r.group_id for r in jdr_tagged.results])) > 1
+    elseif length(unique([r.group_id for r in msms.results])) > 1
         @warn "got more than one group id for JDR tagged Atlas measurements"
     end
-    @info "got $(length(jdr_tagged.results)) measurements tagged 'jdr' from Atlas"
-    group_id = jdr_tagged.results[1].group_id
-    for r in jdr_tagged.results
+    @info "got $(length(msms.results)) measurements tagged 'jdr' from Atlas"
+    group_id = msms.results[1].group_id
+    for r in msms.results
         if !(r.target in keys(pp2atlas))
             pp2atlas[r.target] = [r]
         else

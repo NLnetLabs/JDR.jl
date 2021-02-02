@@ -220,28 +220,8 @@ end
 # Prefix / IntervalTree related
 ##############################
 
-Base.zero(::Type{IPv4}) = IPv4(0)
-Base.zero(::Type{IPv6}) = IPv6(0)
-
-function Base.string(i::IntervalValue{IPv4, T}) :: String where T
-    i_size = i.last.host - i.first.host + 1
-    if count_ones(i_size) == 1
-         "$(i.first)/$(32 - Int(log2(i_size)))"
-    else
-        "$(i.first) .. $(i.last)"
-    end
-end
-function Base.string(i::IntervalValue{IPv6, T}) :: String where T
-    if i.first.host == 0 && i.last.host == typemax(UInt128)
-        return "::/0"
-    end
-    i_size = i.last.host - i.first.host + 1
-    if count_ones(i_size) == 1
-        "$(i.first)/$(128 - Int(log2(i_size)))"
-    else
-        "$(i.first) .. $(i.last)"
-    end
-end
+export IPRange, prefixlen
+include("Common/IPRange.jl")
 
 function check_coverage(on_invalid::Function,
                         parent::IntervalTree{T, IntervalValue{T, U}},
@@ -251,7 +231,7 @@ function check_coverage(on_invalid::Function,
     for (p, c) in overlap
         if !(p.first <= c.first <= c.last <= p.last)
             all_covered = false
-            on_invalid()
+            on_invalid(c)
         end
     end
     all_covered

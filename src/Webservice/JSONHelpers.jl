@@ -16,18 +16,23 @@ JSON2.@format RPKI.RPKIObject{T} where T begin
         tree => (;exclude=true,)
 end
 
+function JSON2.write(io::IO, vrp::RPKI.VRP{T} where {T<:IPAddr})
+    JSON2.write(io, string(vrp))
+end
+
 JSON2.@format RPKI.ROA begin
         resources_v6 => (;exclude=true,)
         resources_v4 => (;exclude=true,)
 end
 
 function JSON2.write(io::IO, i::IntervalValue{<:IPAddr, T}) where T 
+    @debug "here"
     # string(i) is the prefix
     # value(i) is the Vector of RPKINodes
     cers = filter(e->e.obj.object isa RPKI.CER, value(i))
     roas = filter(e->e.obj.object isa RPKI.ROA, value(i))
-    JSON2.write(io, ("prefix" => string(i) => 
-                     Dict("CERs" => map(e->e.obj.filename, cers),
+    JSON2.write(io, (Dict("prefix" => string(i),
+                          "CERs" => map(e->e.obj.filename, cers),
                           "ROAs" => map(e->e.obj.filename, roas)
                          )
                     )

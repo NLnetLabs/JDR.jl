@@ -9,7 +9,7 @@ using IntervalTrees
 using Sockets
 
 export RPKIObject, RPKINode, TmpParseInfo, Lookup, print_ASN1
-export CER, MFT, ROA, CRL
+export RootCER, CER, MFT, ROA, CRL
 export add_resource!
 export VRP
 export root_to
@@ -25,6 +25,9 @@ mutable struct RPKIObject{T}
 end
 
 function add_resource!(::T, ::U, ::U) where {T,U} end
+function add_resource!(t::T, ::U) where {T,U} 
+    @warn "called generic add_resource!, t isa $(typeof(t))"
+end
 
 function Base.show(io::IO, obj::RPKIObject{T}) where T
     print(io, "RPKIObject type: ", nameof(typeof(obj).parameters[1]), '\n')
@@ -168,51 +171,57 @@ TmpParseInfo(;repodir=JDR.CFG["rpki"]["rsyncrepo"],lookup=Lookup(),nicenames::Bo
 
 
 
+struct RootCER
+    resources_v6::IntervalTree{IPv6, IntervalValue{IPv6, Vector{RPKINode}}}
+    resources_v4::IntervalTree{IPv4, IntervalValue{IPv4, Vector{RPKINode}}}
+end
+RootCER() = RootCER(IntervalTree{IPv6, IntervalValue{IPv6, Vector{RPKINode}}}(), IntervalTree{IPv4, IntervalValue{IPv4, Vector{RPKINode}}}())
+RPKIObject{RootCER}(rootcer::RootCER=RootCER()) = RPKIObject("", nothing, rootcer, nothing, nothing, nothing)
+
+
 struct ASIdentifiers
     ids::Vector{AutSysNum}
     ranges::Vector{OrdinalRange{AutSysNum}}
 end
-mutable struct CER 
-    serial::Integer
-    notBefore::Union{Nothing, DateTime}
-    notAfter::Union{Nothing, DateTime}
-    pubpoint::String
-    manifest::String
-    rrdp_notify::String
-    selfsigned::Union{Nothing, Bool}
-    validsig::Union{Nothing, Bool}
-    rsa_modulus::BigInt
-    rsa_exp::Int
+Base.@kwdef mutable struct CER 
+    serial::Integer = 0
+    notBefore::Union{Nothing, DateTime} = nothing
+    notAfter::Union{Nothing, DateTime} = nothing
+    pubpoint::String = ""
+    manifest::String = ""
+    rrdp_notify::String = ""
+    selfsigned::Union{Nothing, Bool} = nothing
+    validsig::Union{Nothing, Bool} = nothing
+    rsa_modulus::BigInt = 0
+    rsa_exp::Int = 0
 
-    issuer::String
-    subject::String
+    issuer::String = ""
+    subject::String = ""
 
-    inherit_v6_prefixes::Union{Nothing, Bool}
-    inherit_v4_prefixes::Union{Nothing, Bool}
-    #prefixes_v6_intervaltree::IntervalTree{Integer, Interval{Integer}}
-    #prefixes_v4_intervaltree::IntervalTree{Integer, Interval{Integer}}
-    resources_v6::IntervalTree{IPv6, IntervalValue{IPv6, Vector{RPKINode}}}
-    resources_v4::IntervalTree{IPv4, IntervalValue{IPv4, Vector{RPKINode}}}
+    inherit_v6_prefixes::Union{Nothing, Bool} = nothing
+    inherit_v4_prefixes::Union{Nothing, Bool} = nothing
+    resources_v6::IntervalTree{IPv6, IntervalValue{IPv6, Vector{RPKINode}}} = IntervalTree{IPv6, IntervalValue{IPv6, Vector{RPKINode}}}()
+    resources_v4::IntervalTree{IPv4, IntervalValue{IPv4, Vector{RPKINode}}} = IntervalTree{IPv4, IntervalValue{IPv4, Vector{RPKINode}}}()
 
+    inherit_ASNs::Bool = false
+    ASNs::AsIdsOrRanges = AsIdsOrRanges()
 
-    inherit_ASNs::Bool
-    ASNs::AsIdsOrRanges
-
-    resources_valid::Union{Nothing,Bool}
+    resources_valid::Union{Nothing,Bool} = nothing
 end
-CER() = CER(0, nothing, nothing,
-            "", "", "", nothing, nothing, 0, 0, "", "",
-            nothing, nothing,
-            #IPPrefixesOrRanges(), IPPrefixesOrRanges(),
-            IntervalTree{IPv6, IntervalValue{IPv6, Vector{RPKINode}}}(),
-            IntervalTree{IPv4, IntervalValue{IPv4, Vector{RPKINode}}}(),
-            false, AsIdsOrRanges(),
-            nothing)
+#CER() = CER(0, nothing, nothing,
+#            "", "", "", nothing, nothing, 0, 0, "", "",
+#            nothing, nothing,
+#            IntervalTree{IPv6, IntervalValue{IPRange{IPv6}, Vector{RPKINode}}}(),
+#            IntervalTree{IPv4, IntervalValue{IPRange{IPv4}, Vector{RPKINode}}}(),
+#            false, AsIdsOrRanges(),
+#            nothing)
 
 function Base.show(io::IO, cer::CER)
     print(io, "  pubpoint: ", cer.pubpoint, '\n')
     print(io, "  manifest: ", cer.manifest, '\n')
     print(io, "  rrdp: ", cer.rrdp_notify, '\n')
+    print(io, "  notBefore: ", cer.notBefore, '\n')
+    print(io, "  notAfter: ", cer.notAfter, '\n')
     printstyled(io, "  ASNs: \n")
     print(io, "    ", join(cer.ASNs, ","), "\n")
     #printstyled(io, "  IPv6 prefixes ($(length(cer.prefixes_v6))): \n")
@@ -236,11 +245,17 @@ mutable struct MFT
 end
 MFT() = MFT([], nothing, nothing, nothing, nothing)
 
-struct VRP{AFI<:IPNet}
-    prefix::AFI
+#struct VRP{AFI<:IPNet}
+#    prefix::AFI
+#    maxlength::Integer
+#end
+#Base.show(io::IO, vrp::VRP) = println(io, vrp.prefix, "-$(vrp.maxlength)")
+
+struct VRP{T<:IPAddr}
+    prefix::IPRange{T}
     maxlength::Integer
 end
-Base.show(io::IO, vrp::VRP) = println(io, vrp.prefix, "-$(vrp.maxlength)")
+Base.show(io::IO, vrp::VRP) = print(io, vrp.prefix, "-$(vrp.maxlength)")
 
 mutable struct ROA
     asid::Integer

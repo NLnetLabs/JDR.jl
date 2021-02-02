@@ -25,6 +25,7 @@ function Base.show(io::IO, roa::ROA)
     end
 end
 
+#= # not used?
 function rawv4_to_roa(o::RPKIObject{ROA}, roa_ipaddress::Node) :: RPKIObject{ROA}
     tagisa(roa_ipaddress, ASN1.SEQUENCE)
     tagisa(roa_ipaddress[1], ASN1.BITSTRING)
@@ -74,6 +75,7 @@ function rawv6_to_roa(o::RPKIObject{ROA}, roa_ipaddress::Node) :: RPKIObject{ROA
     push!(o.object.vrps, VRP(prefix, maxlength))
     o
 end
+=#
 
 @check "version" begin
     tagis_contextspecific(node, 0x00)
@@ -95,14 +97,17 @@ end
     node[1].nicename = "address"
 
     prefix = if tpi.afi == 1
-        bitstring_to_ipv4net(node[1].tag.value)
+        #bitstring_to_ipv4net(node[1].tag.value)
+        bitstring_to_v4prefix(node[1].tag.value)
     elseif tpi.afi == 2
-        bitstring_to_ipv6net(node[1].tag.value)
+        #bitstring_to_ipv6net(node[1].tag.value)
+        bitstring_to_v6prefix(node[1].tag.value)
     else
         throw("illegal AFI in check_ASN1_ROAIPAddress")
     end
 
-    maxlength = prefix.netmask #FIXME @code_warntype ?
+    #maxlength = prefix.netmask #FIXME @code_warntype ?
+    maxlength = prefixlen(prefix)
 
     # optional maxLength:
     if length(node.children) == 2
@@ -218,6 +223,8 @@ end
 function add_resource!(roa::ROA, minaddr::IPv4, maxaddr::IPv4)
 	push!(roa.resources_v4, IntervalValue(minaddr, maxaddr, VRP[]))
 end
+add_resource!(roa::ROA, ipr::IPRange{IPv6}) = push!(roa.resources_v6, IntervalValue(ipr, VRP[]))
+add_resource!(roa::ROA, ipr::IPRange{IPv4}) = push!(roa.resources_v4, IntervalValue(ipr, VRP[]))
 
 import .RPKI:check_resources
 function check_resources(o::RPKIObject{ROA}, tpi::TmpParseInfo)
@@ -272,6 +279,7 @@ function check_resources(o::RPKIObject{ROA}, tpi::TmpParseInfo)
     # now that we know the validity of the resources on the EE, verify that the
     # VRPs are covered by the resources on the EE
 
+    #= # TMP while refactoring into IntervalTree
     for v in o.object.vrps
         #@debug "checking $(v)"
         #interval = Interval{IPAddr}(minimum(v.prefix), maximum(v.prefix))
@@ -297,6 +305,7 @@ function check_resources(o::RPKIObject{ROA}, tpi::TmpParseInfo)
             end
         end
     end
+    =#
 end
 
 end # module

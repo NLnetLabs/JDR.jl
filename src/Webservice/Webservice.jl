@@ -71,8 +71,24 @@ function prefix(req::HTTP.Request)
     else
         throw("error: illegal prefix request")
     end
+
+    iprange = if length(parts) == 4
+        # no prefixlen passed
+        IPRange(parts[4])
+    elseif length(parts) > 4
+        _prefix = HTTP.URIs.splitpath(req.target)[4] 
+        _prefixlen = HTTP.URIs.splitpath(req.target)[5] 
+        IPRange(_prefix*'/'*_prefixlen)
+    else
+        throw("error: illegal prefix request")
+    end
+
          
+    include_more_specific = true
     res = collect(RPKI.search(LOOKUP[], prefix))
+    res = RPKI.search(TREE[], iprange, include_more_specific)
+
+
     if length(res) > PREFIX_RESULT_MAX
         @warn "more than $(PREFIX_RESULT_MAX) results ($(length(res))) for /prefix search on '$(prefix)', limiting .."
         res = Iterators.take(res, PREFIX_RESULT_MAX)

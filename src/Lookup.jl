@@ -158,3 +158,157 @@ function new_since(tree::RPKINode, tp::TimePeriod=Hour(1)) :: Vector{RPKINode}
             _.obj.object isa CRL && _.obj.object.this_update > now(UTC) - tp) |>
     collect
 end
+
+"""
+    search(tree, ipr)
+
+
+Find RPKINodes holding CERs or ROAs containing resources queried for. ROAs are
+matched if the ipr matches resources on the EE, or in the VRPs.
+
+"""
+function search(tree::RPKINode, ipr::IPRange{T}, include_more_specific::Bool=false) :: Vector{RPKINode} where {T<:IPAddr} 
+    search(tree, ipr.first, ipr.last, include_more_specific)
+end
+
+
+function search_attempt(tree::RPKINode, ipr::IPRange{T}, include_more_specific::Bool=false) :: Vector{RPKINode} where {T<:IPAddr} 
+    all_matching = _search_attempt(tree, ipr.first, ipr.last) |> unique
+
+    #filter out 0/0
+    filter!(n -> !(Interval{IPv6}(extrema(IPRange("::/0"))...) ∈ keys(n.obj.object.resources_v6)), all_matching)
+    filter!(n -> !(Interval{IPv4}(extrema(IPRange("0.0.0.0/0"))...) ∈ keys(n.obj.object.resources_v4)), all_matching)
+
+    # now filter based on more_specific
+
+    if !include_more_specific
+        #filter!(n -> , all_matching)
+    end
+    
+    # if empty, return first less specific?
+    # now filter based on CER/ROA/EE/VRP
+    
+
+    all_matching
+end
+
+
+function _search_attempt(tree::RPKINode, q1::T, q2::T) :: Vector{RPKINode} where {T<:IPAddr} 
+    if isnothing(tree.obj )
+        @debug "isnothing, returning"
+        return []
+    end
+    curobj = tree.obj.object
+    matches = if q1 isa IPv6
+        collect(intersect(curobj.resources_v6, q1, q2))
+    elseif q1 isa IPv4
+        collect(intersect(curobj.resources_v4, q1, q2))
+    else
+        throw("illegal AFI")
+    end
+    if isempty(matches)
+        return []
+    end
+    # now we know 'tree' has matched, so we return it, and recurse into its
+    # children
+    [tree, Iterators.flatten([_search(c, q1, q2) for match in matches for c in filter(v->v isa RPKINode, match.value)])...]
+end
+
+
+
+function search(tree::RPKINode, q1::T, q2::T, more_specific::Bool) :: Vector{RPKINode} where {T<:IPAddr} 
+    if isnothing(tree.obj )
+        @debug "isnothing, returning"
+        return []
+    end
+    curobj = tree.obj.object
+    res = []
+    matches = if q1 isa IPv6
+        collect(intersect(curobj.resources_v6, q1, q2))
+    elseif q1 isa IPv4
+        collect(intersect(curobj.resources_v4, q1, q2))
+    else
+        throw("illegal AFI")
+    end
+    if isempty(matches)
+        return []
+    end
+    for match in matches
+        if (match.first == q1 <= q2 == match.last)
+            @debug "query exactly matches match"
+            if !more_specific
+                # we do not want to return results more specific than the query
+                if curobj isa ROA
+                    @debug "terminal case: exact match, isa ROA"
+                    return [tree]
+                else
+                    @debug "terminal case: exact match, not a ROA"
+                    return [tree, (search.(match.value, q1, q2, more_specific) |> Iterators.flatten |> collect)... ]
+                end
+            else
+                #TODO
+                #@debug "more_specific true, ... TODO "
+                #in_sub = search.(match.value, q1, q2, more_specific) |> Iterators.flatten |> collect
+                for c in (filter(v -> v isa RPKINode, match.value) |> unique) #Set(match.value)
+                    Base.append!(res, search(c, q1, q2, more_specific))
+                end
+                if isempty(res)
+                    @debug "returning [tree]", tree
+                    return [tree]
+                else
+                    @debug "returning res", res
+                    return res
+                end
+            end
+        elseif (match.first < q1 <= q2 <= match.last) ||
+            (match.first <= q1 <= q2 < match.last) ||
+            (match.first < q1 <= q2 < match.last)
+             @debug "query is more specific than match"
+            if isempty(match.value)
+                # this match points to no RPKINodes
+                if (match.first, match.last) == extrema(IPRange("0/0")) ||
+                    (match.first, match.last) == extrema(IPRange("::/0"))
+                    @debug "matched on 0.0.0.0/0 or ::/0, ignoring"
+                else
+                    # this is the first less-specific that matches the query
+                    # and with no RPKINodes to continue the search, this is our
+                    # best result
+                    @debug "no values to recurse into, pushing $(tree)"
+                    push!(res, tree)
+                end
+            else
+                @debug "notempty"
+                if curobj isa Union{RootCER, CER}
+                    #@debug "res pre:", res
+                    for c in Set(match.value)
+                        Base.append!(res, search(c, q1, q2, more_specific))
+                    end
+                    #@debug "res now:", res
+                    if isempty(res) &&
+                        !((match.first, match.last) == extrema(IPRange("0/0")) ||
+                          (match.first, match.last) == extrema(IPRange("::/0")))
+                        @debug "no results, pushing first less-specific", tree.obj.filename
+                        push!(res, tree)
+                    end
+                end
+            end
+        else
+            @debug "query is less specific than match", match, q1, q2
+            if more_specific
+                #for c in Set(match.value)
+                push!(res, tree)
+                for c in (filter(v -> v isa RPKINode, match.value) |> unique) #Set(match.value)
+                    Base.append!(res, search(c, q1, q2, more_specific))
+                end
+            else
+                @debug "defaulting to returning the first less-specific if no other results found.." 
+                #@debug "current res", res
+                push!(res, tree.parent.parent)
+                #@debug "now res is", res
+            end
+            #TODO
+        end
+
+    end
+    res |> unique
+end

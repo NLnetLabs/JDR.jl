@@ -74,6 +74,9 @@ function add_resource!(cer::CER, minaddr::IPv4, maxaddr::IPv4)
 	push!(cer.resources_v4, IntervalValue(minaddr, maxaddr, RPKINode[]))
 end
 
+add_resource!(cer::CER, ipr::IPRange{IPv6}) = push!(cer.resources_v6, IntervalValue(ipr, RPKINode[]))
+add_resource!(cer::CER, ipr::IPRange{IPv4}) = push!(cer.resources_v4, IntervalValue(ipr, RPKINode[]))
+
 
 import .RPKI:check_resources
 function check_resources(o::RPKIObject{CER}, tpi::TmpParseInfo)
@@ -137,17 +140,17 @@ function check_resources(o::RPKIObject{CER}, tpi::TmpParseInfo)
         end
         
         # IPv6:
-		Common.check_coverage(tpi.certStack[end-certStackOffset_v6].resources_v6, o.object.resources_v6) do
-                @warn "illegal IP resource on $(o.filename)"
-                remark_resourceIssue!(o, "Illegal IPv6 resource $(c)")
-                o.object.resources_valid = false
+		Common.check_coverage(tpi.certStack[end-certStackOffset_v6].resources_v6, o.object.resources_v6) do invalid
+            @warn "illegal IP resource $(IPRange(invalid.first, invalid.last)) on $(o.filename)"
+            remark_resourceIssue!(o, "Illegal IPv6 resource $(IPRange(invalid.first, invalid.last))")
+            o.object.resources_valid = false
         end
 
         # IPv4:
-        Common.check_coverage(tpi.certStack[end-certStackOffset_v4].resources_v4, o.object.resources_v4) do
-                @warn "illegal IP resource on $(o.filename)"
-                remark_resourceIssue!(o, "Illegal IPv4 resource $(c)")
-                o.object.resources_valid = false
+        Common.check_coverage(tpi.certStack[end-certStackOffset_v4].resources_v4, o.object.resources_v4) do invalid
+            @warn "illegal IP resource $(IPRange(invalid.first, invalid.last)) on $(o.filename)"
+            remark_resourceIssue!(o, "Illegal IPv4 resource $(IPRange(invalid.first, invalid.last))")
+            o.object.resources_valid = false
         end
     end
 

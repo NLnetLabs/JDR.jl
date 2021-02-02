@@ -6,9 +6,11 @@ using ..ASN1
 using ..PrefixTrees
 
 using IPNets
+using Sockets
 using Dates
 using SHA
 using IntervalTrees
+using Query
 
 export RPKINode, RPKIObject # reexport from RPKI.Common
 export retrieve_all, CER, MFT, CRL, ROA
@@ -84,6 +86,7 @@ function add_roa!(lookup::Lookup, roanode::RPKINode)
     end
 
     # add prefixes
+    #= TMP while refactoring into IntervalTree
     for vrp in roa.vrps
         if vrp.prefix isa IPv6Net
             lookup.prefix_tree_v6[vrp.prefix] = roanode
@@ -99,6 +102,7 @@ function add_roa!(lookup::Lookup, roanode::RPKINode)
             throw("illegal vrp.prefix")
         end
     end
+    =#
 end
 
 function process_roa(roa_fn::String, lookup::Lookup, tpi::TmpParseInfo) :: RPKINode
@@ -247,7 +251,18 @@ function link_resources!(cer::RPKINode)
     if isempty(cer.children)
         return
     end
-    for child in filter(x->x.obj.object isa Union{CER,ROA}, cer.children[1].children)
+
+    # There are two cases when traversing down the RPKINode tree:
+    # 1: a CER points, via an MFT (.children[1]), to children
+    # 2: the RootCER points to RIR CERs directly
+    descendants = if cer.children[1].obj.object isa MFT
+        # case 1
+        cer.children[1].children
+    elseif cer.obj.object isa RootCER
+        # case 2
+        cer.children
+    end
+    for child in filter(x->x.obj.object isa Union{CER,ROA}, descendants)
         overlap = intersect(cer.obj.object.resources_v6, child.obj.object.resources_v6)
         for (p, c) in overlap
             push!(p.value, child) # add RPKINode pointing to child to this interval.value
@@ -258,6 +273,26 @@ function link_resources!(cer::RPKINode)
         end
         if child.obj.object isa CER
             link_resources!(child)
+        elseif child.obj.object isa ROA
+            #@debug "EE -> VRP"
+            #@debug child.obj.object.resources_v6 
+            #@debug child.obj.object.vrps
+            ee = child.obj.object
+            for v in child.obj.object.vrps
+                if v isa VRP{IPv6}
+                    overlap = intersect(ee.resources_v6, IntervalTree{IPv6, Interval{IPv6}}([Interval(v.prefix)]))
+                    @assert overlap |> collect |> length <= 1
+                    for (p, c) in overlap
+                        push!(p.value, v) # add RPKINode pointing to child to this interval.value
+                    end
+                elseif v isa VRP{IPv4}
+                    overlap = intersect(ee.resources_v4, IntervalTree{IPv4, Interval{IPv4}}([Interval(v.prefix)]))
+                    @assert overlap |> collect |> length <= 1
+                    for (p, c) in overlap
+                        push!(p.value, v) # add RPKINode pointing to child to this interval.value
+                    end
+                end
+            end
         end
     end
 end
@@ -296,16 +331,16 @@ function process_cer(cer_fn::String, lookup::Lookup, tpi::TmpParseInfo) :: RPKIN
 
     depth = length(tpi.certStack)
     if !(ca_host in keys(lookup.pubpoints))
-        lookup.pubpoints[ca_host] = depth => cer_node
+        lookup.pubpoints[ca_host] = depth => Set(cer_node)
     else
-        (_d, _) = lookup.pubpoints[ca_host]
-        if depth < _d
-            @debug "existing pubpoint $(ca_host) at lower degree $(depth) instead of $(_d)"
-            lookup.pubpoints[ca_host] = Pair(depth, cer_node)
-        elseif depth == _d
+        (d, s) = lookup.pubpoints[ca_host]
+        if depth < d
+            @debug "existing pubpoint $(ca_host) at lower degree $(depth) instead of $(d)"
+            lookup.pubpoints[ca_host] = depth => Set(cer_node)
+        elseif depth == d
             #@debug "existing pubpoint $(ca_host) at similar depth $(depth)"
-            (_, set) = lookup.pubpoints[ca_host] 
-            push!(set, cer_node)
+            #(_, set) = lookup.pubpoints[ca_host] 
+            push!(s, cer_node)
         end
     end
     #= # for now, do not add the RRDP hosts to lookup.pubpoints

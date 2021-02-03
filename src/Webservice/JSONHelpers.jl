@@ -20,13 +20,17 @@ function JSON2.write(io::IO, vrp::RPKI.VRP{T} where {T<:IPAddr})
     JSON2.write(io, string(vrp))
 end
 
+function JSON2.write(io::IO, vrps::RPKICommon.VRPS)
+    JSON2.write(io, ["$(IPRange(ipr.first, ipr.last))-$(ipr.value)" for ipr in vcat(collect(vrps.resources_v6), collect(vrps.resources_v4))])
+end
 JSON2.@format RPKI.ROA begin
         resources_v6 => (;exclude=true,)
         resources_v4 => (;exclude=true,)
+        vrps => (;exclude=true,) #TMP, remove after removing vrps from ROA altogether
+        vrp_tree =>(;name="vrps",)
 end
 
 function JSON2.write(io::IO, i::IntervalValue{<:IPAddr, T}) where T 
-    @debug "here"
     # string(i) is the prefix
     # value(i) is the Vector of RPKINodes
     cers = filter(e->e.obj.object isa RPKI.CER, value(i))

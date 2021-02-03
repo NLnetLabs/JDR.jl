@@ -257,14 +257,28 @@ struct VRP{T<:IPAddr}
 end
 Base.show(io::IO, vrp::VRP) = print(io, vrp.prefix, "-$(vrp.maxlength)")
 
+"""
+    VRPS
+
+    Holds the IPv6 and IPv4 resources listed on this ROA, as an IntervalTree,
+    with Values denoting the maxlength.
+
+"""
+struct VRPS
+    resources_v6::IntervalTree{IPv6, IntervalValue{IPv6, UInt8}} 
+    resources_v4::IntervalTree{IPv4, IntervalValue{IPv4, UInt8}}# = IntervalTree{T, IntervalValue{T, Int}}
+end
+VRPS() = VRPS(IntervalTree{IPv6, IntervalValue{IPv6, UInt8}}() , IntervalTree{IPv4, IntervalValue{IPv4, UInt8}}())
+
 mutable struct ROA
     asid::Integer
     vrps::Vector{VRP}
+    vrp_tree::VRPS
     resources_valid::Union{Nothing,Bool}
     resources_v6::IntervalTree{IPv6, IntervalValue{IPv6, Vector{VRP}}}
     resources_v4::IntervalTree{IPv4, IntervalValue{IPv4, Vector{VRP}}}
 end
-ROA() = ROA(0, [],
+ROA() = ROA(0, [], VRPS(),
             nothing,
             IntervalTree{IPv6, IntervalValue{IPv6, Vector{VRP}}}(),
             IntervalTree{IPv4, IntervalValue{IPv4, Vector{VRP}}}(),

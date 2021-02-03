@@ -225,7 +225,7 @@ include("Common/IPRange.jl")
 
 function check_coverage(on_invalid::Function,
                         parent::IntervalTree{T, IntervalValue{T, U}},
-                        child::IntervalTree{T, IntervalValue{T, U}}) :: Bool where {T<:IPAddr, U}
+                        child::IntervalTree{T, IntervalValue{T, V}}) :: Bool where {T<:IPAddr, U, V}
     all_covered = true
     overlap = collect(intersect(parent, child))
     for (p, c) in overlap

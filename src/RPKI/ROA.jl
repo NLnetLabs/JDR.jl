@@ -18,10 +18,17 @@ export check_ASN1
 
 
 function Base.show(io::IO, roa::ROA)
-    print(io, "  ASID: ", roa.asid, "\n")
-    print(io, "  VRPs:\n")
-    for vrp in roa.vrps
-        print(io, "    ", vrp.prefix, "-", vrp.maxlength, "\n")
+    println(io, "ASID: ", roa.asid)
+    #print(io, "  VRPs:\n")
+    #for vrp in roa.vrps
+    #    print(io, "    ", vrp.prefix, "-", vrp.maxlength, "\n")
+    #end
+    println(io, "VRPs:")
+    for vrp in roa.vrp_tree.resources_v6
+        println(io, "    ", IPRange(vrp.first, vrp.last), "-", vrp.value)
+    end
+    for vrp in roa.vrp_tree.resources_v4
+        println(io, "    ", IPRange(vrp.first, vrp.last), "-", vrp.value)
     end
 end
 
@@ -107,7 +114,7 @@ end
     end
 
     #maxlength = prefix.netmask #FIXME @code_warntype ?
-    maxlength = prefixlen(prefix)
+    maxlength = UInt8(prefixlen(prefix))
 
     # optional maxLength:
     if length(node.children) == 2
@@ -121,6 +128,13 @@ end
         end
     end
     push!(o.object.vrps, (@__MODULE__).VRP(prefix, maxlength))
+
+    if tpi.afi == 1
+        push!(o.object.vrp_tree.resources_v4, IntervalValue(prefix.first, prefix.last, maxlength))
+    elseif tpi.afi == 2
+        push!(o.object.vrp_tree.resources_v6, IntervalValue(prefix.first, prefix.last, maxlength))
+    end
+
 end
 @check "ROAIPAddressFamily" begin
         tagisa(node, ASN1.SEQUENCE)
@@ -278,6 +292,23 @@ function check_resources(o::RPKIObject{ROA}, tpi::TmpParseInfo)
 
     # now that we know the validity of the resources on the EE, verify that the
     # VRPs are covered by the resources on the EE
+
+
+    # attempt with new vrp_tree
+
+    # IPv6:
+    Common.check_coverage(o.object.resources_v6, o.object.vrp_tree.resources_v6) do invalid
+        @warn "illegal IPv6 VRP $(IPRange(invalid.first, invalid.last)) not covered by EE on $(o.filename)"
+        remark_resourceIssue!(o, "Illegal IPv6 VRP $(IPRange(invalid.first, invalid.last))")
+        o.object.resources_valid = false
+    end
+
+    # IPv4:
+    Common.check_coverage(o.object.resources_v4, o.object.vrp_tree.resources_v4) do invalid
+        @warn "illegal IPv4 VRP $(IPRange(invalid.first, invalid.last)) not covered by EE on $(o.filename)"
+        remark_resourceIssue!(o, "Illegal IPv4 VRP $(IPRange(invalid.first, invalid.last))")
+        o.object.resources_valid = false
+    end
 
     #= # TMP while refactoring into IntervalTree
     for v in o.object.vrps

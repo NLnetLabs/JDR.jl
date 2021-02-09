@@ -110,6 +110,23 @@ function process_roa(roa_fn::String, lookup::Lookup, tpi::TmpParseInfo) :: RPKIN
     roa_node = RPKINode(roa_obj)
     add_filename!(lookup, roa_fn, roa_node)
 
+    # add EE resources to Lookup
+    for r in roa_obj.object.resources_v4
+        add_resource(lookup, r.first, r.last, roa_node)
+    end
+    for r in roa_obj.object.resources_v6
+        add_resource(lookup, r.first, r.last, roa_node)
+    end
+
+    # add VRPs to Lookup
+    for r in roa_obj.object.vrp_tree.resources_v4
+        add_resource(lookup, r.first, r.last, roa_node)
+    end
+    for r in roa_obj.object.vrp_tree.resources_v6
+        add_resource(lookup, r.first, r.last, roa_node)
+    end
+    
+
     roa_node.remark_counts_me = count_remarks(roa_obj) + count_remarks(roa_obj.tree)
 
     @assert !isnothing(tpi.eeCert)
@@ -327,6 +344,13 @@ function process_cer(cer_fn::String, lookup::Lookup, tpi::TmpParseInfo) :: RPKIN
         push!(lookup.valid_certs, cer_node)
     else
         push!(lookup.invalid_certs, cer_node)
+    end
+
+    for r in cer_obj.object.resources_v4
+        add_resource(lookup, r.first, r.last, cer_node)
+    end
+    for r in cer_obj.object.resources_v6
+        add_resource(lookup, r.first, r.last, cer_node)
     end
 
     depth = length(tpi.certStack)

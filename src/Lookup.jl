@@ -2,7 +2,7 @@ using IPNets
 using ...PrefixTrees
 export search
 export new_since
-export add_filename!, add_missing_filename!
+export add_filename!, add_missing_filename!, add_resource
 
 struct Lookup
     ASNs::Dict{AutSysNum}{Vector{RPKINode}}
@@ -10,6 +10,10 @@ struct Lookup
     missing_files::Dict{String}{RPKINode} # split up between CER and MFT?
     prefix_tree_v6::PrefixTree{RPKINode}
     prefix_tree_v4::PrefixTree{RPKINode}
+
+    resources_v6::IntervalTree{IPv6, IntervalValue{IPv6, RPKINode}}
+    resources_v4::IntervalTree{IPv4, IntervalValue{IPv4, RPKINode}}
+
     pubpoints::Dict{String}{Pair{Int,Set{RPKINode}}}
     too_specific::Vector{RPKINode}
     invalid_signatures::Vector{RPKIObject{T} where T} # TODO refactor to RPKINode
@@ -19,8 +23,19 @@ end
 Lookup() = Lookup(Dict(), Dict(), Dict(),
                   PrefixTree{RPKINode}(),
                   PrefixTree{RPKINode}(),
+                  IntervalTree{IPv6, IntervalValue{IPv6, RPKINode}}(),
+                  IntervalTree{IPv4, IntervalValue{IPv4, RPKINode}}(),
+
                   Dict{String}{Pair{Int,Set{RPKINode}}}(),
                   Vector(), Vector(), Vector(), Vector())
+
+
+add_resource(l::Lookup, ipr::IPRange{IPv6}, node::RPKINode) = push!(l.resources_v6, IntervalValue(ipr, node))
+add_resource(l::Lookup, ipr::IPRange{IPv4}, node::RPKINode) = push!(l.resources_v4, IntervalValue(ipr, node))
+add_resource(l::Lookup, iv::Interval{IPv6}, node::RPKINode) = push!(l.resources_v6, IntervalValue(iv.first, iv.last, node))
+add_resource(l::Lookup, iv::Interval{IPv4}, node::RPKINode) = push!(l.resources_v4, IntervalValue(iv.first, iv.last, node))
+add_resource(l::Lookup, from::IPv6, to::IPv6, node::RPKINode) = push!(l.resources_v6, IntervalValue(from, to, node))
+add_resource(l::Lookup, from::IPv4, to::IPv4, node::RPKINode) = push!(l.resources_v4, IntervalValue(from, to, node))
 
 function add_filename!(l::Lookup, fn::String, node::RPKINode)
     l.filenames[fn] = node
@@ -311,4 +326,21 @@ function search(tree::RPKINode, q1::T, q2::T, more_specific::Bool) :: Vector{RPK
 
     end
     res |> unique
+end
+
+function search(l::Lookup, ipr::IPRange{T}, include_more_specific::Bool=true) :: Vector{RPKINode} where {T<:IPAddr} 
+    search(l, ipr.first, ipr.last, include_more_specific)
+end
+function search(l::Lookup, q1::T, q2::T, include_more_specific::Bool) :: Vector{RPKINode} where {T<:IPAddr} 
+    matches = if q1 isa IPv6
+        intersect(l.resources_v6, Interval(q1, q2)) |> collect
+    else
+        intersect(l.resources_v4, Interval(q1, q2)) |> collect
+    end
+    # TODO improve, filter out /0
+    matches = filter(m -> m.first != zero(typeof(q1)) , matches) 
+    if !include_more_specific
+        matches = filter(m -> m.first <= q1 <= q2 <= m.last , matches)
+    end
+    map(e->e.value, matches) |> unique
 end

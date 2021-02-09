@@ -109,7 +109,7 @@ const FILENAME_RESULT_MAX = 20
 function filename(req::HTTP.Request)
     # /api/v1/filename/somefilename, get and unescape filename
     filename = HTTP.URIs.splitpath(req.target)[4]
-    filename = HTTP.URIs.unescapeuri(filename)
+    filename = strip(HTTP.URIs.unescapeuri(filename))
     res = RPKI.search(LOOKUP[], filename)
     if length(res) > FILENAME_RESULT_MAX
         @warn "more than $(FILENAME_RESULT_MAX) results ($(length(res))) for /filename search on '$(filename)', limiting .."

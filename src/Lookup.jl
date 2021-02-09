@@ -87,7 +87,7 @@ end
 #    end
 #end
 
-function search(l::Lookup, filename::String) :: Dict{String}{RPKINode}
+function search(l::Lookup, filename::AbstractString) :: Dict{String}{RPKINode}
     filter(fn->occursin(filename, first(fn)), l.filenames)
 end
 

@@ -386,11 +386,12 @@ function to_vue_tree(branches::Vector)
 
             if isempty(r.children)
                 # assuming we are merging e.g. filename search results
-                @debug "pushing $(r.name) to $(prev_l.name) children"
-                push!(prev_l.children, r)
+                # check if the node is not already in the left branch
+                if !(r.object.filename in [c.object.filename for c in prev_l.children])
+                    push!(prev_l.children, r)
+                end
                 done = true
                 continue
-                #throw("illegal code path")
             end
 
             # As long as the right node is the same as the left, we do nothing

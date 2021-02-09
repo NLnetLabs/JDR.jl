@@ -217,7 +217,7 @@ function newsince(req::HTTP.Request)
         elseif uppercase(splitted[5]) == "CRL"
             RPKI.CRL
         else
-            nothing
+            RPKI.CER
         end
     end
     RPKI.new_since(TREE[], timeperiod) |>

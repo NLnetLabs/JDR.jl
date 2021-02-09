@@ -85,8 +85,9 @@ function prefix(req::HTTP.Request)
 
          
     include_more_specific = true
-    res = collect(RPKI.search(LOOKUP[], prefix))
-    res = RPKI.search(TREE[], iprange, include_more_specific)
+    #res = collect(RPKI.search(LOOKUP[], prefix))
+    #res = RPKI.search(TREE[], iprange, include_more_specific)
+    res = RPKI.search(LOOKUP[], iprange, include_more_specific)
 
 
     if length(res) > PREFIX_RESULT_MAX

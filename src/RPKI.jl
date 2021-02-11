@@ -72,12 +72,10 @@ end
 
 
 function add_roa!(lookup::Lookup, roanode::RPKINode)
-    # add ASN
     # TODO do we also want to add CERs here?
     @assert roanode.obj isa RPKIObject{ROA}
     roa = roanode.obj.object
     asn = AutSysNum(roa.asid)
-    #@assert asn > 0
     if asn in keys(lookup.ASNs)
         push!(lookup.ASNs[asn], roanode) 
     else
@@ -136,10 +134,6 @@ function process_crl(crl_fn::String, lookup::Lookup, tpi::TmpParseInfo) ::RPKINo
 end
 
 function process_mft(mft_fn::String, lookup::Lookup, tpi::TmpParseInfo, cer_node::RPKINode) :: RPKINode
-    #if mft_fn in keys(lookup.filenames)
-    #    @warn "$(mft_fn) already seen, loop?"
-    #    throw("possible loop in $(mft_fn)" )
-    #end
     mft_dir = dirname(mft_fn)
     tpi.cwd = mft_dir
     mft_obj::RPKIObject{MFT} = try 
@@ -227,6 +221,7 @@ function process_mft(mft_fn::String, lookup::Lookup, tpi::TmpParseInfo, cer_node
             try
                 crlnode = process_crl(crl_fn, lookup, tpi)
                 push!(listed_files, crlnode)
+                @assert crlnode.obj.object isa CRL
                 add_sibling(cer_node, crlnode)
 
 
@@ -295,7 +290,6 @@ function link_resources!(cer::RPKINode)
 end
 
 function process_cer(cer_fn::String, lookup::Lookup, tpi::TmpParseInfo) :: RPKINode
-    #@debug "process_cer for $(basename(cer_fn))"
     # now, for each .cer, get the CA Repo and 'sync' again
     if cer_fn in keys(lookup.filenames)
         @warn "$(basename(cer_fn)) already seen, loop?"
@@ -375,18 +369,12 @@ function process_cer(cer_fn::String, lookup::Lookup, tpi::TmpParseInfo) :: RPKIN
         catch e
             if e isa LoopError
                 @warn "Loop! between $(basename(e.file1)) and $(basename(e.file2))"
-                #throw(e)
             else
-                #showerror(stderr, e, catch_backtrace())
-                #print(e)
                 rethrow(e)
             end
         end
-
-        # TODO check RFC on directory structures: do the .mft and .cer have to
-        # reside in the same dir?
-
     end
+
     # we already counted the remarks from .tree, now add those from the object:
     cer_node.remark_counts_me += count_remarks(cer_obj)
 
@@ -575,168 +563,6 @@ function collect_remarks_from_asn1!(o::RPKIObject{T}, node::Node) where T
     if !isnothing(node.children)
         for c in node.children
             collect_remarks_from_asn1!(o, c)
-        end
-    end
-end
-
-function _html(tree::RPKINode, io::IOStream)
-    if !isnothing(tree.obj)
-        if tree.obj isa String
-            write(io, "<li><span class='caret'>$(tree.obj)")
-        else
-            html(tree.obj, "/tmp/jdrhtml")
-            # a href to html_path(Object)
-            write(io, "<li><span class='caret'>$(nameof(typeof(tree.obj).parameters[1]))")
-            if tree.obj isa RPKIObject{CER}
-                write(io, " [$(split_scheme_uri(tree.obj.object.pubpoint)[1])]")
-            end
-            write(io, " <a target='_blank' href='file://$(html_path(tree.obj, "/tmp/jdrhtml"))'>")
-            write(io, "$(basename(tree.obj.filename))")
-            write(io, "</a>")
-        end
-            write(io, " <span style='color:red'>$(count_remarks(tree))</span>")
-            write(io, "</span>\n")
-    else
-        write(io, "<li><span class='caret'>unsure, tree.obj was nothing<span>\n")
-    end
-    if ! isempty(tree.children)
-        write(io, "<ul class='nested'>\n")
-        for c in tree.children
-            _html(c, io) 
-        end
-        write(io, "</ul>\n")
-    elseif tree.obj isa RPKIObject{ROA}
-        write(io, "<ul class='nested'>\n")
-        write(io, "<li class='roa'>$(tree.obj.object.asid)</li>")
-        for r in tree.obj.object.vrps
-            write(io, "<li class='roa'>$(r)</li>")
-        end
-        write(io, "</ul>\n")
-
-    end
-    write(io, "</li>\n")
-end
-
-function html(tree::RPKINode, output_fn::String) 
-    STATIC_DIR = normpath(joinpath(pathof(parentmodule(RPKI)), "..", "..", "static"))
-    open(output_fn, "w") do io
-        write(io, "<link rel='stylesheet' href='file://$(STATIC_DIR)/style.css'/>\n")
-        write(io, "<h1>JDR</h1>\n\n")
-        write(io, "<ul id='main'>\n")
-        write(io, "<li>root</li>\n")
-        for c in tree.children
-            _html(c, io)
-        end
-        write(io, "</ul>\n")
-        write(io, "<!-- done -->\n")
-        write(io, "<script type='text/javascript' src='file://$(STATIC_DIR)/javascript.js'></script>")
-    end
-    @debug "written $(output_fn)"
-end
-
-
-# this is to generate a separate .html file for RPKIObject{CER/MFT/ROA/CRL}
-# NOT to be used in any recursive way in html(::RPKINode)
-function html_path(o::RPKIObject, output_dir::String)
-    normpath(joinpath(output_dir, replace(o.filename, REPO_DIR => ".", count=1)) * ".html")
-end
-function html(o::RPKIObject{CER}, output_dir::String)
-    output_fn = html_path(o, output_dir)
-    mkpath(dirname(output_fn))
-    STATIC_DIR = normpath(joinpath(pathof(parentmodule(RPKI)), "..", "..", "static"))
-    open(output_fn, "w") do io
-        write(io, "<link rel='stylesheet' href='file://$(STATIC_DIR)/style.css'/>\n")
-        write(io, "<h1>JDR</h1>\n")
-        write(io, "<h2>Certificate: $(basename(o.filename))</h2>\n")
-        write(io, "<b>pubpoint:</b> $(o.object.pubpoint)<br/>")
-        write(io, "<b>manifest:</b> $(o.object.manifest)<br/>")
-        write(io, "<b>rrdp:</b> $(o.object.rrdp_notify)<br/>")
-        write(io, "<b>ASNs:</b> $(o.object.ASNs)<br/>")
-        write(io, "<b>prefixes:</b> $(o.object.prefixes)<br/>")
-        write(io, "<ul class='asn'>")
-        ASN._html(o.tree, io)
-        write(io, "</ul>")
-    end
-end
-function html(o::RPKIObject{MFT}, output_dir::String)
-    output_fn = html_path(o, output_dir)
-    mkpath(dirname(output_fn))
-    STATIC_DIR = normpath(joinpath(pathof(parentmodule(RPKI)), "..", "..", "static"))
-    open(output_fn, "w") do io
-        write(io, "<link rel='stylesheet' href='file://$(STATIC_DIR)/style.css'/>\n")
-        write(io, "<h1>JDR</h1>\n")
-        write(io, "<h2>Manifest: $(basename(o.filename))</h2>\n")
-        write(io, "<b>listed files:</b> </br>")
-        write(io, "<ul>")
-        for f in o.object.files
-            write(io, "<li>$(f)</li>")
-        end
-        write(io, "</ul>")
-
-        write(io, "<ul class='asn'>")
-        ASN._html(o.tree, io)
-        write(io, "</ul>")
-    end
-end
-function html(o::RPKIObject{ROA}, output_dir::String)
-    output_fn = html_path(o, output_dir)
-    mkpath(dirname(output_fn))
-    STATIC_DIR = normpath(joinpath(pathof(parentmodule(RPKI)), "..", "..", "static"))
-    open(output_fn, "w") do io
-        write(io, "<link rel='stylesheet' href='file://$(STATIC_DIR)/style.css'/>\n")
-        write(io, "<h1>JDR</h1>\n")
-        write(io, "<h2>ROA: $(basename(o.filename))</h2>\n")
-        write(io, "<b>ASID:</b> $(o.object.asid) </br>")
-        write(io, "<b>Prefixes:</b> </br>")
-        write(io, "<ul>")
-        for v in o.object.vrps
-            write(io, "<li>$(v.prefix) , maxLength: $(v.maxlength)</li>")
-        end
-        write(io, "</ul>")
-
-        write(io, "<ul class='asn'>")
-        ASN._html(o.tree, io)
-        write(io, "</ul>")
-    end
-end
-
-# Generate HTML for a 'Lookup query'
-# this is temporary: ideally we make something XHR JSON based
-# for now, this is only here to show what we can do with JDR
-#
-function search_asn_html(lookup::Lookup, asn::AutSysNum, output_dir::String)
-    if ! (asn in keys(lookup.ASNs))
-        @error "asn not in Lookup cache"
-        return
-    end
-
-    output_fn = normpath(joinpath(output_dir, "$(asn.asn).html"))
-    @debug output_fn
-    mkpath(dirname(output_fn))
-    STATIC_DIR = normpath(joinpath(pathof(parentmodule(RPKI)), "..", "..", "static"))
-
-    open(output_fn, "w") do io
-        numnodes = length(lookup.ASNs[asn])
-        write(io, "<h2>", "$(numnodes)", " ROAs found for ", "AS$(asn.asn)", "</h2>")
-
-        for roanode in lookup.ASNs[asn]
-            write(io, "<div style='border: 1px solid black;'>")
-            write(io, "<div>")
-            write(io, "prefixes: ")
-            write(io, "<ul>")
-            for vrp in roanode.obj.object.vrps
-                write(io, "<li>", "$(vrp.prefix)-$(vrp.maxlength)", "</li>")
-            end
-            write(io, "</ul>")
-            write(io, "</div>")
-            parent = roanode
-            while !(isnothing(parent.obj))
-                #write(io, "via ", parent.obj.filename, "<br/>")
-                write(io, "&#x2193;<a href='$(html_path(parent.obj, output_dir))'>$(basename(parent.obj.filename))</a><br/>")
-                parent = parent.parent
-            end
-            write(io, "</div><br/>")
-
         end
     end
 end

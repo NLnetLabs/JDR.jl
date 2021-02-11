@@ -84,25 +84,6 @@ function add_roa!(lookup::Lookup, roanode::RPKINode)
     else
         lookup.ASNs[asn] = [roanode]
     end
-
-    # add prefixes
-    #= TMP while refactoring into IntervalTree
-    for vrp in roa.vrps
-        if vrp.prefix isa IPv6Net
-            lookup.prefix_tree_v6[vrp.prefix] = roanode
-            if vrp.prefix.netmask > 48
-                push!(lookup.too_specific, roanode)
-            end
-        elseif vrp.prefix isa IPv4Net
-            lookup.prefix_tree_v4[vrp.prefix] = roanode
-            if vrp.prefix.netmask > 24
-                push!(lookup.too_specific, roanode)
-            end
-        else
-            throw("illegal vrp.prefix")
-        end
-    end
-    =#
 end
 
 function process_roa(roa_fn::String, lookup::Lookup, tpi::TmpParseInfo) :: RPKINode
@@ -429,6 +410,7 @@ end
 
 function _merge_lookups(a::Lookup, b::Lookup) ::Lookup
     for property in propertynames(a)
+        #TODO prefix_tree_ is replaced with :resources_v IntervalTree
         if property == :prefix_tree_v6 || property == :prefix_tree_v4
             continue
         end

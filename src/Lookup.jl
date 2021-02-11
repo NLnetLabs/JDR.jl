@@ -1,5 +1,3 @@
-using IPNets
-using ...PrefixTrees
 export search
 export new_since
 export add_filename!, add_missing_filename!, add_resource
@@ -8,8 +6,6 @@ struct Lookup
     ASNs::Dict{AutSysNum}{Vector{RPKINode}}
     filenames::Dict{String}{RPKINode}
     missing_files::Dict{String}{RPKINode} # split up between CER and MFT?
-    prefix_tree_v6::PrefixTree{RPKINode}
-    prefix_tree_v4::PrefixTree{RPKINode}
 
     resources_v6::IntervalTree{IPv6, IntervalValue{IPv6, RPKINode}}
     resources_v4::IntervalTree{IPv4, IntervalValue{IPv4, RPKINode}}
@@ -21,8 +17,6 @@ struct Lookup
     valid_certs::Vector{RPKINode}
 end
 Lookup() = Lookup(Dict(), Dict(), Dict(),
-                  PrefixTree{RPKINode}(),
-                  PrefixTree{RPKINode}(),
                   IntervalTree{IPv6, IntervalValue{IPv6, RPKINode}}(),
                   IntervalTree{IPv4, IntervalValue{IPv4, RPKINode}}(),
 
@@ -47,60 +41,6 @@ end
 function search(l::Lookup, asn::AutSysNum) :: Vector{RPKINode}
     get(l.ASNs, asn, AutSysNum[])
 end
-
-function search(l::Lookup, prefix::IPv6Net) :: Set{RPKINode}
-    if !isnothing(l.prefix_tree_v6[prefix])
-        # exact hit
-        Set(values(firstparent(l.prefix_tree_v6, prefix)))
-    elseif !isnothing(subtree(l.prefix_tree_v6, prefix))
-        # more-specifics below this one
-        Set(values(subtree(l.prefix_tree_v6, prefix)))
-    else
-        # falling back to first less-specific
-        fp = firstparent(l.prefix_tree_v6, prefix)
-        if !isnothing(fp)
-            return Set(fp.vals)
-        else
-            return []
-        end
-    end
-end
-function search(l::Lookup, prefix::IPv4Net) :: Set{RPKINode}
-    if !isnothing(l.prefix_tree_v4[prefix])
-        # exact hit
-        Set(values(firstparent(l.prefix_tree_v4, prefix)))
-    elseif !isnothing(subtree(l.prefix_tree_v4, prefix))
-        # more-specifics below this one
-        Set(values(subtree(l.prefix_tree_v4, prefix)))
-    else
-        # falling back to first less-specific
-        fp = firstparent(l.prefix_tree_v4, prefix)
-        if !isnothing(fp)
-            return Set(fp.vals)
-        else
-            return []
-        end
-    end
-end
-
-
-#function search(l::Lookup, prefix::T) :: Set{RPKINode} where T<:IPNet
-#    if !isnothing(l.prefix_tree[prefix])
-#        # exact hit
-#        Set(values(firstparent(l.prefix_tree, prefix)))
-#    elseif !isnothing(subtree(l.prefix_tree, prefix))
-#        # more-specifics below this one
-#        Set(values(subtree(l.prefix_tree, prefix)))
-#    else
-#        # falling back to first less-specific
-#        fp = firstparent(l.prefix_tree, prefix)
-#        if !isnothing(fp)
-#            return Set(fp.vals)
-#        else
-#            return []
-#        end
-#    end
-#end
 
 function search(l::Lookup, filename::AbstractString) :: Dict{String}{RPKINode}
     filter(fn->occursin(filename, first(fn)), l.filenames)
@@ -185,50 +125,6 @@ matched if the ipr matches resources on the EE, or in the VRPs.
 function search(tree::RPKINode, ipr::IPRange{T}, include_more_specific::Bool=false) :: Vector{RPKINode} where {T<:IPAddr} 
     search(tree, ipr.first, ipr.last, include_more_specific)
 end
-
-
-function search_attempt(tree::RPKINode, ipr::IPRange{T}, include_more_specific::Bool=false) :: Vector{RPKINode} where {T<:IPAddr} 
-    all_matching = _search_attempt(tree, ipr.first, ipr.last) |> unique
-
-    #filter out 0/0
-    filter!(n -> !(Interval{IPv6}(extrema(IPRange("::/0"))...) ∈ keys(n.obj.object.resources_v6)), all_matching)
-    filter!(n -> !(Interval{IPv4}(extrema(IPRange("0.0.0.0/0"))...) ∈ keys(n.obj.object.resources_v4)), all_matching)
-
-    # now filter based on more_specific
-
-    if !include_more_specific
-        #filter!(n -> , all_matching)
-    end
-    
-    # if empty, return first less specific?
-    # now filter based on CER/ROA/EE/VRP
-    
-
-    all_matching
-end
-
-
-function _search_attempt(tree::RPKINode, q1::T, q2::T) :: Vector{RPKINode} where {T<:IPAddr} 
-    if isnothing(tree.obj )
-        @debug "isnothing, returning"
-        return []
-    end
-    curobj = tree.obj.object
-    matches = if q1 isa IPv6
-        collect(intersect(curobj.resources_v6, q1, q2))
-    elseif q1 isa IPv4
-        collect(intersect(curobj.resources_v4, q1, q2))
-    else
-        throw("illegal AFI")
-    end
-    if isempty(matches)
-        return []
-    end
-    # now we know 'tree' has matched, so we return it, and recurse into its
-    # children
-    [tree, Iterators.flatten([_search(c, q1, q2) for match in matches for c in filter(v->v isa RPKINode, match.value)])...]
-end
-
 
 
 function search(tree::RPKINode, q1::T, q2::T, more_specific::Bool) :: Vector{RPKINode} where {T<:IPAddr} 

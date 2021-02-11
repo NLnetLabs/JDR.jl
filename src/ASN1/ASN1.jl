@@ -10,8 +10,7 @@ export containAttributeTypeAndValue
 export get_extensions, check_extensions
 
 # re-exports from validation_common:
-export bitstring_to_ipv4net, bitstring_to_ipv6net
-export bitstring_to_v4prefix, bitstring_to_v6prefix, bitstrings_to_v4range, bitstrings_to_v6range
+export bitstring_to_v4range, bitstring_to_v6range, bitstrings_to_v4range, bitstrings_to_v6range
 export to_bigint
 
 export DER

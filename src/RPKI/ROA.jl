@@ -105,10 +105,10 @@ end
 
     prefix = if tpi.afi == 1
         #bitstring_to_ipv4net(node[1].tag.value)
-        bitstring_to_v4prefix(node[1].tag.value)
+        bitstring_to_v4range(node[1].tag.value)
     elseif tpi.afi == 2
         #bitstring_to_ipv6net(node[1].tag.value)
-        bitstring_to_v6prefix(node[1].tag.value)
+        bitstring_to_v6range(node[1].tag.value)
     else
         throw("illegal AFI in check_ASN1_ROAIPAddress")
     end

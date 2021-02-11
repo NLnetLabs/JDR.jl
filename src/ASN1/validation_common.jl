@@ -3,9 +3,8 @@ using Sockets
 export tagvalue, tagisa, tag_OID, tag_OIDs, childcount, containAttributeTypeAndValue
 export tagis_contextspecific, check_extensions, get_extensions
 export to_bigint
-export bitstring_to_ipv4net, bitstring_to_ipv6net
+export bitstring_to_v4range, bitstring_to_v6range
 export bitstrings_to_v4range, bitstrings_to_v6range
-export bitstring_to_v4prefix, bitstring_to_v6prefix, bitstrings_to_v4range, bitstrings_to_v6range
 
 # TODO implement optional custom remark::String
 function tagisa(node::Node, t::Type)
@@ -173,39 +172,12 @@ function get_extensions(tree::Node) :: Dict{Vector{UInt8},Node}
     extensions
 end
 
-
-function bitstring_to_ipv4net(raw::Vector{UInt8}) :: IPv4Net
+function bitstring_to_v4range(raw::Vector{UInt8}) :: IPRange{IPv4}
     # first byte of raw is the unused_bits byte
     # an empty BITSTRING is indicated by the unused_bits == 0x00
     # and no subsequent bytes
     if length(raw) == 1
         @assert raw[1] == 0x00
-        return IPv4Net(0,0)
-    end
-    unused = raw[1]
-    numbytes = length(raw) - 1 - 1
-    bits = numbytes*8 + (8 - unused)
-    addr =  @inbounds if length(raw) - 1 == 4
-                reinterpret(UInt32, [raw[5], raw[4], raw[3], raw[2]])[1]
-            elseif length(raw) - 1 == 3
-                reinterpret(UInt32, [raw[4], raw[3], raw[2], 0x00])[1]
-            elseif length(raw) - 1 == 2
-                reinterpret(UInt32, [raw[3], raw[2], 0x00, 0x00])[1]
-            elseif length(raw) - 1 == 1
-                UInt32(raw[2])
-            end >> unused
-
-    return IPv4Net(addr << (32 - bits), bits)
-end
-
-#function bitstring_to_v4prefix(raw::Vector{UInt8}) :: Tuple{Integer,Integer}
-function bitstring_to_v4prefix(raw::Vector{UInt8}) :: IPRange{IPv4}
-    # first byte of raw is the unused_bits byte
-    # an empty BITSTRING is indicated by the unused_bits == 0x00
-    # and no subsequent bytes
-    if length(raw) == 1
-        @assert raw[1] == 0x00
-        #return (0, typemax(UInt32))
         return IPRange("0.0.0.0/0")
     end
     unused = raw[1]
@@ -221,63 +193,24 @@ function bitstring_to_v4prefix(raw::Vector{UInt8}) :: IPRange{IPv4}
                 UInt32(raw[2])
             end >> unused
 
-    #return IPv4Net(addr << (32 - bits), bits)
-    #(addr << (32 - bits), addr << (32 - bits) + typemax(UInt32) >> bits)
     IPRange(IPv4(addr << (32 - bits)), bits)
 end
 
-function bitstring_to_ipv6net(raw::Vector{UInt8}) :: IPv6Net
+function bitstring_to_v6range(raw::Vector{UInt8}) :: IPRange{IPv6}
     # first byte of raw is the unused_bits byte
     # an empty BITSTRING is indicated by the unused_bits == 0x00
     # and no subsequent bytes
     if length(raw) == 1
         @assert raw[1] == 0x00
-        return IPv6Net(0,0)
-    end
-    unused = raw[1]
-    numbytes = length(raw) - 1 - 1
-    bits = numbytes*8 + (8 - unused)
-    addr = (reinterpret(UInt128, resize!(reverse(raw[2:end]), 16)))[1] >> unused
-    return IPv6Net(addr << (128 - bits), bits)
-end
-function bitstring_to_v6prefix(raw::Vector{UInt8}) :: IPRange{IPv6} # Tuple{Integer, Integer}
-    # first byte of raw is the unused_bits byte
-    # an empty BITSTRING is indicated by the unused_bits == 0x00
-    # and no subsequent bytes
-    if length(raw) == 1
-        @assert raw[1] == 0x00
-        #return (0, typemax(UInt128))
         return IPRange("::/0")
     end
     unused = raw[1]
     numbytes = length(raw) - 1 - 1
     bits = numbytes*8 + (8 - unused)
     addr = (reinterpret(UInt128, resize!(reverse(raw[2:end]), 16)))[1] >> unused
-    #return IPv6Net(addr << (128 - bits), bits)
-    #(addr << (128 - bits), addr << (128 - bits) + typemax(UInt128) >> bits)
     IPRange(IPv6(addr << (128 - bits)), bits)
 end
 
-function DEPR_bitstrings_to_v4range(raw_min::Vector{UInt8}, raw_max::Vector{UInt8}) :: Tuple{IPv4Net, IPv4Net}
-    #min_addr:
-    unused = raw_min[1]
-    numbytes = length(raw_min) - 1 - 1 # -1 unused byte, -1 because we correct for it in `bits =` below
-    bits = numbytes*8 + (8 - unused)
-    addr = (reinterpret(UInt32, resize!(reverse(raw_min[2:end]), 4)))[1] >> unused
-    min_addr = IPv4Net(addr << (32 - bits), 32)
-
-    #max_addr:
-    unused = raw_max[1]
-    numbytes = length(raw_max) - 1 - 1 # -1 unused byte, -1 because we correct for it in `bits =` below
-    bits = numbytes*8 + (8 - unused)
-    addr = (reinterpret(UInt32, resize!(reverse(raw_max[2:end]), 4)))[1] >> unused
-    max_addr = (addr << (32 - bits)) | (0xffffffff >>> bits)
-    max_addr = IPv4Net(max_addr, 32)
-
-    (min_addr, max_addr)
-end
-
-#function bitstrings_to_v4range(raw_min::Vector{UInt8}, raw_max::Vector{UInt8}) :: Tuple{Integer, Integer}
 function bitstrings_to_v4range(raw_min::Vector{UInt8}, raw_max::Vector{UInt8}) :: IPRange{IPv4}
     #min_addr:
     unused = raw_min[1]
@@ -296,26 +229,7 @@ function bitstrings_to_v4range(raw_min::Vector{UInt8}, raw_max::Vector{UInt8}) :
     IPRange(IPv4(min_addr), IPv4(max_addr))
 end
 
-function DEPR_bitstrings_to_v6range(raw_min::Vector{UInt8}, raw_max::Vector{UInt8}) :: Tuple{IPv6Net, IPv6Net}
-    #min_addr:
-    unused = raw_min[1]
-    numbytes = length(raw_min) - 1 - 1 # -1 unused byte, -1 because we correct for it in `bits =` below
-    bits = numbytes*8 + (8 - unused)
-    addr = (reinterpret(UInt128, resize!(reverse(raw_min[2:end]), 16)))[1] >> unused
-    min_addr = IPv6Net(addr << (128 - bits), 128)
-
-    #max_addr:
-    unused = raw_max[1]
-    numbytes = length(raw_max) - 1 - 1 # -1 unused byte, -1 because we correct for it in `bits =` below
-    bits = numbytes*8 + (8 - unused)
-    addr = (reinterpret(UInt128, resize!(reverse(raw_max[2:end]), 16)))[1] >> unused
-    max_addr = (addr << (128 - bits)) | ( (-1 % UInt128) >>> bits)
-    max_addr = IPv6Net(max_addr, 128)
-
-    (min_addr, max_addr)
-end
-
-function bitstrings_to_v6range(raw_min::Vector{UInt8}, raw_max::Vector{UInt8}) :: Tuple{Integer, Integer}
+function bitstrings_to_v6range(raw_min::Vector{UInt8}, raw_max::Vector{UInt8}) :: IPRange{IPv6}
     #min_addr:
     unused = raw_min[1]
     numbytes = length(raw_min) - 1 - 1 # -1 unused byte, -1 because we correct for it in `bits =` below
@@ -330,7 +244,7 @@ function bitstrings_to_v6range(raw_min::Vector{UInt8}, raw_max::Vector{UInt8}) :
     addr = (reinterpret(UInt128, resize!(reverse(raw_max[2:end]), 16)))[1] >> unused
     max_addr = (addr << (128 - bits)) | ( (-1 % UInt128) >>> bits)
 
-    (min_addr, max_addr)
+    IPRange(IPv6(min_addr), IPv6(max_addr))
 end
 
 function to_bigint(raw::Vector{UInt8}) :: BigInt

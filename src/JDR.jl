@@ -8,12 +8,7 @@ using .Common
 export IPRange
 
 include("ASN1/ASN1.jl")
-
-include("PrefixTrees.jl")
-using .PrefixTrees
-
 include("RPKI/Common.jl")
-
 include("PKIX/PKIX.jl")
 
 

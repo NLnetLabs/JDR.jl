@@ -3,7 +3,6 @@ using ..JDR
 using ..JDR.Common
 using ..JDR.RPKICommon
 using ..ASN1
-using ..PrefixTrees
 
 using IPNets
 using Sockets

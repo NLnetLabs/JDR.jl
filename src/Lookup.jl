@@ -1,28 +1,27 @@
+using StatsBase
+using Query
+
 export search
 export new_since
 export add_filename!, add_missing_filename!, add_resource
 
-struct Lookup
-    ASNs::Dict{AutSysNum}{Vector{RPKINode}}
-    filenames::Dict{String}{RPKINode}
-    missing_files::Dict{String}{RPKINode} # split up between CER and MFT?
 
-    resources_v6::IntervalTree{IPv6, IntervalValue{IPv6, RPKINode}}
-    resources_v4::IntervalTree{IPv4, IntervalValue{IPv4, RPKINode}}
+Base.@kwdef struct Lookup
+    ASNs::Dict{AutSysNum}{Vector{RPKINode}} = Dict()
+    filenames::Dict{String}{RPKINode} = Dict()
+    missing_files::Dict{String}{RPKINode} = Dict()
 
-    pubpoints::Dict{String}{Pair{Int,Set{RPKINode}}}
-    too_specific::Vector{RPKINode}
-    invalid_signatures::Vector{RPKIObject{T} where T} # TODO refactor to RPKINode
-    invalid_certs::Vector{RPKINode}
-    valid_certs::Vector{RPKINode}
+    resources_v6::IntervalTree{IPv6,IntervalValue{IPv6,RPKINode}} =
+        IntervalTree{IPv6,IntervalValue{IPv6,RPKINode}}()
+    resources_v4::IntervalTree{IPv4,IntervalValue{IPv4,RPKINode}} =
+        IntervalTree{IPv4,IntervalValue{IPv4,RPKINode}}()
+
+    pubpoints::Dict{String}{Pair{Int,Set{RPKINode}}} = Dict()
+    too_specific::Vector{RPKINode} = Vector()
+    invalid_signatures::Vector{RPKIObject{T} where T} = Vector() # TODO refactor to RPKINode
+    invalid_certs::Vector{RPKINode} = Vector()
+    valid_certs::Vector{RPKINode} = Vector()
 end
-Lookup() = Lookup(Dict(), Dict(), Dict(),
-                  IntervalTree{IPv6, IntervalValue{IPv6, RPKINode}}(),
-                  IntervalTree{IPv4, IntervalValue{IPv4, RPKINode}}(),
-
-                  Dict{String}{Pair{Int,Set{RPKINode}}}(),
-                  Vector(), Vector(), Vector(), Vector())
-
 
 add_resource(l::Lookup, ipr::IPRange{IPv6}, node::RPKINode) = push!(l.resources_v6, IntervalValue(ipr, node))
 add_resource(l::Lookup, ipr::IPRange{IPv4}, node::RPKINode) = push!(l.resources_v4, IntervalValue(ipr, node))
@@ -60,9 +59,6 @@ end
 ##############################
 # Helpers 
 ##############################
-
-using StatsBase
-using Query
 
 function get_pubpoint(node::RPKINode) :: String
     if isnothing(node.obj)

@@ -96,9 +96,9 @@ struct RemarkDeeplink
     type::RemarkType
     msg::String
     tid::Int
-    url::String
+    filename::String
 end
-RemarkDeeplink(r::Remark, url::String) = RemarkDeeplink(r.lvl, r.type, r.msg, r.tid, url)
+RemarkDeeplink(r::Remark, filename::String) = RemarkDeeplink(r.lvl, r.type, r.msg, r.tid, filename)
 
 function ObjectSlim(r::RPKI.RPKIObject, rcm::RemarkCounts_t, rcc::RemarkCounts_t) 
     ObjectSlim(r.filename,

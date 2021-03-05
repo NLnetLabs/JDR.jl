@@ -42,7 +42,14 @@ end
     # if the manifest is BER encoded (instead of DER), the encapsulated ASN1
     # nodes have already been parsed
     # in case of BER, the 'first' OCTETSTRING has indef length
-    if ! node[1].tag.len_indef
+    if o.object isa GBR
+        @debug "GBR"
+        tpi.eContent = node[1]
+        @debug String(copy(tpi.eContent.tag.value))
+        return
+    elseif ! node[1].tag.len_indef
+        #@debug "in here for the .gbr, why?"
+        #@debug "pre", node[1,1]
         DER.parse_append!(DER.Buf(node[1].tag.value), node[1])
     else
         # already parsed, but can we spot the chunked OCTETSTRING case?

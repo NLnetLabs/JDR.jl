@@ -119,7 +119,7 @@ JSON2.@format ObjectDetails begin
     filename => (; jsontype=Basename,)
 end
 JSON2.write(io::IO, bn::Basename) = JSON2.write(io, basename(bn.filename))
-Base.convert(Basename, s) = Basename(s)
+Base.convert(::Type{Basename}, s) = Basename(s)
 
 function JSON2.write(io::IO, t::ASN1.Tag{T}) where {T}
     JSON2.write(io, "$(nameof(ASN1.tagtype(t))) ($(t.len))")
@@ -167,10 +167,20 @@ JSON2.@format SlimMFT begin
 end
 
 
-struct SlimCRL
-    revoked_serials::Vector{Integer}
+struct SlimCRL end
+SlimCRL(crl::RPKI.CRL) = SlimCRL()
+
+struct HexSerials
+    revoked_serials::Vector{String}
 end
-SlimCRL(crl::RPKI.CRL) = SlimCRL(crl.revoked_serials)
+Base.convert(::Type{HexSerials}, serials) = begin
+    HexSerials(uppercase.(string.(serials, base=16)))
+end
+JSON2.@format RPKI.CRL begin
+    revoked_serials => (;jsontype=HexSerials,)
+end
+JSON2.write(io::IO, hs::HexSerials) = JSON2.write(io, hs.revoked_serials)
+
 
 to_slim(o::RPKI.MFT) = SlimMFT(o)
 to_slim(o::RPKI.CER) = SlimCER(o)

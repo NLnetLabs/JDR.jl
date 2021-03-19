@@ -558,13 +558,18 @@ function JSONHandler(req::HTTP.Request)
 
         # wrap the response in an envelope
         response = Envelope(LAST_UPDATE[], LAST_UPDATE_SERIAL[], now(UTC), response_body)
-        @info "[$(now())] returning response, took $(now() - _tstart)"
+        time_needed = now() - _tstart
+        #if time_needed > Dates.Millisecond(200)
+        #    @debug "[$(now())] returning response, took long: $(time_needed)"
+        #end
+        @info "[$(_tstart)] [took $(time_needed)] request: $(req.target)"
         return HTTP.Response(200,
                              [("Content-Type" => "application/json")];
                              body=JSON2.write(response)
                             )
     catch e
-        @error "something when wrong, showing stacktrace but continuing service"
+        @error "[$(_tstart) something when wrong, showing stacktrace but continuing service"
+        @error "req:", req
         showerror(stderr,e, catch_backtrace())
         response = Envelope(LAST_UPDATE[], LAST_UPDATE_SERIAL[], now(UTC), nothing, e)
         return HTTP.Response(500,

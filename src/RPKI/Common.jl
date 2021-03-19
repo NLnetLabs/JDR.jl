@@ -25,8 +25,8 @@ mutable struct RPKIObject{T}
 end
 
 function add_resource!(::T, ::U, ::U) where {T,U} end
-function add_resource!(t::T, ::U) where {T,U} 
-    @warn "called generic add_resource!, t isa $(typeof(t))"
+function add_resource!(t::T, u::U) where {T,U} 
+    @warn "called generic add_resource!, t isa $(typeof(t)), u isa $(typeof(u))"
 end
 
 function Base.show(io::IO, obj::RPKIObject{T}) where T

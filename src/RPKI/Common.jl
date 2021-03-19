@@ -203,7 +203,7 @@ Base.@kwdef mutable struct CER
     resources_v6::IntervalTree{IPv6, IntervalValue{IPv6, Vector{RPKINode}}} = IntervalTree{IPv6, IntervalValue{IPv6, Vector{RPKINode}}}()
     resources_v4::IntervalTree{IPv4, IntervalValue{IPv4, Vector{RPKINode}}} = IntervalTree{IPv4, IntervalValue{IPv4, Vector{RPKINode}}}()
 
-    inherit_ASNs::Bool = false
+    inherit_ASNs::Union{Nothing, Bool} = nothing
     ASNs::AsIdsOrRanges = AsIdsOrRanges()
 
     resources_valid::Union{Nothing,Bool} = nothing

@@ -156,6 +156,9 @@ end
             elseif asidentifierchoice[1].tag isa Tag{ASN1.SEQUENCE}
                 # now it can be or a single INTEGER, or again a SEQUENCE
                 asidentifierchoice[1].validated = true
+                if o.object isa CER
+                    o.object.inherit_ASNs = false
+                end
                 for asid_or_range in asidentifierchoice[1].children
                     if asid_or_range.tag isa Tag{ASN1.INTEGER}
                         asid = UInt32(ASN1.value(asid_or_range.tag))

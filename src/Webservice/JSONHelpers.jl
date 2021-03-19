@@ -140,7 +140,7 @@ struct SlimCER
     inherit_v4_prefixes::Union{Nothing,Bool}
 
     #prefixes::Vector{Union{IPNet, Tuple{IPNet, IPNet}}}
-    inherit_ASNs::Bool
+    inherit_ASNs::Union{Nothing, Bool}
     ASNs::Vector{Union{Tuple{UInt32, UInt32}, UInt32}}
 end
 SlimCER(cer::RPKI.CER) = begin

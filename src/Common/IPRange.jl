@@ -27,7 +27,7 @@ function IPRange(a::IPv6, prefixlen::Int)
     IPRange(_a, IPv6(a.host | typemax(UInt128) >> prefixlen))
 end
 
-function IPRange(s::String)
+function IPRange(s::AbstractString)
     if contains(s, ':')
         IPRange(IPv6, s)
     else
@@ -35,7 +35,7 @@ function IPRange(s::String)
     end
 end
 
-function IPRange(t::Type{T}, s::String)  where {T<:IPAddr}
+function IPRange(t::Type{T}, s::AbstractString)  where {T<:IPAddr}
     parts = split(s, '/')
     first = t(parts[1])
     if length(parts) == 1

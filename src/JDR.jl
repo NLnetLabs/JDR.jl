@@ -19,4 +19,6 @@ include("RPKI.jl")
 using .RPKI
 export print_ASN1
 
+include("BGP/BGP.jl")
+
 end # module

@@ -127,7 +127,7 @@ function JSON2.write(io::IO, t::ASN1.Tag{T}) where {T}
 end
 
 
-JSON2.write(io::IO, p::IPNet) = JSON2.write(io, string(p.netaddr)*'/'*string(p.netmask))
+#JSON2.write(io::IO, p::IPNet) = JSON2.write(io, string(p.netaddr)*'/'*string(p.netmask))
 
 
 # Slim copy of RPKI.CER, with empty prefixes and ASNs Vectors

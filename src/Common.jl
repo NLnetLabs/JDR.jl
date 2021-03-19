@@ -173,7 +173,7 @@ export AutSysNum, AutSysNumRange, AsIdsOrRanges, covered
 struct AutSysNum
     asn::UInt32
 end
-function AutSysNum(s::String) 
+function AutSysNum(s::AbstractString) 
     m = match(r"(ASN?)?(\d+)"i, s)
     if m === nothing
         @error "can not parse '$(s)' into AutSysNum"

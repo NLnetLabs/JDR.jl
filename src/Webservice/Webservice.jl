@@ -4,12 +4,13 @@ using Dates
 using JSON2
 using Atlas
 
-using IPNets
+#using IPNets
 using FileWatching
 using ThreadPools
 using Query
 
 using JDR
+using JDR.BGP
 using JDR.Common
 using JDR.RPKICommon
 include("JSONHelpers.jl")
@@ -22,6 +23,8 @@ const LAST_UPDATE = Ref(now(UTC))
 const LAST_UPDATE_SERIAL = Ref(0)
 const TREE = Ref(RPKI.RPKINode())
 const LOOKUP = Ref(RPKI.Lookup())
+const RISv4 = Ref(BGP.RISTree{IPv4}())
+const RISv6 = Ref(BGP.RISTree{IPv6}())
 
 const WATCH_FN = "/tmp/rpkicache.updated"
 const UPDATELK = ReentrantLock()
@@ -61,16 +64,16 @@ const PREFIX_RESULT_MAX = 20
 function prefix(req::HTTP.Request)
     # /api/v1/prefix/1.2.3.4/24, get and unescape prefix
     parts = HTTP.URIs.splitpath(req.target)
-    prefix = if length(parts) == 4
-        # no prefixlen passed
-        IPNet(parts[4])
-    elseif length(parts) > 4
-        _prefix = HTTP.URIs.splitpath(req.target)[4] 
-        _prefixlen = HTTP.URIs.splitpath(req.target)[5] 
-        IPNet(_prefix*'/'*_prefixlen)
-    else
-        throw("error: illegal prefix request")
-    end
+    #prefix = if length(parts) == 4
+    #    # no prefixlen passed
+    #    IPNet(parts[4])
+    #elseif length(parts) > 4
+    #    _prefix = HTTP.URIs.splitpath(req.target)[4] 
+    #    _prefixlen = HTTP.URIs.splitpath(req.target)[5] 
+    #    IPNet(_prefix*'/'*_prefixlen)
+    #else
+    #    throw("error: illegal prefix request")
+    #end
 
     iprange = if length(parts) == 4
         # no prefixlen passed
@@ -91,10 +94,10 @@ function prefix(req::HTTP.Request)
 
 
     if length(res) > PREFIX_RESULT_MAX
-        @warn "more than $(PREFIX_RESULT_MAX) results ($(length(res))) for /prefix search on '$(prefix)', limiting .."
+        @warn "more than $(PREFIX_RESULT_MAX) results ($(length(res))) for /prefix search on '$(iprange)', limiting .."
         res = Iterators.take(res, PREFIX_RESULT_MAX)
     else
-        @info "prefix search on '$(prefix)': $(length(res)) result(s)"
+        @info "prefix search on '$(iprange)': $(length(res)) result(s)"
     end
 
     if length(HTTP.URIs.splitpath(req.target)) > 5 && 
@@ -138,12 +141,13 @@ function object(req::HTTP.Request)
     object = HTTP.URIs.splitpath(req.target)[4] 
     object = HTTP.URIs.unescapeuri(object)
     res = RPKI.search(LOOKUP[], object)
-    @info "Object call for '$(object)': $(length(res)) result(s)"
     if isempty(res)
         @warn "no results, returning empty array"
         return []
     end
-    @info "returning $(first(res).second.obj.filename)"
+    if length(res) > 1
+        @warn "more than 1 result for this query, unexpected"
+    end
     
     ObjectDetails(first(res).second.obj, first(res).second.remark_counts_me)
 end
@@ -227,6 +231,62 @@ function newsince(req::HTTP.Request)
         unique .|>
         to_vue_branch |>
         to_vue_tree
+end
+
+function bgp(req::HTTP.Request)
+    # /api/v1/bgp/asn
+    asid = HTTP.URIs.splitpath(req.target)[4] 
+    try
+        asid = RPKI.AutSysNum(asid)
+    catch
+        return []
+    end
+
+
+    risv4 = JDR.BGP.search(RISv4[], asid)
+    risv6 = JDR.BGP.search(RISv6[], asid)
+    prefixes = map(e-> string(IPRange(e.first, e.last)), risv4) |> unique
+    prefixes6 = map(e-> string(IPRange(e.first, e.last)), risv6) |> unique
+
+    # populate the result with all prefixes found in BGP
+    res = Dict{String,Union{Nothing,Set{Dict}}}()
+    for p in vcat(prefixes, prefixes6)
+        res[p] = nothing
+    end
+
+    matches4 = intersect(LOOKUP[].resources_v4, risv4) |> @filter(first(_).value.obj.object isa JDR.RPKI.ROA) |> unique |> collect
+    matches6 = intersect(LOOKUP[].resources_v6, risv6) |> @filter(first(_).value.obj.object isa JDR.RPKI.ROA) |> unique |> collect
+
+    for m in vcat(matches6, matches4)
+        pfx = IPRange(m[2].first, m[2].last)
+        roa = m[1].value.obj.object
+        prefix = string(pfx)
+
+        vrps = if pfx.first isa IPv6
+            string.(map(e -> IPRange(e.first, e.last), collect(intersect(roa.vrp_tree.resources_v6, (pfx.first, pfx.last)))))
+        else
+            string.(map(e -> IPRange(e.first, e.last), collect(intersect(roa.vrp_tree.resources_v4, (pfx.first, pfx.last)))))
+        end
+        if isnothing(res[prefix])
+            res[prefix] = Set{Dict}()
+        end
+        push!(res[prefix],  Dict(
+                        "roa" => m[1].value.obj.filename,
+                        "repo" => JDR.RPKICommon.get_pubpoint(m[1].value),
+                        "vrps" => vrps,
+                        "asid" => roa.asid,
+                       )
+             )
+
+    end
+    res2 = []
+    for (k,v) in sort(res)
+        push!(res2, 
+              Dict("bgp" => k, "matches" => v)
+             )
+    end
+
+    res2
 end
 
 
@@ -400,6 +460,13 @@ function update()
 
     @time (tree, lookup) = RPKI.retrieve_all(JDR.CFG["rpki"]["tals"]; stripTree=true, nicenames=false)
     RPKI.link_resources!.(tree.children)
+
+    try
+        RISv4[] = JDR.BGP.ris_from_file(IPv4, "riswhoisdump.IPv4")
+        RISv6[] = JDR.BGP.ris_from_file(IPv6, "riswhoisdump.IPv6")
+    catch
+        @error "failed to parse RIS whois dumps"
+    end
     @debug "linked!"
     lock(UPDATELK)
     TREE[] = tree
@@ -443,6 +510,8 @@ function _init()
     HTTP.@register(ROUTER, "GET", APIV*"/newsince/", newsince)
     HTTP.@register(ROUTER, "GET", APIV*"/newsince/*", newsince)
 
+    HTTP.@register(ROUTER, "GET", APIV*"/bgp/*", bgp)
+
 
     #HTTP.@register(ROUTER, "GET", APIV*"/generate_msm/", generate_msm)
 
@@ -473,7 +542,6 @@ end
 
 function JSONHandler(req::HTTP.Request)
     _tstart = now()
-    @info "[$(_tstart)] request: $(req.target)"
 
     try
         # first check if there's any request body

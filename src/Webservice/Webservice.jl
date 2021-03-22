@@ -258,14 +258,34 @@ function bgp(req::HTTP.Request)
     matches6 = intersect(LOOKUP[].resources_v6, risv6) |> @filter(first(_).value.obj.object isa JDR.RPKI.ROA) |> unique |> collect
 
     for m in vcat(matches6, matches4)
-        pfx = IPRange(m[2].first, m[2].last)
+        bgp_pfx = IPRange(m[2].first, m[2].last)
         roa = m[1].value.obj.object
-        prefix = string(pfx)
+        prefix = string(bgp_pfx)
 
-        vrps = if pfx.first isa IPv6
-            string.(map(e -> IPRange(e.first, e.last), collect(intersect(roa.vrp_tree.resources_v6, (pfx.first, pfx.last)))))
+        vrps = if bgp_pfx.first isa IPv6
+            map(collect(intersect(roa.vrp_tree.resources_v6, (bgp_pfx.first, bgp_pfx.last)))) do e
+                vrp_prefix = IPRange(e.first, e.last)
+                vrp_bigger = length(vrp_prefix) > length(bgp_pfx)
+                maxlen = e.value
+                Dict(
+                     "prefix" => string(vrp_prefix),
+                     "maxlen" => maxlen,
+                     "vrp_bigger" => vrp_bigger,
+                     "maxlen_violated" => vrp_bigger && maxlen <= 128 - log2(length(bgp_pfx))
+                   )
+            end
         else
-            string.(map(e -> IPRange(e.first, e.last), collect(intersect(roa.vrp_tree.resources_v4, (pfx.first, pfx.last)))))
+            map(collect(intersect(roa.vrp_tree.resources_v4, (bgp_pfx.first, bgp_pfx.last)))) do e
+                vrp_prefix = IPRange(e.first, e.last)
+                vrp_bigger = length(vrp_prefix) > length(bgp_pfx)
+                maxlen = e.value
+                Dict(
+                     "prefix" => string(vrp_prefix),
+                     "maxlen" => maxlen,
+                     "vrp_bigger" => vrp_bigger,
+                     "maxlen_violated" => vrp_bigger && maxlen < 32 - log2(length(bgp_pfx))
+                   )
+            end
         end
         if isnothing(res[prefix])
             res[prefix] = Set{Dict}()

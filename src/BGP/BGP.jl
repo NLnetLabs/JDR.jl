@@ -2,7 +2,6 @@ module BGP
 
 using JDR.Common
 
-using DelimitedFiles
 using IntervalTrees
 using Sockets
 
@@ -25,7 +24,7 @@ function ris_from_file(t::Type{T}, fn::String) :: RISTree{T} where {T<:IPAddr}
         ipr = IPRange(t, prefix)
         push!(intervals, IntervalValue(ipr.first, ipr.last, AutSysNum(origin)))
     end
-    sort!(unique(intervals))
+    sort!(unique!(intervals))
     IntervalTree{t, IntervalValue{t, AutSysNum}}(intervals)
 end
 

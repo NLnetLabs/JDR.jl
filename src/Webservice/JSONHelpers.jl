@@ -253,7 +253,11 @@ function to_vue_branch(node::RPKI.RPKINode)
     current = root
     current_pp = "root"
     for n in nodes
-        siblings = [VueNode([], [], basename(s.obj.filename), ObjectSlim(s.obj, s.remark_counts_me, s.remark_counts_children), nothing) for s in n.siblings]
+        siblings = if isnothing(n.siblings)
+            []
+        else
+            [VueNode([], [], basename(s.obj.filename), ObjectSlim(s.obj, s.remark_counts_me, s.remark_counts_children), nothing) for s in n.siblings]
+        end
         vuenode = VueNode([], siblings, basename(n.obj.filename), ObjectSlim(n.obj, n.remark_counts_me, n.remark_counts_children), nothing)
         if n.obj.object isa CER 
             (this_pp, ) = split_scheme_uri(n.obj.object.pubpoint)

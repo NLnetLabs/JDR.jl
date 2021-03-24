@@ -51,16 +51,16 @@ end
 mutable struct RPKINode
     parent::Union{Nothing, RPKINode}
     children::Vector{RPKINode}
-    siblings::Vector{RPKINode}
+    siblings::Union{Nothing, Vector{RPKINode}}
     obj::Union{Nothing, RPKIObject, String}
     # remark_counts_me could be a wrapper to the obj.remark_counts_me 
     remark_counts_me::RemarkCounts_t
     remark_counts_children::RemarkCounts_t
 end
 
-RPKINode() = RPKINode(nothing, RPKINode[], RPKINode[], nothing, RemarkCounts(), RemarkCounts())
-RPKINode(o::RPKIObject) = RPKINode(nothing, RPKINode[], RPKINode[], o, RemarkCounts(), RemarkCounts())
-RPKINode(s::String) = RPKINode(nothing, RPKINode[], RPKINode[], s, RemarkCounts(), RemarkCounts())
+RPKINode() = RPKINode(nothing, RPKINode[], nothing, nothing, RemarkCounts(), RemarkCounts())
+RPKINode(o::RPKIObject) = RPKINode(nothing, RPKINode[], nothing, o, RemarkCounts(), RemarkCounts())
+RPKINode(s::String) = RPKINode(nothing, RPKINode[], nothing, s, RemarkCounts(), RemarkCounts())
 
 import Base: iterate
 Base.IteratorSize(::RPKINode) = Base.SizeUnknown()
@@ -272,13 +272,13 @@ VRPS() = VRPS(IntervalTree{IPv6, IntervalValue{IPv6, UInt8}}() , IntervalTree{IP
 
 mutable struct ROA
     asid::Integer
-    vrps::Vector{VRP}
+    #vrps::Vector{VRP}
     vrp_tree::VRPS
     resources_valid::Union{Nothing,Bool}
-    resources_v6::IntervalTree{IPv6, IntervalValue{IPv6, Vector{VRP}}}
-    resources_v4::IntervalTree{IPv4, IntervalValue{IPv4, Vector{VRP}}}
+    resources_v6::Union{Nothing, IntervalTree{IPv6, IntervalValue{IPv6, Vector{VRP}}}} # TODO at least, get rid of VRP type here
+    resources_v4::Union{Nothing, IntervalTree{IPv4, IntervalValue{IPv4, Vector{VRP}}}} # because now VRP.prefix is redundant with the Interval itself
 end
-ROA() = ROA(0, [], VRPS(),
+ROA() = ROA(0, VRPS(),
             nothing,
             IntervalTree{IPv6, IntervalValue{IPv6, Vector{VRP}}}(),
             IntervalTree{IPv4, IntervalValue{IPv4, Vector{VRP}}}(),

@@ -127,7 +127,7 @@ end
             maxlength = node[2].tag.value[1]
         end
     end
-    push!(o.object.vrps, (@__MODULE__).VRP(prefix, maxlength))
+    #push!(o.object.vrps, (@__MODULE__).VRP(prefix, maxlength))
 
     if tpi.afi == 1
         push!(o.object.vrp_tree.resources_v4, IntervalValue(prefix.first, prefix.last, maxlength))

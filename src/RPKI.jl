@@ -62,8 +62,16 @@ function add(p::RPKINode, c::Vector{RPKINode})
 end
 
 function add_sibling(a::RPKINode, b::RPKINode)
-    push!(a.siblings, b)
-    push!(b.siblings, a)
+    if isnothing(a.siblings)
+        a.siblings = RPKINode[b]
+    else
+        push!(a.siblings, b)
+    end
+    if isnothing(b.siblings)
+        b.siblings = RPKINode[a]
+    else
+        push!(b.siblings, a)
+    end
 end
 
 function check(::RPKIObject{T}) where {T}
@@ -130,6 +138,9 @@ function process_crl(crl_fn::String, lookup::Lookup, tpi::TmpParseInfo) ::RPKINo
     crl_node = RPKINode(crl_obj)
     add_filename!(lookup, crl_fn, crl_node)
     crl_node.remark_counts_me = count_remarks(crl_obj) + count_remarks(crl_obj.tree)
+    if tpi.stripTree
+        crl_obj.tree = nothing
+    end
     crl_node
 end
 
@@ -266,25 +277,12 @@ function link_resources!(cer::RPKINode)
         if child.obj.object isa CER
             link_resources!(child)
         elseif child.obj.object isa ROA
-            #@debug "EE -> VRP"
-            #@debug child.obj.object.resources_v6 
-            #@debug child.obj.object.vrps
-            ee = child.obj.object
-            for v in child.obj.object.vrps
-                if v isa VRP{IPv6}
-                    overlap = intersect(ee.resources_v6, IntervalTree{IPv6, Interval{IPv6}}([Interval(v.prefix)]))
-                    @assert overlap |> collect |> length <= 1
-                    for (p, c) in overlap
-                        push!(p.value, v) # add RPKINode pointing to child to this interval.value
-                    end
-                elseif v isa VRP{IPv4}
-                    overlap = intersect(ee.resources_v4, IntervalTree{IPv4, Interval{IPv4}}([Interval(v.prefix)]))
-                    @assert overlap |> collect |> length <= 1
-                    for (p, c) in overlap
-                        push!(p.value, v) # add RPKINode pointing to child to this interval.value
-                    end
-                end
-            end
+            @warn "not linking EE -> VRP" maxlog=3
+            
+            # now we can get rid of the EE tree, roa.resources_v6/_v4
+            @warn "setting EE resources to nothing" maxlog=3
+            child.obj.object.resources_v6 = nothing
+            child.obj.object.resources_v4 = nothing
         end
     end
 end

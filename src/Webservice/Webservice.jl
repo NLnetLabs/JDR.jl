@@ -19,26 +19,28 @@ include("CleanLogger.jl")
 
 const ROUTER = HTTP.Router()
 const APIV = "/api/v1"
-const LAST_UPDATE = Ref(now(UTC))
-const LAST_UPDATE_SERIAL = Ref(0)
-const TREE = Ref(RPKI.RPKINode())
-const LOOKUP = Ref(RPKI.Lookup())
-const RISv4 = Ref(BGP.RISTree{IPv4}())
-const RISv6 = Ref(BGP.RISTree{IPv6}())
+
+mutable struct State
+    tree::RPKI.RPKINode
+    lookup::RPKI.Lookup
+    RISv6::BGP.RISTree{IPv6}
+    RISv4::BGP.RISTree{IPv4}
+    AtlasStatus::Dict
+    last_update::DateTime
+    last_update_serial::Int64
+end
+
+const STATE = State(RPKI.RPKINode(),
+                    RPKI.Lookup(),
+                    BGP.RISTree{IPv6}(),
+                    BGP.RISTree{IPv4}(),
+                    Dict(),
+                    now(UTC),
+                    0
+                   )
 
 const WATCH_FN = "/tmp/rpkicache.updated"
 const UPDATELK = ReentrantLock()
-
-
-#mutable struct PPStatus
-#    ping6::Union{Nothing, Atlas.StatusCheckResult}
-#    ping4::Union{Nothing, Atlas.StatusCheckResult}
-#end
-#PPStatus() = PPStatus(nothing, nothing)
-
-#const PPSTATUS = Ref(Dict{String}{PPStatus}())
-const PPSTATUS = Ref{Dict}(Dict())
-#const PP2Atlas = Ref(Dict{String}{Vector{NamedTuple}}())
 
 
 ##############################
@@ -48,7 +50,7 @@ const PPSTATUS = Ref{Dict}(Dict())
 function asn(req::HTTP.Request)
     # /api/v1/asn/10, get 10
     asid = HTTP.URIs.splitpath(req.target)[4] 
-    res = RPKI.search(LOOKUP[], RPKI.AutSysNum(asid))
+    res = RPKI.search(STATE.lookup, RPKI.AutSysNum(asid))
 
     @info "ASN search on '$(asid)': $(length(res)) result(s)"
     if length(HTTP.URIs.splitpath(req.target)) > 4 && 
@@ -90,7 +92,7 @@ function prefix(req::HTTP.Request)
     include_more_specific = true
     #res = collect(RPKI.search(LOOKUP[], prefix))
     #res = RPKI.search(TREE[], iprange, include_more_specific)
-    res = RPKI.search(LOOKUP[], iprange, include_more_specific)
+    res = RPKI.search(STATE.lookup, iprange, include_more_specific)
 
 
     if length(res) > PREFIX_RESULT_MAX
@@ -114,7 +116,7 @@ function filename(req::HTTP.Request)
     # /api/v1/filename/somefilename, get and unescape filename
     filename = HTTP.URIs.splitpath(req.target)[4]
     filename = strip(HTTP.URIs.unescapeuri(filename))
-    res = RPKI.search(LOOKUP[], filename)
+    res = RPKI.search(STATE.lookup, filename)
     if length(res) > FILENAME_RESULT_MAX
         @warn "more than $(FILENAME_RESULT_MAX) results ($(length(res))) for /filename search on '$(filename)', limiting .."
         res = map(e->e.second, (Iterators.take(res, FILENAME_RESULT_MAX)))
@@ -140,7 +142,7 @@ function object(req::HTTP.Request)
     # /api/v1/object/escaped_filename, get and unescape filename
     object = HTTP.URIs.splitpath(req.target)[4] 
     object = HTTP.URIs.unescapeuri(object)
-    res = RPKI.search(LOOKUP[], object)
+    res = RPKI.search(STATE.lookup, object)
     if isempty(res)
         @warn "no results, returning empty array"
         return []
@@ -154,16 +156,16 @@ end
 
 function pubpoints(req::HTTP.Request)
     # /api/v1/pubpoints
-    to_vue_pubpoints(TREE[])
+    to_vue_pubpoints(STATE.tree)
 end
 
 function ppstatus(req::HTTP.Request)
     # /api/v1/ppstatus
-    PPSTATUS[]
+    STATE.AtlasStatus
 end
 
 function uris(req::HTTP.Request)
-    LOOKUP[].pubpoints |>
+    STATE.lookup.pubpoints |>
     @map(_.second[2]) |> # get all Set(RPKINode)s
         @map(
              map(n->n.obj.object, collect(_)) # get the actual RPKIObject{CER}
@@ -186,8 +188,8 @@ function repostats(req::HTTP.Request)
     # for all the repositories (pubpoints)
     # get the remarks_per_repo
     # and map each remark to the detail URL of the RPKINode
-    remarks = RPKICommon.remarks_per_repo(TREE[])
-    res = keys(LOOKUP[].pubpoints) |>
+    remarks = RPKICommon.remarks_per_repo(STATE.tree)
+    res = keys(STATE.lookup.pubpoints) |>
     @map(Dict("repo" => _, "remarks" => 
                    map(p->
                        RemarkDeeplink(p.first, p.second.obj.filename),
@@ -225,7 +227,7 @@ function newsince(req::HTTP.Request)
             RPKI.CER
         end
     end
-    RPKI.new_since(TREE[], timeperiod) |>
+    RPKI.new_since(STATE.tree, timeperiod) |>
         @filter(isnothing(filtertype) || _.obj.object isa filtertype) .|>
         get_vue_leaf_node |>
         unique .|>
@@ -243,8 +245,8 @@ function bgp(req::HTTP.Request)
     end
 
 
-    risv4 = JDR.BGP.search(RISv4[], asid)
-    risv6 = JDR.BGP.search(RISv6[], asid)
+    risv4 = JDR.BGP.search(STATE.RISv4, asid)
+    risv6 = JDR.BGP.search(STATE.RISv6, asid)
     prefixes = map(e-> string(IPRange(e.first, e.last)), risv4) |> unique
     prefixes6 = map(e-> string(IPRange(e.first, e.last)), risv6) |> unique
 
@@ -254,8 +256,8 @@ function bgp(req::HTTP.Request)
         res[p] = nothing
     end
 
-    matches4 = intersect(LOOKUP[].resources_v4, risv4) |> @filter(first(_).value.obj.object isa JDR.RPKI.ROA) |> unique |> collect
-    matches6 = intersect(LOOKUP[].resources_v6, risv6) |> @filter(first(_).value.obj.object isa JDR.RPKI.ROA) |> unique |> collect
+    matches4 = intersect(STATE.lookup.resources_v4, risv4) |> @filter(first(_).value.obj.object isa JDR.RPKI.ROA) |> unique |> collect
+    matches6 = intersect(STATE.lookup.resources_v6, risv6) |> @filter(first(_).value.obj.object isa JDR.RPKI.ROA) |> unique |> collect
 
     for m in vcat(matches6, matches4)
         bgp_pfx = IPRange(m[2].first, m[2].last)
@@ -444,7 +446,7 @@ function update_repostatus()
     @time df = fetch_results(msms) |> create_df
     df = join_msm_def(df, msms);
 
-    PPSTATUS[] = ppstatus(df)
+    STATE.AtlasStatus = ppstatus(df)
 end
 
 
@@ -482,15 +484,16 @@ function update()
     RPKI.link_resources!.(tree.children)
 
     try
-        RISv4[] = JDR.BGP.ris_from_file(IPv4, "riswhoisdump.IPv4")
-        RISv6[] = JDR.BGP.ris_from_file(IPv6, "riswhoisdump.IPv6")
+        STATE.RISv4 = JDR.BGP.ris_from_file(IPv4, "riswhoisdump.IPv4")
+        STATE.RISv6 = JDR.BGP.ris_from_file(IPv6, "riswhoisdump.IPv6")
     catch
         @error "failed to parse RIS whois dumps"
     end
     @debug "linked!"
     lock(UPDATELK)
-    TREE[] = tree
-    LOOKUP[] = lookup
+    STATE.tree = tree
+    STATE.lookup = lookup
+    tree = lookup = nothing
     unlock(UPDATELK)
 
     try
@@ -512,7 +515,7 @@ function update()
     end
 
     set_last_update()
-    @info "update() done, serial: $(LAST_UPDATE_SERIAL[])"
+    @info "update() done, serial: $(STATE.last_update_serial)"
 end
 function update(req::HTTP.Request)
     update()
@@ -556,8 +559,8 @@ JSON2.@format Envelope begin
 end
 
 function set_last_update()
-    LAST_UPDATE[] = now(UTC)
-    LAST_UPDATE_SERIAL[] += 1
+    STATE.last_update = now(UTC)
+    STATE.last_update_serial += 1
 end
 
 function JSONHandler(req::HTTP.Request)
@@ -577,7 +580,7 @@ function JSONHandler(req::HTTP.Request)
         unlock(UPDATELK)
 
         # wrap the response in an envelope
-        response = Envelope(LAST_UPDATE[], LAST_UPDATE_SERIAL[], now(UTC), response_body)
+        response = Envelope(STATE.last_update, STATE.last_update_serial, now(UTC), response_body)
         time_needed = now() - _tstart
         #if time_needed > Dates.Millisecond(200)
         #    @debug "[$(now())] returning response, took long: $(time_needed)"
@@ -591,7 +594,7 @@ function JSONHandler(req::HTTP.Request)
         @error "[$(_tstart) something when wrong, showing stacktrace but continuing service"
         @error "req:", req
         showerror(stderr,e, catch_backtrace())
-        response = Envelope(LAST_UPDATE[], LAST_UPDATE_SERIAL[], now(UTC), nothing, e)
+        response = Envelope(STATE.last_update, STATE.last_update_serial, now(UTC), nothing, e)
         return HTTP.Response(500,
                              [("Content-Type" => "application/json")];
                              body=JSON2.write(response)
@@ -613,6 +616,10 @@ function updater()
             @info "[$(now())] updater(): sleep done, running update()"
             @time update()
             @info "[$(now())] updater(): update() done, going to sleep again"
+
+            # Force GC and get back even more memory via malloc_trim
+            GC.gc()
+            ccall(:malloc_trim, Cvoid, (Cint,), 0)
         catch e
             if e isa IOError
                 @error "updater() IOerror:", e

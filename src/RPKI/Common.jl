@@ -208,13 +208,6 @@ Base.@kwdef mutable struct CER
 
     resources_valid::Union{Nothing,Bool} = nothing
 end
-#CER() = CER(0, nothing, nothing,
-#            "", "", "", nothing, nothing, 0, 0, "", "",
-#            nothing, nothing,
-#            IntervalTree{IPv6, IntervalValue{IPRange{IPv6}, Vector{RPKINode}}}(),
-#            IntervalTree{IPv4, IntervalValue{IPRange{IPv4}, Vector{RPKINode}}}(),
-#            false, AsIdsOrRanges(),
-#            nothing)
 
 function Base.show(io::IO, cer::CER)
     print(io, "  pubpoint: ", cer.pubpoint, '\n')
@@ -224,14 +217,6 @@ function Base.show(io::IO, cer::CER)
     print(io, "  notAfter: ", cer.notAfter, '\n')
     printstyled(io, "  ASNs: \n")
     print(io, "    ", join(cer.ASNs, ","), "\n")
-    #printstyled(io, "  IPv6 prefixes ($(length(cer.prefixes_v6))): \n")
-    #for p in cer.prefixes_v6
-    #    print(io, "    ", p, '\n')
-    #end
-    #printstyled(io, "  IPv4 prefixes ($(length(cer.prefixes_v4))): \n")
-    #for p in cer.prefixes_v4
-    #    print(io, "    ", p, '\n')
-    #end
 end
 
 
@@ -244,12 +229,6 @@ mutable struct MFT
     next_update::Union{Nothing, DateTime}
 end
 MFT() = MFT([], nothing, nothing, nothing, nothing)
-
-#struct VRP{AFI<:IPNet}
-#    prefix::AFI
-#    maxlength::Integer
-#end
-#Base.show(io::IO, vrp::VRP) = println(io, vrp.prefix, "-$(vrp.maxlength)")
 
 struct VRP{T<:IPAddr}
     prefix::IPRange{T}

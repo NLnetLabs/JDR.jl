@@ -16,9 +16,6 @@ export retrieve_all, RootCER, CER, MFT, CRL, ROA
 export TmpParseInfo
 export print_ASN1
 
-#function check_ASN1(::RPKIObject{T}, ::TmpParseInfo) where T end
-#function check_cert(::RPKIObject{T}, ::TmpParseInfo) where T end
-#function check_resources(::RPKIObject{T}, ::TmpParseInfo) where T end
 function check_ASN1 end
 function check_cert end
 function check_resources end

@@ -38,8 +38,10 @@ struct Remark
     msg::String
     tid::Int
 end
-Remark(lvl::RemarkLevel, msg::String) = Remark(lvl, nothing, msg, global remarkTID += 1)
-Remark(lvl::RemarkLevel, type::RemarkType, msg::String) = Remark(lvl, type, msg, global remarkTID += 1)
+#Remark(lvl::RemarkLevel, msg::String) = Remark(lvl, nothing, msg, global remarkTID += 1)
+#Remark(lvl::RemarkLevel, type::RemarkType, msg::String) = Remark(lvl, type, msg, global remarkTID += 1)
+Remark(lvl::RemarkLevel, msg::String) = Remark(lvl, nothing, msg, 0)
+Remark(lvl::RemarkLevel, type::RemarkType, msg::String) = Remark(lvl, type, msg, 0)
 
 ## Example:
 #struct MyObject

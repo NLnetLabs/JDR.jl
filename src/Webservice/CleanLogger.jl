@@ -18,7 +18,7 @@ struct CleanLogger <: AbstractLogger
 end
 
 
-function CleanLogger(path; kwargs...)
+function CleanLogger(path::AbstractString; kwargs...)
     filehandle = open(path, "a")
     CleanLogger(filehandle; kwargs...)
 end

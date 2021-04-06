@@ -4,6 +4,7 @@ using ...RPKI
 using ...RPKICommon
 using SHA
 using ...PKIX.CMS
+using ..JDR.Common
 
 using Dates
 
@@ -132,8 +133,9 @@ end
     (@__MODULE__).check_ASN1_fileList(o, node[offset+5], tpi)
 end
 
-import .RPKI:check_ASN1
-function check_ASN1(o::RPKIObject{MFT}, tpi::TmpParseInfo) :: RPKIObject{MFT}
+import ..RPKI:check_ASN1
+function RPKI.check_ASN1(o::RPKIObject{MFT}, tpi::TmpParseInfo) :: RPKIObject{MFT}
+    #@debug "check_ASN1 in MFT called"
     cmsobject = o.tree
     # CMS, RFC5652:
     #       ContentInfo ::= SEQUENCE {
@@ -152,7 +154,7 @@ function check_ASN1(o::RPKIObject{MFT}, tpi::TmpParseInfo) :: RPKIObject{MFT}
 end
 
 import .RPKI:check_cert
-function check_cert(o::RPKIObject{MFT}, tpi::TmpParseInfo)
+function RPKI.check_cert(o::RPKIObject{MFT}, tpi::TmpParseInfo)
     # hash tpi.eeCert
     @assert !isnothing(tpi.eeCert)
     tbs_raw = read(o.filename, tpi.eeCert.tag.offset_in_file + tpi.eeCert.tag.len + 4 - 1)[tpi.eeCert.tag.offset_in_file+0:end]

@@ -309,34 +309,6 @@ function check_resources(o::RPKIObject{ROA}, tpi::TmpParseInfo)
         remark_resourceIssue!(o, "Illegal IPv4 VRP $(IPRange(invalid.first, invalid.last))")
         o.object.resources_valid = false
     end
-
-    #= # TMP while refactoring into IntervalTree
-    for v in o.object.vrps
-        #@debug "checking $(v)"
-        #interval = Interval{IPAddr}(minimum(v.prefix), maximum(v.prefix))
-        matches = if v.prefix isa IPv6Net
-            collect(intersect(o.object.resources_v6, Interval{IPv6}(minimum(v.prefix), maximum(v.prefix))))
-        elseif v.prefix isa IPv4Net
-            #collect(intersect(o.object.resources_v4, interval))
-            collect(intersect(o.object.resources_v4, Interval{IPv4}(minimum(v.prefix), maximum(v.prefix))))
-        else
-            throw("illegal AFI in VRP")
-        end
-        if length(matches) > 1
-            @warn "ROA resource check: multiple matches for $(v)"
-        elseif length(matches) == 0
-            @warn "no match, illegal VRP $(v)"
-            remark_resourceIssue!(o, "VRP not covered by resources in EE cert")
-            o.object.resources_valid = false
-        else
-            if !(matches[1].first <= v.prefix[1] <= v.prefix[end] <= matches[1].last)
-                @warn "VRP not properly covered by resources in EE cert"
-                remark_resourceIssue!(o, "VRP not properly covered by resources in EE cert")
-                o.object.resources_valid = false
-            end
-        end
-    end
-    =#
 end
 
 end # module

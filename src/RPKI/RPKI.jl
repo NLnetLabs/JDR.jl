@@ -20,13 +20,13 @@ function check_ASN1 end
 function check_cert end
 function check_resources end
 
-include("RPKI/CER.jl")
+include("CER.jl")
 using .Cer
-include("RPKI/MFT.jl")
+include("MFT.jl")
 using .Mft
-include("RPKI/ROA.jl")
+include("ROA.jl")
 using .Roa
-include("RPKI/CRL.jl")
+include("CRL.jl")
 using .Crl
 
 

@@ -121,7 +121,7 @@ function Base.show(io::IO, m::MIME"text/html", node::RPKINode)
     end
 end
 
-include("../Lookup.jl")
+include("Lookup.jl")
 
 mutable struct TmpParseInfo
     repodir::String

@@ -3,7 +3,7 @@ module JDR
 include("Config.jl")
 import .Config.CFG
 
-include("Common.jl")
+include("Common/Common.jl")
 using .Common
 export IPRange
 
@@ -15,10 +15,13 @@ include("PKIX/PKIX.jl")
 export RPKI
 
 export search, IPRange, AutSysNum# reexport from Lookup / Common
-include("RPKI.jl")
+include("RPKI/RPKI.jl")
 using .RPKI
 export print_ASN1
 
 include("BGP/BGP.jl")
+
+
+#include("interface.jl")
 
 end # module

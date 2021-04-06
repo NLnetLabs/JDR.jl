@@ -1,18 +1,16 @@
 module Common
-using IPNets
 using IntervalTrees
 using Sockets
 
 export split_scheme_uri, split_rrdp_path
 export Remark, RemarkLevel, RemarkType, RemarkCounts, RemarkCounts_t, count_remarks
-#export dbg!, info!, warn!, err!
 export remark_encodingIssue!, remark_ASN1Error!, remark_ASN1Issue!, remark_manifestIssue!, remark_missingFile!, remark_validityIssue!, remark_resourceIssue!, remark_loopIssue!
 export @oid, oid_to_str
 
 
 function split_scheme_uri(uri::String) :: Tuple{String, String}
     m = match(r"(rsync|https)://([^/]+)/(.*)", uri)
-    (scheme, hostname, cer_fn) = m.captures
+    (_, hostname::String, cer_fn::String) = m.captures
     (hostname, cer_fn)
 end
 function split_rrdp_path(url::String) :: Tuple{String, String}
@@ -38,19 +36,8 @@ struct Remark
     msg::String
     tid::Int
 end
-#Remark(lvl::RemarkLevel, msg::String) = Remark(lvl, nothing, msg, global remarkTID += 1)
-#Remark(lvl::RemarkLevel, type::RemarkType, msg::String) = Remark(lvl, type, msg, global remarkTID += 1)
 Remark(lvl::RemarkLevel, msg::String) = Remark(lvl, nothing, msg, 0)
 Remark(lvl::RemarkLevel, type::RemarkType, msg::String) = Remark(lvl, type, msg, 0)
-
-## Example:
-#struct MyObject
-#    id::Integer
-#    remarks::Vector{Remark}
-#    remark_counts::Dict{Level, Integer}
-#end
-#MyObject(i::Integer) = MyObject(i, [], RemarkCounts())
-
 
 # Helper for constructors:
 const RemarkCounts_t = Dict{Union{RemarkLevel, RemarkType}, Int64}
@@ -223,7 +210,7 @@ end
 ##############################
 
 export IPRange, prefixlen
-include("Common/IPRange.jl")
+include("IPRange.jl")
 
 function check_coverage(on_invalid::Function,
                         parent::IntervalTree{T, IntervalValue{T, U}},

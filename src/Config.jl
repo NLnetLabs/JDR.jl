@@ -48,4 +48,9 @@ function generate_config()
     end
 end
 
+function __init__()
+    @debug "__init__'ing Config, calling generate_config()"
+    generate_config()
+end
+
 end # module

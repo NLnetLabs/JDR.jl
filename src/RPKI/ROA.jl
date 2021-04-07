@@ -13,16 +13,11 @@ using IntervalTrees
 
 import ...PKIX.@check
 
-#export ROA, check_ASN1
 export check_ASN1
 
 
 function Base.show(io::IO, roa::ROA)
     println(io, "ASID: ", roa.asid)
-    #print(io, "  VRPs:\n")
-    #for vrp in roa.vrps
-    #    print(io, "    ", vrp.prefix, "-", vrp.maxlength, "\n")
-    #end
     println(io, "VRPs:")
     for vrp in roa.vrp_tree.resources_v6
         println(io, "    ", IPRange(vrp.first, vrp.last), "-", vrp.value)
@@ -31,58 +26,6 @@ function Base.show(io::IO, roa::ROA)
         println(io, "    ", IPRange(vrp.first, vrp.last), "-", vrp.value)
     end
 end
-
-#= # not used?
-function rawv4_to_roa(o::RPKIObject{ROA}, roa_ipaddress::Node) :: RPKIObject{ROA}
-    tagisa(roa_ipaddress, ASN1.SEQUENCE)
-    tagisa(roa_ipaddress[1], ASN1.BITSTRING)
-
-    prefix = bitstring_to_ipv4net(roa_ipaddress[1].tag.value)
-    maxlength = prefix.netmask #FIXME @code_warntype ?
-
-    # optional maxLength:
-    if length(roa_ipaddress.children) == 2
-        tagisa(roa_ipaddress[2], ASN1.INTEGER)
-        @assert roa_ipaddress[2].tag.len == 1
-        #if ASN1.value(roa_ipaddress[2].tag) == maxlength
-        if roa_ipaddress[2].tag.value[1] == maxlength
-            #info!(roa_ipaddress[2], "redundant maxLength")
-        else
-            maxlength = roa_ipaddress[2].tag.value[1]
-        end
-    end
-    push!(o.object.vrps, VRP(prefix, maxlength))
-    o
-end
-function rawv6_to_roa(o::RPKIObject{ROA}, roa_ipaddress::Node) :: RPKIObject{ROA}
-    tagisa(roa_ipaddress, ASN1.SEQUENCE)
-    tagisa(roa_ipaddress[1], ASN1.BITSTRING)
-
-    prefix = bitstring_to_ipv6net(roa_ipaddress[1].tag.value)
-    maxlength = prefix.netmask
-
-    # optional maxLength:
-    if length(roa_ipaddress.children) == 2
-        tagisa(roa_ipaddress[2], ASN1.INTEGER)
-        explicit_len = if roa_ipaddress[2].tag.len == 1
-            #@debug roa_ipaddress[2].tag.value
-            roa_ipaddress[2].tag.value[1]
-        elseif roa_ipaddress[2].tag.len == 2
-            reinterpret(Int16, [roa_ipaddress[2].tag.value[2], roa_ipaddress[2].tag.value[1]])[1]
-        else
-            value(roa_ipaddress[2].tag)
-        end
-        if explicit_len == maxlength
-            #info!(roa_ipaddress[2], "redundant maxLength")
-        else
-            maxlength = explicit_len
-        end
-    end
-
-    push!(o.object.vrps, VRP(prefix, maxlength))
-    o
-end
-=#
 
 @check "version" begin
     tagis_contextspecific(node, 0x00)
@@ -113,7 +56,6 @@ end
         throw("illegal AFI in check_ASN1_ROAIPAddress")
     end
 
-    #maxlength = prefix.netmask #FIXME @code_warntype ?
     maxlength = UInt8(prefixlen(prefix))
 
     # optional maxLength:
@@ -237,8 +179,8 @@ end
 function add_resource!(roa::ROA, minaddr::IPv4, maxaddr::IPv4)
 	push!(roa.resources_v4, IntervalValue(minaddr, maxaddr, VRP[]))
 end
-add_resource!(roa::ROA, ipr::IPRange{IPv6}) = push!(roa.resources_v6, IntervalValue(ipr, VRP[]))
-add_resource!(roa::ROA, ipr::IPRange{IPv4}) = push!(roa.resources_v4, IntervalValue(ipr, VRP[]))
+add_resource!(roa::ROA, ipr::IPRange{IPv6}) = push!(roa.resources_v6, Interval(ipr))
+add_resource!(roa::ROA, ipr::IPRange{IPv4}) = push!(roa.resources_v4, Interval(ipr))
 
 import .RPKI:check_resources
 function check_resources(o::RPKIObject{ROA}, tpi::TmpParseInfo)

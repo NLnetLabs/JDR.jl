@@ -11,7 +11,6 @@ using Sockets
 export RPKIObject, RPKINode, TmpParseInfo, Lookup, print_ASN1
 export RootCER, CER, MFT, ROA, CRL
 export add_resource!
-export VRP
 export root_to
 export iterate
 
@@ -230,11 +229,6 @@ mutable struct MFT
 end
 MFT() = MFT([], nothing, nothing, nothing, nothing)
 
-struct VRP{T<:IPAddr}
-    prefix::IPRange{T}
-    maxlength::Integer
-end
-Base.show(io::IO, vrp::VRP) = print(io, vrp.prefix, "-$(vrp.maxlength)")
 
 """
     VRPS
@@ -251,16 +245,15 @@ VRPS() = VRPS(IntervalTree{IPv6, IntervalValue{IPv6, UInt8}}() , IntervalTree{IP
 
 mutable struct ROA
     asid::Integer
-    #vrps::Vector{VRP}
     vrp_tree::VRPS
     resources_valid::Union{Nothing,Bool}
-    resources_v6::Union{Nothing, IntervalTree{IPv6, IntervalValue{IPv6, Vector{VRP}}}} # TODO at least, get rid of VRP type here
-    resources_v4::Union{Nothing, IntervalTree{IPv4, IntervalValue{IPv4, Vector{VRP}}}} # because now VRP.prefix is redundant with the Interval itself
+    resources_v6::Union{Nothing, IntervalTree{IPv6}}
+    resources_v4::Union{Nothing, IntervalTree{IPv4}}
 end
 ROA() = ROA(0, VRPS(),
             nothing,
-            IntervalTree{IPv6, IntervalValue{IPv6, Vector{VRP}}}(),
-            IntervalTree{IPv4, IntervalValue{IPv4, Vector{VRP}}}(),
+            IntervalTree{IPv6, Interval{IPv6}}(),
+            IntervalTree{IPv4, Interval{IPv4}}(),
            )
 
 

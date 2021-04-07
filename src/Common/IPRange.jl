@@ -10,7 +10,11 @@ struct IPRange{T} <: AbstractRange{T}
     last::T
 end
 Base.length(r::IPRange{IPv4}) = Int64(UInt32(r.last) - UInt32(r.first) + 1)
-Base.length(r::IPRange{IPv6}) = max(typemax(UInt128), Int128(UInt128(r.last) - UInt128(r.first) + 1))
+Base.length(r::IPRange{IPv6}) = if r.first == IPv6(0) && r.last == IPv6(typemax(UInt128))
+    typemax(UInt128)
+else
+    UInt128(r.last) - UInt128(r.first) + 1
+end
 Base.size(r::IPRange) = (length(r),)
 Base.first(r::IPRange) = r.first
 Base.last(r::IPRange) = r.last

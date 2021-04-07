@@ -1,14 +1,21 @@
-using IntervalTrees
-using Sockets
+using IntervalTrees: IntervalValue
+using Sockets: IPv6, IPv4
 
 ####################
 # IPRange
 ####################
 
+"""
+    IPRange{T<:IPAddr}
+
+Describes an IP prefix or range by only storing the first and last
+`Sockets.IPAddr`.
+"""
 struct IPRange{T} <: AbstractRange{T}
     first::T
     last::T
 end
+
 Base.length(r::IPRange{IPv4}) = Int64(UInt32(r.last) - UInt32(r.first) + 1)
 Base.length(r::IPRange{IPv6}) = if r.first == IPv6(0) && r.last == IPv6(typemax(UInt128))
     typemax(UInt128)

@@ -212,9 +212,21 @@ end
 export IPRange, prefixlen
 include("IPRange.jl")
 
-function check_coverage(on_invalid::Function,
-                        parent::IntervalTree{T, IntervalValue{T, U}},
-                        child::IntervalTree{T, IntervalValue{T, V}}) :: Bool where {T<:IPAddr, U, V}
+"""
+    check_coverage(on_invalid::Function, parent::IntervalTree, child::IntervalTree)
+
+Check intervals in child are a subset of those in parent.
+
+If a child interval is not properly covered by the parent, the `on_invalid`
+function is passed the improperly covered interval and executed. The function
+can be used to log warnings, or take other actions.
+
+"""
+function check_coverage(
+    on_invalid::Function,
+    parent::IntervalTree{T,<:AbstractInterval{T}},
+    child::IntervalTree{T,<:AbstractInterval{T}},
+)::Bool where {T<:IPAddr,V}
     all_covered = true
     overlap = collect(intersect(parent, child))
     for (p, c) in overlap
@@ -225,7 +237,12 @@ function check_coverage(on_invalid::Function,
     end
     all_covered
 end
-function check_coverage(parent::IntervalTree{T, IntervalValue{T, U}}, child::IntervalTree{T, IntervalValue{T, U}}) :: Bool where {T<:IPAddr, U}
+
+
+function check_coverage(
+    parent::IntervalTree{T,<:AbstractInterval{T}},
+    child::IntervalTree{T,<:AbstractInterval{T}},
+)::Bool where {T<:IPAddr,U}
     check_coverage(parent, child) do
     end
 end

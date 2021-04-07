@@ -128,7 +128,7 @@ empty(s::Stack) = s.level == 0
 function _parse!(tag, buf, indef_stack::Stack)
     #@debug (tag, indef_stack, buf.iob.ptr)
     me = Node(tag) 
-    if isa(tag, Tag{OCTETSTRING})
+    if istag(tag, ASN.OCTETSTRING)
         if tag.constructed
             #TODO what about constructed BITSTRINGs, are those allowed?
             remark_encodingIssue!(me, "constructed OCTETSTRING, not allowed in DER")
@@ -141,17 +141,17 @@ function _parse!(tag, buf, indef_stack::Stack)
     #    @debug "got a constructed CONTEXT_SPECIFIC of definite length $(tag.len)"
     #end
 
-    if isa(tag, Tag{SEQUENCE}) || isa(tag, Tag{SET}) ||
-        ((isa(tag, Tag{CONTEXT_SPECIFIC}) ||
-          isa(tag, Tag{OCTETSTRING}) || isa(tag, Tag{BITSTRING})) && tag.constructed )#&& !(tag.class == 0x02))
+    if istag(tag, ASN.SEQUENCE) || istag(tag, ASN.SET) ||
+        ((istag(tag, ASN.CONTEXT_SPECIFIC) ||
+          istag(tag, ASN.OCTETSTRING) || istag(tag, ASN.BITSTRING)) && tag.constructed )#&& !(tag.class == 0x02))
         if tag.len_indef 
             my_indef_stack_level = indef_stack.level
             push(indef_stack)
             while !empty(indef_stack)
                 #@debug "inner $(indef_stack) > $(my_indef_stack_level)?"
                 subtag = DER.next!(buf)
-                if !(isa(subtag, Tag{Unimplemented}) || isa(subtag, Tag{InvalidTag}))
-                    if isa(subtag, Tag{RESERVED_ENC}) && subtag.len == 0
+                if !(istag(subtag, ASN.Unimplemented) || istag(subtag, ASN.InvalidTag))
+                    if istag(subtag, ASN.RESERVED_ENC) && subtag.len == 0
                         pop(indef_stack)
                         break
                     else
@@ -170,11 +170,11 @@ function _parse!(tag, buf, indef_stack::Stack)
                 #@debug "in while at $(buf.iob.ptr) / $(offset+tag.len)"
                 subtag = DER.next!(buf)
                 #@debug "got subtag", subtag
-                if subtag isa Tag{RESERVED_ENC} && subtag.len == 0
+                if istag(subtag, ASN.RESERVED_ENC) && subtag.len == 0
                     pop(indef_stack)
                     #@debug "double NULL in lower while, -- == $(indef_stack)"
                     break
-                elseif !(isa(subtag, Tag{Unimplemented}) || isa(subtag, Tag{InvalidTag}))
+                elseif !(istag(subtag, ASN.Unimplemented) || istag(subtag, ASN.InvalidTag))
                     #@debug "in lower while, appending subtag $(subtag) to $(me)"
                     #@debug "my value is $(me.tag.value)"
                     ASN.append!(me, _parse!(subtag, buf, indef_stack))

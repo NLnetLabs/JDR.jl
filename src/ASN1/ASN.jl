@@ -2,95 +2,68 @@ module ASN
 using ...JDR.Common
 using Dates
 
-export Tag, AbstractTag, Node, AbstractNode
-export value, print_node, append!, iter, lazy_iter
-export child, getindex, tagtype
+#export Tag, AbstractTag, Node, AbstractNode
+#export value, print_node, append!, iter, lazy_iter
+#export child, getindex, tagtype
+#
+#export  Unimplemented, InvalidTag, SEQUENCE, SET, RESERVED_ENC, OCTETSTRING, BOOLEAN,
+#        BITSTRING, PRINTABLESTRING, UTF8STRING, CONTEXT_SPECIFIC, INTEGER, NULL, UTCTIME, GENTIME, OID, IA5STRING
 
-export  Unimplemented, InvalidTag, SEQUENCE, SET, RESERVED_ENC, OCTETSTRING, BOOLEAN,
-        BITSTRING, PRINTABLESTRING, UTF8STRING, CONTEXT_SPECIFIC, INTEGER, NULL, UTCTIME, GENTIME, OID, IA5STRING
+export Tag,
+    Tagnumber,
+    Node,
+    istag
 
+@enum Tagnumber begin
+RESERVED_ENC
+BOOLEAN
+INTEGER
+BITSTRING
+OCTETSTRING
+NULL
+OID
+ODESC
+ETYPE
+REAL
+ENUM
+EMBEDDEDPDV
+UTF8STRING
+ROID
+TIME
+RESERVED_FUTURE
+SEQUENCE
+SET
+NUMERICSTRING
+PRINTABLESTRING
+T61STRING
+VIDEOTEXSTRING
+IA5STRING
+UTCTIME
+GENTIME
+CONTEXT_SPECIFIC = 100
+Unimplemented = 998
+InvalidTag = 999
+end
 
-abstract type AbstractTag end 
-struct  Unimplemented   <:	AbstractTag	end
-struct  InvalidTag      <:	AbstractTag	end
-
-struct CONTEXT_SPECIFIC <:  AbstractTag end
-
-struct	RESERVED_ENC   	<:	AbstractTag	end
-struct	BOOLEAN        	<:	AbstractTag	end
-struct	INTEGER        	<:	AbstractTag	end
-struct	BITSTRING      	<:	AbstractTag	end
-struct	OCTETSTRING    	<:	AbstractTag	end
-struct	NULL           	<:	AbstractTag	end
-struct	OID            	<:	AbstractTag	end
-struct	ODESC          	<:	AbstractTag	end
-struct	ETYPE          	<:	AbstractTag	end
-struct	REAL           	<:	AbstractTag	end
-struct	ENUM           	<:	AbstractTag	end
-struct	EMBEDDEDPDV    	<:	AbstractTag	end
-struct	UTF8STRING     	<:	AbstractTag	end
-struct	ROID           	<:	AbstractTag	end
-struct	TIME           	<:	AbstractTag	end
-struct	RESERVED_FUTURE	<:	AbstractTag	end
-struct	SEQUENCE       	<:	AbstractTag	end
-struct	SET            	<:	AbstractTag	end
-#struct  CHAR            <:  AbstractTag end
-struct  PRINTABLESTRING <:  AbstractTag end
-struct  IA5STRING       <:  AbstractTag end
-
-struct  UTCTIME         <:  AbstractTag end
-struct  GENTIME         <:  AbstractTag end
-
-struct Tag{AbstractTag}
+struct Tag
     class::UInt8
     constructed::Bool # PC bit
-    number::Integer
+    number::Tagnumber
     len::Int32
     len_indef::Bool
     value::Union{Nothing, Array{UInt8, 1}}
     offset_in_file::Integer
 end
 
+import Base.convert
+convert(::Type{Tagnumber}, i::UInt8) = Tagnumber(Int(i))
 
-Tag(class::UInt8, constructed::Bool, number::Integer, len::Int32, len_indef::Bool, value, offset_in_file::Integer) = begin
-    if class == 0x02 # Context-specific
-        Tag{CONTEXT_SPECIFIC}(class, constructed, number, len, len_indef, value, offset_in_file)
-    elseif number   == UInt8(0)    
-        Tag{RESERVED_ENC}(class, constructed, number, len, len_indef, value, offset_in_file)
-    elseif number   == UInt8(1)
-        Tag{BOOLEAN}(class, constructed, number, len, len_indef, value, offset_in_file)
-    elseif number   == UInt8(2)
-        Tag{INTEGER}(class, constructed, number, len, len_indef, value, offset_in_file)
-    elseif number   == UInt8(3)
-        Tag{BITSTRING}(class, constructed, number, len, len_indef, value, offset_in_file)
-    elseif number   == UInt8(4)  
-        Tag{OCTETSTRING}(class, constructed, number, len, len_indef, value, offset_in_file)
-    elseif number   == UInt8(5)  
-        Tag{NULL}(class, constructed, number, len, len_indef, value, offset_in_file)
-    elseif number   == UInt8(6)  
-        Tag{OID}(class, constructed, number, len, len_indef, value, offset_in_file)
-    elseif number   == UInt8(12) 
-        Tag{UTF8STRING}(class, constructed, number, len, len_indef, value, offset_in_file)
-    elseif number   == UInt8(16) 
-        Tag{SEQUENCE}(class, constructed, number, len, len_indef, value, offset_in_file)
-    elseif number   == UInt8(17) 
-        Tag{SET}(class, constructed, number, len, len_indef, value, offset_in_file)
-    elseif number   == UInt8(22) 
-        Tag{IA5STRING}(class, constructed, number, len, len_indef, value, offset_in_file)
-    elseif number   == UInt8(23) 
-        Tag{UTCTIME}(class, constructed, number, len, len_indef, value, offset_in_file)
-    elseif number   == UInt8(24) 
-        Tag{GENTIME}(class, constructed, number, len, len_indef, value, offset_in_file)
-    elseif number   == UInt(19)  
-        Tag{PRINTABLESTRING}(class, constructed, number, len, len_indef, value, offset_in_file)
-    else
-        Tag{Unimplemented}(class, constructed, number, len, len_indef, value, offset_in_file)
-    end 
-end
+istag(t::Tag, tn::Tagnumber) = t.number == tn
 
-Tag{InvalidTag}() = Tag{InvalidTag}(0, 0, 0, 0, false, [], 0)
-
-
+##
+## TMP commented out, first get DER.parse_recursive working
+##
+#=
 function Base.show(io::IO, t::Tag{T}) where {T<:AbstractTag}
     print(io, "[$(bitstring(t.class)[7:8])] ")
     len = if t.len == 0x80
@@ -211,12 +184,13 @@ function value(t::Tag{OID})
 
     join(subids, ".")
 end
+=#
 
 abstract type AbstractNode end
 mutable struct Node <: AbstractNode
     #parent::Union{Nothing, Node}
     children:: Union{Nothing, Vector{Node}}
-    tag #FIXME make this a DER.AbstractTag and benchmark
+    tag::Tag #FIXME make this a DER.AbstractTag and benchmark
     validated::Bool
 	remarks::Union{Nothing, Vector{Remark}}
     nicename::Union{Nothing, String}
@@ -246,8 +220,7 @@ function count_remarks(tree::Node) :: RemarkCounts_t
     cnts
 end
 
-#Node(t::T) where {T <: Any } = Node(nothing, nothing, t, false, nothing)
-Node(t::T) where {T <: Any } = Node(nothing, t, false, nothing, nothing, nothing)
+Node(t::Tag) = Node(nothing, t, false, nothing, nothing, nothing)
 
 function child(node::Node, indices...) :: Node
     current = node
@@ -322,62 +295,21 @@ function print_node(n::Node; traverse::Bool=true, max_lines::Integer=0)
     end
 end
 
-function tagtype(n::Node) :: DataType
-    typeof(n.tag).parameters[1]
-end
-function tagtype(t::Tag{<:AbstractTag}) :: DataType
-    typeof(t).parameters[1]
-end
+#function tagtype(n::Node) :: DataType
+#    typeof(n.tag).parameters[1]
+#end
+#function tagtype(t::Tag{<:AbstractTag}) :: DataType
+#    typeof(t).parameters[1]
+#end
 
-
-function _html(tree::Node, io::IOStream)
-
-    write(io, "<li class='asnnode $(tree.validated ? "validated" : "")'>")
-    write(io, "<span class='$(! isnothing(tree.remarks) ? "remark" : "")'>")
-    write(io, "$(nameof(typeof(tree.tag).parameters[1])): $(value(tree.tag))") # ($(tree.tag.len))")
-    if ! isnothing(tree.remarks)
-        write(io, "<div class='remarks-container'>")
-        for r in tree.remarks
-            write(io, "$(r) <br/>")
-        end
-        write(io, "</div>")
-    end
-    write(io, "</span>\n")
-
-    # children?
-    if !isnothing(tree.children)
-        write(io, "<ul class='asn'>\n")
-        for c in tree.children
-            _html(c, io)
-        end
-        write(io, "</ul>\n")
-    end
-    write(io, "</li>\n")
-
-end
-
-function html(tree::Node, output_fn::String) 
-    STATIC_DIR = normpath(joinpath(pathof(parentmodule(ASN)), "..", "..", "static"))
-    open(output_fn, "w") do io
-        write(io, "<link rel='stylesheet' href='file://$(STATIC_DIR)/style.css'/>\n")
-        write(io, "<h1>JDR</h1>\n\n")
-        write(io, "<ul id='main' class='asn'>\n")
-        #write(io, "<li>root</li>\n")
-        for c in tree.children
-            _html(c, io)
-        end
-        write(io, "</ul>\n")
-        write(io, "<!-- done -->\n")
-        write(io, "<script type='text/javascript' src='file://$(STATIC_DIR)/javascript.js'></script>")
-    end
-    @debug "written $(output_fn)"
-end
 
 
 ####################
 # validation helpers
 ####################
+# TODO are these used?
 
+#=
 function iter(tree::Node, res::Vector{Node}=Vector{Node}([])) :: Vector{Node}
     Base.push!(res, tree)
     if !isnothing(tree.children)
@@ -459,6 +391,7 @@ function lazy_contains(tree::Node, tagtype::Type{T}, v::Any) where {T<:AbstractT
     found
 end
 
+=#
 
 include("validation_common.jl")
 

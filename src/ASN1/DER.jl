@@ -142,8 +142,8 @@ function _parse!(tag, buf, indef_stack::Stack)
     #end
 
     if istag(tag, ASN.SEQUENCE) || istag(tag, ASN.SET) ||
-        ((istag(tag, ASN.CONTEXT_SPECIFIC) ||
-          istag(tag, ASN.OCTETSTRING) || istag(tag, ASN.BITSTRING)) && tag.constructed )#&& !(tag.class == 0x02))
+        ((iscontextspecific(tag) ||
+          istag(tag, ASN.OCTETSTRING) || istag(tag, ASN.BITSTRING)) && tag.constructed )
         if tag.len_indef 
             my_indef_stack_level = indef_stack.level
             push(indef_stack)

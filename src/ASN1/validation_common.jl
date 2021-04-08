@@ -6,22 +6,49 @@ export to_bigint
 export bitstring_to_v4range, bitstring_to_v6range
 export bitstrings_to_v4range, bitstrings_to_v6range
 
+
+export istag
+
+export check_contextspecific,
+    check_tag,
+    check_value,
+    check_OID,
+    check_attribute
+
 # TODO implement optional custom remark::String
-function tagisa(node::Node, t::Type)
-    if !(node.tag isa Tag{t})
+#function tagisa(node::Node, t::Type)
+function check_tag(node::Node, tagnum::Tagnumber)
+    if !(istag(node.tag, tagnum))
         remark_ASN1Issue!(node, "expected this to be a $(nameof(t))")
-        return false
-    else
-        return node.validated = true
-    end
-end
-function tagis_contextspecific(node::Node, tagnum::UInt8)
-    if !(node.tag isa Tag{ASN.CONTEXT_SPECIFIC} && node.tag.number == tagnum)
-        remark_ASN1Issue!(node, "expected this to be a Context-Specific tag number $(tagnum)")
+        false
     else
         node.validated = true
     end
 end
+
+function check_tag(node::Node, ts::Vector{Tagnumber})
+    for t in ts
+        if istag(node.tag, t)
+            node.validated = true
+            return
+        end
+    end
+    remark_ASN1Issue!(node, "unexpected type $(nameof(typeof(node.tag).parameters[1]))")
+end
+
+function check_contextspecific(node::Node, tagnum::Union{Nothing, Tagnumber}=nothing)
+    if !iscontextspecific(node.tag)
+        if !isnothing(tagnum) && istag(node.tag, tagnum)
+            remark_ASN1Issue!(node, "expected this to be a Context-Specific $(tagnum)")
+        else
+            remark_ASN1Issue!(node, "expected this to be a Context-Specific tag")
+        end
+    else
+        node.validated = true
+    end
+end
+
+
 function tagisa(node::Node, ts::Vector{DataType})
     for t in ts
         if node.tag isa Tag{t}
@@ -32,15 +59,16 @@ function tagisa(node::Node, ts::Vector{DataType})
     remark_ASN1Issue!(node, "unexpected type $(nameof(typeof(node.tag).parameters[1]))")
 end
 
-function tagvalue(node::Node, t::Type, v::Any)
-    tagisa(node, t)
+#function tagvalue(node::Node, t::Type, v::Any)
+function check_value(node::Node, t::Tagnumber, v::Any)
+    istag(node.tag, t)
     if !(ASN.value(node.tag) == v)
         remark_ASN1Issue!(node, "expected value to be '$(v)', got '$(ASN.value(node.tag))'")
     end
 end
 
-function tag_OID(node::Node, v::Vector{UInt8})
-    tagisa(node, ASN.OID)
+function check_OID(node::Node, v::Vector{UInt8})
+    check_tag(node, ASN.OID)
     if !(node.tag.value == v)
         remark_ASN1Issue!(node, "expected OID to be '$(oid_to_str(v))', got $(oid_to_str(node.tag.value))")
         #@warn "expected OID to be '$(v)', got $(ASN.value(node.tag))"
@@ -99,22 +127,31 @@ function childrencontainvalue(node::Node, t::Type, v::Any)
     end
 end
 
-function containAttributeTypeAndValue(node::Node, oid::Vector{UInt8}, expected_type::DataType, accepted_types::Vector{DataType}=[]) :: Union{Nothing, Node}
+"""
+    check_attribute (and TypeAndValue)
+
+Checks: TODO
+
+Returns: TODO
+
+"""
+function check_attribute(node::Node, oid::Vector{UInt8}, expected_type::Tagnumber, accepted_types::Vector{Tagnumber}=[]) :: Union{Nothing, Node}
     node.validated = true # this node is the RelativeDistinguishedName, thus a SET
 
     # in case of IMPLICITly tagged context-specific SETs, the first part of the
     # following @assert condition fails
-    @assert node.tag isa Tag{ASN.SET} || node.tag isa Tag{CONTEXT_SPECIFIC}
+
+    @assert istag(node.tag, ASN.SET) || istag(node.tag, CONTEXT_SPECIFIC)
 
     for c in node.children # every c in a SEQUENCE
-        @assert c.tag isa Tag{ASN.SEQUENCE}
-        if c[1].tag isa Tag{ASN.OID} && c[1].tag.value == oid
-            if c[2].tag isa Tag{expected_type}
+        @assert istag(c.tag, ASN.SEQUENCE)
+        if istag(c[1].tag, ASN.OID) && c[1].tag.value == oid
+            if istag(c[2].tag, expected_type)
                 c.validated = c[1].validated = c[2].validated = true
                 return c[2]
             end
             for t in accepted_types
-                if c[2].tag isa Tag{t}
+                if istag(c[2].tag, t)
                     c.validated = c[1].validated = c[2].validated = true
                     remark_ASN1Issue!(c[2], "RFC6487: MUST be PRINTABLESTRING instead of $(t)")
                     return c[2]
@@ -137,12 +174,12 @@ function check_extensions(tree::Node, oids::Vector{Pair{Vector{UInt8},String}})
 end
 
 function get_extension_oids(tree::Node) :: Vector{Vector{UInt8}}
-    tagisa(tree[1], ASN.SEQUENCE)
+    check_tag(tree[1], ASN.SEQUENCE)
 
     oids_found = Vector{Vector{UInt8}}()
     for c in tree[1].children
-        tagisa(c, ASN.SEQUENCE)
-        tagisa(c[1], ASN.OID)
+        check_tag(c, ASN.SEQUENCE)
+        check_tag(c[1], ASN.OID)
         #push!(oids_found, ASN.value(c[1].tag))
         push!(oids_found, c[1].tag.value)
     end
@@ -150,16 +187,16 @@ function get_extension_oids(tree::Node) :: Vector{Vector{UInt8}}
 end
 
 function get_extensions(tree::Node) :: Dict{Vector{UInt8},Node}
-    tagisa(tree[1], ASN.SEQUENCE)
+    check_tag(tree[1], ASN.SEQUENCE)
 
     extensions = Dict{Vector{UInt8},Node}()
     for c in tree[1].children
-        tagisa(c, ASN.SEQUENCE)
-        tagisa(c[1], ASN.OID)
+        check_tag(c, ASN.SEQUENCE)
+        check_tag(c[1], ASN.OID)
         critical = false
         extension_octetstring = nothing
         if length(c.children) == 3
-            tagvalue(c[2], ASN.BOOLEAN, true)
+            check_value(c[2], ASN.BOOLEAN, true)
             critical = true
             extension_octetstring = c[3]
         else

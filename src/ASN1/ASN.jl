@@ -12,7 +12,10 @@ using Dates
 export Tag,
     Tagnumber,
     Node,
-    istag
+    istag,
+    iscontextspecific,
+    value
+
 
 @enum Tagnumber begin
 RESERVED_ENC
@@ -40,10 +43,44 @@ VIDEOTEXSTRING
 IA5STRING
 UTCTIME
 GENTIME
-CONTEXT_SPECIFIC = 100
 Unimplemented = 998
 InvalidTag = 999
 end
+
+
+export RESERVED_ENC,
+    BOOLEAN,
+    INTEGER,
+    BITSTRING,
+    OCTETSTRING,
+    NULL,
+    OID,
+    ODESC,
+    ETYPE,
+    REAL,
+    ENUM,
+    EMBEDDEDPDV,
+    UTF8STRING,
+    ROID,
+    TIME,
+    RESERVED_FUTURE,
+    SEQUENCE,
+    SET,
+    NUMERICSTRING,
+    PRINTABLESTRING,
+    T61STRING,
+    VIDEOTEXSTRING,
+    IA5STRING,
+    UTCTIME,
+    GENTIME,
+    Unimplemented,
+    InvalidTag
+
+# FIXME macro/eval this export
+#for t in instances(Tagnumber)
+#    #@eval :( export Symbol($t) )
+#    eval(export Symbol($t))
+#end
 
 struct Tag
     class::UInt8
@@ -59,6 +96,46 @@ import Base.convert
 convert(::Type{Tagnumber}, i::UInt8) = Tagnumber(Int(i))
 
 istag(t::Tag, tn::Tagnumber) = t.number == tn
+iscontextspecific(t::Tag) = t.class == 0x02
+
+function value(t::Tag; force_reinterpret=false)
+    if istag(t, BOOLEAN)
+        @debug "value for BOOLEAN"
+        # FIXME DER has stricter constraints for TRUE
+        # all bits should be 1 for true
+        t.value[1] != 0  
+    elseif istag(t, INTEGER)
+        if t.len <= 8
+            reinterpret(Int64, resize!(reverse(t.value), 8))[1]
+        else
+            parse(BigInt, bytes2hex(t.value), base=16)
+        end
+
+
+        #if t.len > 5 && !force_reinterpret
+        #    "$(t.len * 8)bit integer" #FIXME not accurate, perhaps the lenbytes itself cause that
+        #elseif t.len <= 8
+        #    reinterpret(Int64, resize!(reverse(t.value), 8))[1]
+        #else
+        #    parse(BigInt, bytes2hex(t.value), base=16)
+        #end
+    elseif istag(t, PRINTABLESTRING)
+        String(copy(t.value))
+
+    elseif istag(t, GENTIME)
+        DateTime(String(copy(t.value)), dateformat"yyyymmddHHMMSSZ")
+    elseif istag(t, UTCTIME)
+        ts = DateTime(String(copy(t.value)), dateformat"yymmddHHMMSSZ")
+        if year(ts) < 50
+            ts += Year(2000)
+        else
+            ts += Year(1900)
+        end
+        ts
+    else
+        @warn "value for unimplemented type ", t.number
+    end
+end
 
 ##
 ## TMP commented out, first get DER.parse_recursive working
@@ -293,6 +370,17 @@ function print_node(n::Node; traverse::Bool=true, max_lines::Integer=0)
     if max_lines > 0
         printstyled("\r---- max-lines was $(max_lines) ----\n", color=:red)
     end
+end
+
+# used in count_remarks
+function iter(tree::Node, res::Vector{Node}=Vector{Node}([])) :: Vector{Node}
+    Base.push!(res, tree)
+    if !isnothing(tree.children)
+        for c in tree.children
+            iter(c, res)
+        end
+    end
+    res
 end
 
 #function tagtype(n::Node) :: DataType

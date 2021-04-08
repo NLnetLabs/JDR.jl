@@ -16,20 +16,20 @@ import ...PKIX.@check
 
 
 @check "version" begin
-    tagvalue(node, ASN1.INTEGER, 0x1)
+    check_value(node, ASN1.INTEGER, 0x1)
 end
 @check "signature" begin
-    tagisa(node, ASN1.SEQUENCE)
-    tag_OID(node[1], @oid "1.2.840.113549.1.1.11")
+    check_tag(node, ASN1.SEQUENCE)
+    check_OID(node[1], @oid "1.2.840.113549.1.1.11")
     #TODO double check whether 4055 mentions CRLs specifically
     if length(node.children) == 2 
-        tagisa(node[2], ASN1.NULL)
+        check_tag(node[2], ASN1.NULL)
         #FIXME #info!(node[2], "this NULL SHOULD be absent (RFC4055)")
     end
 end
 @check "issuer" begin
-    tagisa(node, ASN1.SEQUENCE)
-    tagisa(node[1], ASN1.SET)
+    check_tag(node, ASN1.SEQUENCE)
+    check_tag(node[1], ASN1.SET)
         # it's a SET of AttributeTypeAndValue 
         # which is a SEQUENCE of type (OID) + value (ANY)
         # from RFC6487:
@@ -43,29 +43,29 @@ end
     # If the issuer contains the serialNumber as well,
     # the set should contain 1 child, the RECOMMENDED set
     # TODO check this interpretation
-    containAttributeTypeAndValue(node[1], @oid("2.5.4.3"), ASN1.PRINTABLESTRING, [ASN1.UTF8STRING])
+    check_attribute(node[1], @oid("2.5.4.3"), ASN1.PRINTABLESTRING, [ASN1.UTF8STRING])
 end
 @check "thisUpdate" begin
-    tagisa(node, [ASN1.UTCTIME, ASN1.GENTIME])
+    check_tag(node, [ASN1.UTCTIME, ASN1.GENTIME])
     o.object.this_update = ASN1.value(node.tag)
 end
 @check "nextUpdate" begin
-    tagisa(node, [ASN1.UTCTIME, ASN1.GENTIME])
+    check_tag(node, [ASN1.UTCTIME, ASN1.GENTIME])
     o.object.next_update = ASN1.value(node.tag)
 end
 
 @check "revokedCertificates" begin
-    tagisa(node, ASN1.SEQUENCE)
+    check_tag(node, ASN1.SEQUENCE)
     if !isnothing(node.children)
         for s in node.children
-            tagisa(s, ASN1.SEQUENCE)
+            check_tag(s, ASN1.SEQUENCE)
 
             # userCertificate serialnumber
-            tagisa(s[1], ASN1.INTEGER)
+            check_tag(s[1], ASN1.INTEGER)
             push!(o.object.revoked_serials, ASN1.value(s[1].tag, force_reinterpret=true))
 
             # recovationDate Time
-            tagisa(s[2], [ASN1.UTCTIME, ASN1.GENTIME])
+            check_tag(s[2], [ASN1.UTCTIME, ASN1.GENTIME])
         end
     else
         @debug "empty revokedCertificates SEQUENCE in $(o.filename)"
@@ -78,7 +78,7 @@ const MANDATORY_EXTENSIONS = Vector{Pair{Vector{UInt8}, String}}([
                                                    ])
 
 @check "authorityKeyIdentifier" begin
-    tagisa(node, ASN1.OCTETSTRING)
+    check_tag(node, ASN1.OCTETSTRING)
     # Need a second pass to decode the OCTETSTRING
     DER.parse_append!(DER.Buf(node.tag.value), node)
 end
@@ -97,7 +97,7 @@ function check_ASN1_extension(oid::Vector{UInt8}, o::RPKIObject{T}, node::Node, 
     end
 end
 @check "crlExtensions" begin
-    tagis_contextspecific(node, 0x00)
+    check_contextspecific(node, ASN1.RESERVED_ENC)
     check_extensions(node, (@__MODULE__).MANDATORY_EXTENSIONS)
 end
 
@@ -118,11 +118,11 @@ end
 #        crlExtensions           [0]  EXPLICIT Extensions OPTIONAL
 #                                      -- if present, version MUST be v2
 #                                  }
-    tagisa(node, ASN1.SEQUENCE)
+    check_tag(node, ASN1.SEQUENCE)
     # version, optional
     # if present, MUST be v2 == 0x01
     offset = 0
-    if node[1].tag isa Tag{ASN1.INTEGER}
+    if istag(node[1].tag, ASN1.INTEGER)
         offset += 1
         (@__MODULE__).check_ASN1_version(o, node[1], tpi)
     end
@@ -132,13 +132,13 @@ end
     (@__MODULE__).check_ASN1_thisUpdate(o, node[offset + 3], tpi)
     
     # nextUpdate is optional
-    if node[offset+4].tag isa Tag{ASN1.UTCTIME} ||
-        node[offset+4].tag isa Tag{ASN1.GENTIME}
+    if istag(node[offset+4].tag, ASN1.UTCTIME) ||
+        istag(node[offset+4].tag, ASN1.GENTIME)
         (@__MODULE__).check_ASN1_nextUpdate(o, node[offset + 4], tpi)
         offset += 1
     end
     # optional revokedCertificates
-    if node[offset+4].tag isa Tag{ASN1.SEQUENCE}
+    if istag(node[offset+4].tag, ASN1.SEQUENCE)
         (@__MODULE__).check_ASN1_revokedCertificates(o, node[offset + 4], tpi)
         offset += 1
     end

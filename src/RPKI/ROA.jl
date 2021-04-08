@@ -28,22 +28,22 @@ function Base.show(io::IO, roa::ROA)
 end
 
 @check "version" begin
-    tagis_contextspecific(node, 0x00)
+    check_contextspecific(node, ASN1.RESERVED_ENC)
     # EXPLICIT tagging, so the version node be in a child
     childcount(node, 1)
-    tagisa(node[1], ASN1.INTEGER)
+    check_tag(node[1], ASN1.INTEGER)
     if value(node[1].tag) == 0
         #info!(node[1], "version explicitly set to 0 while that is the default")
     end
 end
 
 @check "asID" begin
-    tagisa(node, ASN1.INTEGER)
+    check_tag(node, ASN1.INTEGER)
     o.object.asid = ASN1.value(node.tag)
 end
 @check "ROAIPAddress" begin
-    tagisa(node, ASN1.SEQUENCE)
-    tagisa(node[1], ASN1.BITSTRING)
+    check_tag(node, ASN1.SEQUENCE)
+    check_tag(node[1], ASN1.BITSTRING)
     node[1].nicename = "address"
 
     prefix = if tpi.afi == 1
@@ -60,7 +60,7 @@ end
 
     # optional maxLength:
     if length(node.children) == 2
-        tagisa(node[2], ASN1.INTEGER)
+        check_tag(node[2], ASN1.INTEGER)
         node[2].nicename = "maxLength"
         #@assert node[2].tag.len == 1
         if node[2].tag.value[1] == maxlength
@@ -79,9 +79,9 @@ end
 
 end
 @check "ROAIPAddressFamily" begin
-        tagisa(node, ASN1.SEQUENCE)
+        check_tag(node, ASN1.SEQUENCE)
         # addressFamily
-        tagisa(node[1], ASN1.OCTETSTRING)
+        check_tag(node[1], ASN1.OCTETSTRING)
 
         tpi.afi = reinterpret(UInt16, reverse(node[1].tag.value))[1]
         if ! (tpi.afi in [1,2])
@@ -90,7 +90,7 @@ end
         end
 
         addresses = node[2]
-        tagisa(addresses, ASN1.SEQUENCE)
+        check_tag(addresses, ASN1.SEQUENCE)
         addresses.nicename = "addresses"
         if length(addresses.children) == 0
             remark_ASN1Error!(addresses, "there should be at least one ROAIPAddress here")
@@ -105,7 +105,7 @@ end
         end
 end
 @check "ipAddrBlocks" begin
-    tagisa(node, ASN1.SEQUENCE)
+    check_tag(node, ASN1.SEQUENCE)
 
     if length(node.children) == 0
         remark_ASN1Error!(node, "there should be at least one ROAIPAddressFamily here")
@@ -116,7 +116,7 @@ end
 end
 
 @check "routeOriginAttestation" begin
-    tagisa(node, ASN1.SEQUENCE)
+    check_tag(node, ASN1.SEQUENCE)
     childcount(node, 2:3)
     # the 'version' is optional, defaults to 0
     offset = 0
@@ -136,7 +136,7 @@ function check_ASN1(o::RPKIObject{ROA}, tpi::TmpParseInfo) :: RPKIObject{ROA}
     #           contentType ContentType,
     #           content [0] EXPLICIT ANY DEFINED BY contentType }
     
-    tagisa(cmsobject, ASN1.SEQUENCE)
+    check_tag(cmsobject, ASN1.SEQUENCE)
     childcount(cmsobject, 2)
 
     CMS.check_ASN1_contentType(o, cmsobject[1], tpi)

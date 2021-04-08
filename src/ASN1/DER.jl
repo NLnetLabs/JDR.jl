@@ -104,17 +104,12 @@ function next!(buf::Buf) #:: Tag{<:AbstractTag} #:: Union{Tag{<:AbstractTag}, No
     end
     @assert(len >= 0)
 
-    value = if len_indef
-        #@warn "indef len, not reading value"
-        #[]
-        nothing
-    #elseif tagnumber == 16 # FIXME also include SET ?
-    #    nothing
-    elseif !constructed
-        read(buf.iob, len) 
-    else
-        nothing
+    value = nothing
+    if !constructed 
+        value = zeros(UInt8, len)
+        readbytes!(buf.iob, value, len)
     end
+
     return Tag(tagclass, constructed, tagnumber, len, len_indef, value, offset_in_file)
 end
 

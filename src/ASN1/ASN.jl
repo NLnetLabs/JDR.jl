@@ -88,7 +88,7 @@ struct Tag
     number::Tagnumber
     len::Int32
     len_indef::Bool
-    value::Union{Nothing, Array{UInt8, 1}}
+    value::Union{Nothing, Vector{UInt8}}
     offset_in_file::Integer
 end
 
@@ -270,8 +270,7 @@ function value(t::Tag{OID})
 end
 =#
 
-abstract type AbstractNode end
-mutable struct Node <: AbstractNode
+mutable struct Node
     #parent::Union{Nothing, Node}
     children:: Union{Nothing, Vector{Node}}
     tag::Tag #FIXME make this a DER.AbstractTag and benchmark

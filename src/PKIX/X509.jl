@@ -124,7 +124,7 @@ AFI_v6 = 0x02
                     o.object.inherit_v4_prefixes = false
                 end
             end
-        elseif ipaddrblock[2].tag isa Tag{ASN1.NULL}
+        elseif istag(ipaddrblock[2].tag, ASN1.NULL)
             if o.object isa CER
                 if afi == AFI_v6 
                     o.object.inherit_v6_prefixes = true
@@ -236,7 +236,7 @@ end
     check_tag(node[1], ASN1.SEQUENCE)
     for c in node[1].children
         check_tag(c, ASN1.SEQUENCE)
-        check_tag(c[1], ASN1.CONTEXT_SPECIFIC)
+        check_contextspecific(c[1])
         if c[1].tag.number == 0
             #distributionPoint
             if c[1,1].tag.number == 0
@@ -259,7 +259,7 @@ end
         check_tag(c, ASN1.SEQUENCE)
         # expecting 1.3.6.1.5.5.7.48.2 == id-ad-caIssuers
         check_OID(c[1], @oid("1.3.6.1.5.5.7.48.2"))
-        check_tag(c[2], ASN1.CONTEXT_SPECIFIC)
+        check_contextspecific(c[2])
         if tpi.setNicenames
             c[2].nicevalue = String(copy(c[2].tag.value))
         end
@@ -270,7 +270,7 @@ end
     # second pass
     DER.parse_append!(DER.Buf(node.tag.value), node)
     check_tag(node[1], ASN1.SEQUENCE)
-    check_tag(node[1,1], ASN1.CONTEXT_SPECIFIC)
+    check_contextspecific(node[1,1])
     if tpi.setNicenames
         node[1,1].nicevalue = bytes2hex(node[1,1].tag.value)
     end

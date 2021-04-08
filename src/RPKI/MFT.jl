@@ -44,18 +44,18 @@ length(::Nothing) = 0 #used in childcount from validation_common.jl
     tagis_contextspecific(node, 0x00)
     # EXPLICIT tagging, so the version node be in a child
     childcount(node, 1)
-    tagisa(node[1], ASN1.INTEGER)
+    check_tag(node[1], ASN1.INTEGER)
     if value(node[1].tag) == 0
         #info!(node[1], "version explicitly set to 0 while that is the default")
     end
 end
 
 @check "manifestNumber" begin
-    tagisa(node, ASN1.INTEGER)
+    check_tag(node, ASN1.INTEGER)
 end
 
 @check "thisUpdate" begin
-    tagisa(node, ASN1.GENTIME)
+    check_tag(node, ASN1.GENTIME)
     try
         o.object.this_update = (@__MODULE__).gentime_to_ts(node.tag.value)
     catch e
@@ -67,7 +67,7 @@ end
     end
 end
 @check "nextUpdate" begin
-    tagisa(node, ASN1.GENTIME)
+    check_tag(node, ASN1.GENTIME)
     try
         o.object.next_update = (@__MODULE__).gentime_to_ts(node.tag.value)
     catch e
@@ -80,15 +80,15 @@ end
 end
 
 @check "fileHashAlg" begin
-    tag_OID(node, @oid "2.16.840.1.101.3.4.2.1")
+    check_OID(node, @oid "2.16.840.1.101.3.4.2.1")
 end
 
 @check "fileList" begin
-    tagisa(node, ASN1.SEQUENCE)
+    check_tag(node, ASN1.SEQUENCE)
     for file_and_hash in node.children
-        tagisa(file_and_hash, ASN1.SEQUENCE)
-        tagisa(file_and_hash[1], ASN1.IA5STRING)
-        tagisa(file_and_hash[2], ASN1.BITSTRING)
+        check_tag(file_and_hash, ASN1.SEQUENCE)
+        check_tag(file_and_hash[1], ASN1.IA5STRING)
+        check_tag(file_and_hash[2], ASN1.BITSTRING)
 
         filename = ASN1.value(file_and_hash[1].tag)
         push!(o.object.files, filename)
@@ -118,7 +118,7 @@ end
     #  fileHashAlg     OBJECT IDENTIFIER,
     #  fileList        SEQUENCE SIZE (0..MAX) OF FileAndHash
     #  }
-    tagisa(node, ASN1.SEQUENCE)
+    check_tag(node, ASN1.SEQUENCE)
     childcount(node, 5:6)
     # the 'version' is optional, defaults to 0
     offset = 0
@@ -142,7 +142,7 @@ function RPKI.check_ASN1(o::RPKIObject{MFT}, tpi::TmpParseInfo) :: RPKIObject{MF
     #           contentType ContentType,
     #           content [0] EXPLICIT ANY DEFINED BY contentType }
     
-    tagisa(cmsobject, ASN1.SEQUENCE)
+    check_tag(cmsobject, ASN1.SEQUENCE)
     childcount(cmsobject, 2)
 
     CMS.check_ASN1_contentType(o, cmsobject[1], tpi)

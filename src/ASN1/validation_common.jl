@@ -75,8 +75,8 @@ function check_OID(node::Node, v::Vector{UInt8})
     end
 end
 
-function tag_OIDs(node::Node, oids::Vector{Vector{UInt8}})
-    tagisa(node, ASN.OID)
+function check_OID(node::Node, oids::Vector{Vector{UInt8}})
+    check_tag(node, ASN.OID)
     for oid in oids 
         if (node.tag.value == oid)
             return

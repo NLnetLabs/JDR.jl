@@ -100,7 +100,6 @@ iscontextspecific(t::Tag) = t.class == 0x02
 
 function value(t::Tag; force_reinterpret=false)
     if istag(t, BOOLEAN)
-        @debug "value for BOOLEAN"
         # FIXME DER has stricter constraints for TRUE
         # all bits should be 1 for true
         t.value[1] != 0  
@@ -119,7 +118,7 @@ function value(t::Tag; force_reinterpret=false)
         #else
         #    parse(BigInt, bytes2hex(t.value), base=16)
         #end
-    elseif istag(t, PRINTABLESTRING)
+    elseif istag(t, PRINTABLESTRING) || istag(t, IA5STRING)
         String(copy(t.value))
 
     elseif istag(t, GENTIME)
@@ -132,6 +131,14 @@ function value(t::Tag; force_reinterpret=false)
             ts += Year(1900)
         end
         ts
+    elseif istag(t, BITSTRING)
+        if t.len > 10
+            "*blob*"
+        elseif t.len >= 2
+            bitstring(t.value[2] >> t.value[1])
+        else
+            "*empty*"
+        end
     else
         @warn "value for unimplemented type ", t.number
     end

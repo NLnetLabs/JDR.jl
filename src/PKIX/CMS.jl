@@ -7,16 +7,16 @@ using ..X509
 import ...PKIX.@check
 
 @check "contentType" begin
-    ASN1.tag_OID(node, @oid("1.2.840.113549.1.7.2"))
+    check_OID(node, @oid("1.2.840.113549.1.7.2"))
 end
 
 @check "version"  begin
-    tagvalue(node, ASN1.INTEGER, 0x03)
+    check_value(node, ASN1.INTEGER, 0x03)
 end
 
 @check "digestAlgorithm" begin
-    tagisa(node, ASN1.SEQUENCE)
-    tag_OID(node[1], @oid("2.16.840.1.101.3.4.2.1")) # SHA-256 RFC5754 sec 2.2
+    check_tag(node, ASN1.SEQUENCE)
+    check_OID(node[1], @oid("2.16.840.1.101.3.4.2.1")) # SHA-256 RFC5754 sec 2.2
     if tpi.setNicenames
         node[1].nicevalue = oid_to_str(node[1].tag.value)
     end
@@ -24,20 +24,20 @@ end
     #    signature field in the sequence tbsCertificate (Section 4.1.2.3).
 
     if length(node.children) == 2
-        tagisa(node[2], ASN1.NULL)
+        check_tag(node[2], ASN1.NULL)
         remark_ASN1Issue!(node[2], "parameters MUST be absent (RFC5754)")
     end
 end
 
 @check "digestAlgorithms" begin
-    tagisa(node, ASN1.SET)
+    check_tag(node, ASN1.SET)
     childcount(node, 1)
     (@__MODULE__).check_ASN1_digestAlgorithm(o, node[1], tpi)
 end
 
 
 @check "eContent" begin
-    tagis_contextspecific(node, 0x00)
+    check_contextspecific(node, ASN1.RESERVED_ENC)
     # optional second pass on the EXPLICIT OCTETSTRING:
     # if the manifest is BER encoded (instead of DER), the encapsulated ASN1
     # nodes have already been parsed
@@ -59,12 +59,12 @@ end
     # either way, the eContent only has 1 child
      
     childcount(node[1], 1)
-    eContent = if node[1,1].tag isa Tag{ASN1.OCTETSTRING} 
+    eContent = if istag(node[1,1].tag, ASN1.OCTETSTRING)
         remark_encodingIssue!(node[1,1], "nested OCTETSTRING, BER instead of DER")
         # we need to do a second pass on this then
         DER.parse_append!(DER.Buf(node[1,1].tag.value), node[1,1])
         node[1,1,1]
-    elseif node[1,1].tag isa Tag{ASN1.SEQUENCE}
+    elseif istag(node[1,1].tag, ASN1.SEQUENCE)
         node[1,1]
     else
         @error("unexpected tag $(tagtype(node[1,1])) in $(o.filename)")
@@ -77,12 +77,12 @@ end
 @check "eContentType" begin
     # this can only be either a manifest or a ROA, so:
     if o.object isa MFT
-        tag_OID(node, @oid("1.2.840.113549.1.9.16.1.26"))
+        check_OID(node, @oid("1.2.840.113549.1.9.16.1.26"))
         if tpi.setNicenames
             node.nicename *= " (MFT)"
         end
     elseif o.object isa ROA
-        tag_OID(node, @oid("1.2.840.113549.1.9.16.1.24"))
+        check_OID(node, @oid("1.2.840.113549.1.9.16.1.24"))
         if tpi.setNicenames
             node.nicename *= " (ROA)"
         end
@@ -95,14 +95,14 @@ end
 	#  eContentType ContentType,
 	#  eContent [0] EXPLICIT OCTET STRING OPTIONAL }
 
-	tagisa(node, ASN1.SEQUENCE)    
+	check_tag(node, ASN1.SEQUENCE)    
 	childcount(node, 2)
     (@__MODULE__).check_ASN1_eContentType(o, node[1], tpi)
     (@__MODULE__).check_ASN1_eContent(o, node[2], tpi)
 end
 
 @check "certificates" begin
-    tagis_contextspecific(node, 0x00)
+    check_contextspecific(node, ASN1.RESERVED_ENC)
     if length(node[1].children) > 3
         @info "More than one certificate in $(o.filename)?"
     end
@@ -113,7 +113,7 @@ end
 end
 
 @check "sid" begin
-    tagis_contextspecific(node, 0x0)
+    check_contextspecific(node, ASN1.RESERVED_ENC)
     tpi.signerIdentifier = node.tag.value
 
     #TODO, do we check here on tpi.subjectKeyIdentifier == tpi.signerIdentifier
@@ -123,15 +123,15 @@ end
 end
 
 @check "sa_contentType" begin
-    tagisa(node, ASN1.SET)
-    tagisa(node[1], ASN1.OID)
+    check_tag(node, ASN1.SET)
+    check_tag(node[1], ASN1.OID)
     if o.object isa ROA
-        tag_OID(node[1], @oid("1.2.840.113549.1.9.16.1.24"))
+        check_OID(node[1], @oid("1.2.840.113549.1.9.16.1.24"))
         if tpi.setNicenames
             node[1].nicename = "routeOriginAuthz"
         end
     elseif o.object isa MFT
-        tag_OID(node[1], @oid("1.2.840.113549.1.9.16.1.26"))
+        check_OID(node[1], @oid("1.2.840.113549.1.9.16.1.26"))
         if tpi.setNicenames
             node[1].nicename = "rpkiManifest"
         end
@@ -139,15 +139,15 @@ end
 end
 
 @check "messageDigest" begin
-    tagisa(node, ASN1.SET)
+    check_tag(node, ASN1.SET)
 end
 
 @check "signingTime" begin
 end
 
 @check "attribute" begin
-    tagisa(node, ASN1.SEQUENCE)
-    tagisa(node[1], ASN1.OID)
+    check_tag(node, ASN1.SEQUENCE)
+    check_tag(node[1], ASN1.OID)
     if node[1].tag.value == @oid("1.2.840.113549.1.9.3")
         (@__MODULE__).check_ASN1_sa_contentType(o, node[2], tpi)
     elseif node[1].tag.value == @oid("1.2.840.113549.1.9.4")
@@ -159,7 +159,7 @@ end
     end
 end
 @check "signedAttrs" begin
-    tagis_contextspecific(node, 0x0)
+    check_contextspecific(node, ASN1.RESERVED_ENC)
     # store a pointer to the signedAttrs, so we can do specific checks in
     # MFT/ROA.jl
     tpi.signedAttrs = node
@@ -179,10 +179,10 @@ end
 end
 
 @check "signatureAlgorithm" begin
-    tagisa(node, ASN1.SEQUENCE)
+    check_tag(node, ASN1.SEQUENCE)
     # two OIDs allowed, https://tools.ietf.org/html/rfc7935#section-7
-    tag_OIDs(node[1], [@oid("1.2.840.113549.1.1.1"), @oid("1.2.840.113549.1.1.11")])
-    tagisa(node[2], ASN1.NULL) # here, the parameters MUST be present and MUST be NULL according to 3370#4.2.1
+    check_OID(node[1], [@oid("1.2.840.113549.1.1.1"), @oid("1.2.840.113549.1.1.11")])
+    check_tag(node[2], ASN1.NULL) # here, the parameters MUST be present and MUST be NULL according to 3370#4.2.1
 end
 
 @check "signature" begin
@@ -208,7 +208,7 @@ end
   #	   signature SignatureValue,
   #	   unsignedAttrs [1] IMPLICIT UnsignedAttributes OPTIONAL }
 
-    tagisa(node, ASN1.SEQUENCE)
+    check_tag(node, ASN1.SEQUENCE)
     (@__MODULE__).check_ASN1_version(o, node[1], tpi)
     (@__MODULE__).check_ASN1_sid(o, node[2], tpi)
     (@__MODULE__).check_ASN1_digestAlgorithm(o, node[3], tpi)
@@ -218,7 +218,7 @@ end
 end
 
 @check "signerInfos" begin
-    tagisa(node, ASN1.SET)    
+    check_tag(node, ASN1.SET)    
     if length(node.children) > 1
         @info "More than one signerInfo in $(o.filename)"
     end
@@ -240,7 +240,7 @@ end
     # for RPKI Manifests, we MUST have the CertificateSet and MUST NOT have the
     # RevocationInfoChoices
 
-    tagisa(node, ASN1.SEQUENCE)
+    check_tag(node, ASN1.SEQUENCE)
     childcount(node, 5)
 
     (@__MODULE__).check_ASN1_version(o, node[1], tpi)
@@ -253,7 +253,7 @@ end
 end
 
 @check "content" begin
-    tagis_contextspecific(node, 0x0)
+    check_contextspecific(node, ASN1.RESERVED_ENC)
 	 
     (@__MODULE__).check_ASN1_signedData(o, node[1], tpi)
 end

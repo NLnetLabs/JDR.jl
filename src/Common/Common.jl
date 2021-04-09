@@ -45,9 +45,10 @@ RemarkCounts() = RemarkCounts_t()
 
 function remark!(o::Any, lvl::RemarkLevel, type::RemarkType, msg::String)
 	if isnothing(o.remarks)
-        o.remarks = Vector{Remark}([])
-	end	
-	push!(o.remarks, Remark(lvl, type, msg))
+        o.remarks = Vector{Remark}([Remark(lvl, type, msg)])
+    else
+        push!(o.remarks, Remark(lvl, type, msg))
+    end
 end
 
 # WARN level helpers:

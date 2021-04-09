@@ -252,14 +252,32 @@ function bitstrings_to_v4range(raw_min::Vector{UInt8}, raw_max::Vector{UInt8}) :
     unused = raw_min[1]
     numbytes = length(raw_min) - 1 - 1 # -1 unused byte, -1 because we correct for it in `bits =` below
     bits = numbytes*8 + (8 - unused)
-    addr = (reinterpret(UInt32, resize!(reverse(raw_min[2:end]), 4)))[1] >> unused
+    addr =  @inbounds if length(raw_min) - 1 == 4
+                UInt32(raw_min[2]) << 24 | UInt32(raw_min[3]) << 16 | UInt32(raw_min[4]) << 8 | raw_min[5]
+            elseif length(raw_min) - 1 == 3
+                UInt32(raw_min[2]) << 16 | UInt32(raw_min[3]) << 8 | raw_min[4]
+            elseif length(raw_min) - 1 == 2
+                UInt32(raw_min[2]) << 8 | raw_min[3]
+            elseif length(raw_min) - 1 == 1
+                UInt32(raw_min[2])
+            end >> unused
+
+
     min_addr = addr << (32 - bits)
 
     #max_addr:
     unused = raw_max[1]
     numbytes = length(raw_max) - 1 - 1 # -1 unused byte, -1 because we correct for it in `bits =` below
     bits = numbytes*8 + (8 - unused)
-    addr = (reinterpret(UInt32, resize!(reverse(raw_max[2:end]), 4)))[1] >> unused
+    addr =  @inbounds if length(raw_max) - 1 == 4
+                UInt32(raw_max[2]) << 24 | UInt32(raw_max[3]) << 16 | UInt32(raw_max[4]) << 8 | raw_max[5]
+            elseif length(raw_max) - 1 == 3
+                UInt32(raw_max[2]) << 16 | UInt32(raw_max[3]) << 8 | raw_max[4]
+            elseif length(raw_max) - 1 == 2
+                UInt32(raw_max[2]) << 8 | raw_max[3]
+            elseif length(raw_max) - 1 == 1
+                UInt32(raw_max[2])
+            end >> unused
     max_addr = (addr << (32 - bits)) | (0xffffffff >>> bits)
 
     IPRange(IPv4(min_addr), IPv4(max_addr))

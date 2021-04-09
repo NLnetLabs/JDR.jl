@@ -221,15 +221,14 @@ function bitstring_to_v4range(raw::Vector{UInt8}) :: IPRange{IPv4}
     numbytes = length(raw) - 1 - 1
     bits = numbytes*8 + (8 - unused)
     addr =  @inbounds if length(raw) - 1 == 4
-                reinterpret(UInt32, [raw[5], raw[4], raw[3], raw[2]])[1]
+                UInt32(raw[2]) << 24 | UInt32(raw[3]) << 16 | UInt32(raw[4]) << 8 | raw[5]
             elseif length(raw) - 1 == 3
-                reinterpret(UInt32, [raw[4], raw[3], raw[2], 0x00])[1]
+                UInt32(raw[2]) << 16 | UInt32(raw[3]) << 8 | raw[4]
             elseif length(raw) - 1 == 2
-                reinterpret(UInt32, [raw[3], raw[2], 0x00, 0x00])[1]
+                UInt32(raw[2]) << 8 | raw[3]
             elseif length(raw) - 1 == 1
                 UInt32(raw[2])
             end >> unused
-
     IPRange(IPv4(addr << (32 - bits)), bits)
 end
 

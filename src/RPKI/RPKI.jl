@@ -41,12 +41,7 @@ function RPKIObject(filename::String)::RPKIObject
 end
 function RPKIObject{T}(filename::String)::RPKIObject{T} where T
     tree = DER.parse_file_recursive(filename)
-    ext = lowercase(filename[end-3:end])
-    if      ext == ".cer" RPKIObject{CER}(filename, tree)
-    elseif  ext == ".mft" RPKIObject{MFT}(filename, tree)
-    elseif  ext == ".roa" RPKIObject{ROA}(filename, tree)
-    elseif  ext == ".crl" RPKIObject{CRL}(filename, tree)
-    end
+    RPKIObject{T}(filename, tree)
 end
 
 
@@ -154,7 +149,6 @@ function process_mft(mft_fn::String, lookup::Lookup, tpi::TmpParseInfo, cer_node
         @error "MFT: error with $(mft_fn)"
         return RPKINode()
     end
-    listed_files = Vector{RPKINode}()
 	crl_count = 0
 
     check_cert(mft_obj, tpi)
@@ -174,8 +168,7 @@ function process_mft(mft_fn::String, lookup::Lookup, tpi::TmpParseInfo, cer_node
             remark_missingFile!(mft_obj, "Listed in manifest but missing on file system: $(f)")
             continue
         end
-        ext = lowercase(f[end-3:end])
-        if ext == ".cer"
+        if endswith(f, r"\.cer"i)
             # TODO accomodate for BGPsec router certificates
             subcer_fn = joinpath(mft_dir, f)
             try
@@ -190,8 +183,8 @@ function process_mft(mft_fn::String, lookup::Lookup, tpi::TmpParseInfo, cer_node
                 #    throw("possible loop in $(subcer_fn)" )
                 #end
                 #@debug "process_cer from _mft for $(basename(subcer_fn))"
-                cer = process_cer(subcer_fn, lookup, tpi)
-                push!(listed_files, cer)
+                cer_node = process_cer(subcer_fn, lookup, tpi)
+                add(mft_node, cer_node)
             catch e
                 if e isa LoopError
                     #@warn "LoopError, trying to continue"
@@ -210,18 +203,18 @@ function process_mft(mft_fn::String, lookup::Lookup, tpi::TmpParseInfo, cer_node
                     #showerror(stderr, e, catch_backtrace())
                 end
             end
-        elseif ext == ".roa"
+        elseif endswith(f, r"\.roa"i)
             roa_fn = joinpath(mft_dir, f)
             try
-                roanode = process_roa(roa_fn, lookup, tpi)
-                push!(listed_files, roanode)
-                add_roa!(lookup, roanode)
+                roa_node = process_roa(roa_fn, lookup, tpi)
+                add(mft_node, roa_node)
+                add_roa!(lookup, roa_node)
             catch e
                 #showerror(stderr, e, catch_backtrace())
                 #throw("MFT->.roa: error with $(roa_fn): \n $(e)")
                 rethrow(e)
             end
-        elseif ext == ".crl"
+        elseif endswith(f, r"\.crl"i)
             crl_fn = joinpath(mft_dir, f)
             crl_count += 1
             if crl_count > 1
@@ -229,12 +222,9 @@ function process_mft(mft_fn::String, lookup::Lookup, tpi::TmpParseInfo, cer_node
                 remark_manifestIssue!(mft_obj, "More than one CRL on this manifest")
             end
             try
-                crlnode = process_crl(crl_fn, lookup, tpi)
-                push!(listed_files, crlnode)
-                @assert crlnode.obj.object isa CRL
-                add_sibling(cer_node, crlnode)
-
-
+                crl_node = process_crl(crl_fn, lookup, tpi)
+                add(mft_node, crl_node)
+                add_sibling(cer_node, crl_node)
             catch e
                 rethrow(e)
             end
@@ -244,7 +234,6 @@ function process_mft(mft_fn::String, lookup::Lookup, tpi::TmpParseInfo, cer_node
 
     # returning:
     mft_node.remark_counts_me = count_remarks(mft_obj) 
-    add(mft_node, listed_files)
     add_filename!(lookup, mft_fn, mft_node)
     mft_node
 end

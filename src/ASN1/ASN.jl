@@ -14,7 +14,8 @@ export Tag,
     Node,
     istag,
     iscontextspecific,
-    value
+    value,
+    constructed
 
 
 @enum Tagnumber begin
@@ -83,8 +84,7 @@ export RESERVED_ENC,
 #end
 
 struct Tag
-    class::UInt8
-    constructed::Bool # PC bit
+    class_constructed::UInt8
     number::Tagnumber
     len::Int32
     len_indef::Bool
@@ -96,7 +96,10 @@ import Base.convert
 convert(::Type{Tagnumber}, i::UInt8) = Tagnumber(Int(i))
 
 istag(t::Tag, tn::Tagnumber) = t.number == tn
-iscontextspecific(t::Tag) = t.class == 0x02
+class(t::Tag) = t.class_constructed >> 6 # bit 8-7
+constructed(t::Tag) = t.class_constructed & 0x20 == 0x20 # bit 6
+iscontextspecific(t::Tag) = class(t) == 0x02
+
 
 function value(t::Tag; force_reinterpret=false)
     if istag(t, BOOLEAN)
@@ -118,7 +121,7 @@ function value(t::Tag; force_reinterpret=false)
         #else
         #    parse(BigInt, bytes2hex(t.value), base=16)
         #end
-    elseif istag(t, PRINTABLESTRING) || istag(t, IA5STRING)
+    elseif istag(t, PRINTABLESTRING) || istag(t, IA5STRING) || istag(t, UTF8STRING)
         String(copy(t.value))
 
     elseif istag(t, GENTIME)

@@ -23,17 +23,13 @@ const STRICT = true
 
 struct Buf
     iob::IOBuffer
-    _tmp_octets::Vector{UInt8}
-    # 126 is the max number of octets to describe the length of an ASN.1 tag in
-    # long format
-    Buf(iob) = new(iob, zeros(UInt8, 126))
+    Buf(iob) = new(iob)
 end
 
 Buf(b::Array{UInt8,1})  = Buf(IOBuffer(b))
 Buf(s::IOStream)        = Buf(IOBuffer(read(s)))
+Buf(fn::String)         = Buf(IOBuffer(read(fn)))
 
-#Buf(s::IOStream)        = Buf(IOBuffer(Mmap.mmap(s, Vector{UInt8})))
-#
 function lookahead(buf::Buf) :: UInt8
     buf.iob.ptr += 1 
     @inbounds buf.iob.data[buf.iob.ptr - 1]
@@ -49,10 +45,6 @@ Base.showerror(io::IO, e::NotImplementedYetError) = print(io, "Not Yet Implement
 
 
 function next!(buf::Buf) #:: Tag{<:AbstractTag} #:: Union{Tag{<:AbstractTag}, Nothing}
-    #_tmp = Vector{UInt8}(undef, 1) 
-    #readbytes!(buf.iob, _tmp, 1) 
-    #first_byte = _tmp[1] 
-
     offset_in_file = buf.iob.ptr
     first_byte = lookahead(buf)
 
@@ -65,13 +57,13 @@ function next!(buf::Buf) #:: Tag{<:AbstractTag} #:: Union{Tag{<:AbstractTag}, No
         byte = lookahead(buf)
         while byte & 0x80 == 0x80 # first bit is 1
             longtag = (longtag << 7) | (byte & 0x7f) # take the last 7 bits
-            byte = buf.iob.data[buf.iob.ptr]
+            byte = @inbounds buf.iob.data[buf.iob.ptr]
             buf.iob.ptr += 1
         end
         tagnumber = (longtag << 7) | (byte & 0x7f) # take the last 7 bits
     end
 
-    lenbyte = buf.iob.data[buf.iob.ptr]
+    lenbyte = @inbounds buf.iob.data[buf.iob.ptr]
     buf.iob.ptr += 1
     len_indef = lenbyte == 0x80
     len = Int32(lenbyte)
@@ -88,29 +80,30 @@ function next!(buf::Buf) #:: Tag{<:AbstractTag} #:: Union{Tag{<:AbstractTag}, No
         end
 
         # Definite long
-        readbytes!(buf.iob, buf._tmp_octets, lenbyte & 0x7f)
-        res::Int32 = 0
-        for o in @view buf._tmp_octets[1:(lenbyte & 0x7f)]
-            res = (res << 8) | o
+
+        _res::Int32 = 0
+        for o in @view buf.iob.data[buf.iob.ptr:buf.iob.ptr + (lenbyte & 0x7f) - 1]
+            _res = (_res << 8) | o
         end
-        len = res
+        len = _res
+        buf.iob.ptr += lenbyte & 0x7f
+
     end
     # check for cases where we are parsing something that is not a (valid) tag
     if len < 0
-        return Tag{InvalidTag}()
+        return Tag{InvalidTag}() # FIXME refactor into new Tag
     elseif len > (buf.iob.size - buf.iob.ptr + 1) 
         #@warn "length $(len) goes beyond end of buffer $(buf.iob.size) - $(buf.iob.ptr), returning InvalidTag"
         return Tag{InvalidTag}()
     end
-    @assert(len >= 0)
 
     value = nothing
-    if !constructed 
+    if !constructed && Tagnumber(tagnumber) != ASN.NULL
         value = zeros(UInt8, len)
         readbytes!(buf.iob, value, len)
     end
 
-    return Tag(tagclass, constructed, tagnumber, len, len_indef, value, offset_in_file)
+    Tag(first_byte, tagnumber, len, len_indef, value, offset_in_file)
 end
 
 mutable struct Stack
@@ -122,9 +115,10 @@ empty(s::Stack) = s.level == 0
 
 function _parse!(tag, buf, indef_stack::Stack)
     #@debug (tag, indef_stack, buf.iob.ptr)
+
     me = Node(tag) 
     if istag(tag, ASN.OCTETSTRING)
-        if tag.constructed
+        if constructed(tag)
             #TODO what about constructed BITSTRINGs, are those allowed?
             remark_encodingIssue!(me, "constructed OCTETSTRING, not allowed in DER")
         end
@@ -138,7 +132,7 @@ function _parse!(tag, buf, indef_stack::Stack)
 
     if istag(tag, ASN.SEQUENCE) || istag(tag, ASN.SET) ||
         ((iscontextspecific(tag) ||
-          istag(tag, ASN.OCTETSTRING) || istag(tag, ASN.BITSTRING)) && tag.constructed )
+          istag(tag, ASN.OCTETSTRING) || istag(tag, ASN.BITSTRING)) && constructed(tag) )
         if tag.len_indef 
             my_indef_stack_level = indef_stack.level
             push(indef_stack)
@@ -194,8 +188,6 @@ end
 
 function parse_file_recursive(fn::String) 
     fd = open(fn)
-    #mmapraw = Mmap.mmap(fd, Vector{UInt8})
-    #buf = DER.Buf(mmapraw)
     buf = DER.Buf(fd)
     tag = DER.next!(buf)
     close(fd)

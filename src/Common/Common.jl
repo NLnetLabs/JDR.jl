@@ -62,20 +62,31 @@ remark_validityIssue!(o::Any, msg::String) = remark!(o, ERR, ValidityIssue, msg)
 remark_resourceIssue!(o::Any, msg::String) = remark!(o, ERR, ResourceIssue, msg)
 remark_loopIssue!(o::Any, msg::String) = remark!(o, ERR, LoopIssue, msg)
 
-function count_remarks(o::T) :: RemarkCounts_t where {T<:Any}
+function count_remarks(o::T) :: Union{Nothing, RemarkCounts_t} where {T<:Any}
+    if isnothing(o.remarks)
+        return nothing
+    end
     res = RemarkCounts()
-    if !isnothing(o.remarks)
-        for r in o.remarks
-            res[r.lvl] = get(res, r.lvl, 0) + 1
-            res[r.type] = get(res, r.type, 0) + 1
-        end
+    for r in o.remarks
+        res[r.lvl] = get(res, r.lvl, 0) + 1
+        res[r.type] = get(res, r.type, 0) + 1
     end
     res
 end
 
 import Base.+
-function +(c1::RemarkCounts_t, c2::RemarkCounts_t) :: RemarkCounts_t
-    mergewith(+, c1, c2)
+function +(c1::Union{Nothing, RemarkCounts_t}, c2::Union{RemarkCounts_t}) :: Union{RemarkCounts_t}
+    if isnothing(c1) 
+        if isnothing(c2)
+            nothing
+        else
+            c2
+        end
+    elseif isnothing(c2)
+        c1
+    else
+        mergewith(+, c1, c2)
+    end
 end
 
 

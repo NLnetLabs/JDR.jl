@@ -113,7 +113,7 @@ function process_roa(roa_fn::String, lookup::Lookup, tpi::TmpParseInfo) :: RPKIN
     end
     
 
-    roa_node.remark_counts_me = count_remarks(roa_obj) + count_remarks(roa_obj.tree)
+    roa_node.remark_counts_me = count_remarks(roa_obj)
 
     @assert !isnothing(tpi.eeCert)
     check_cert(roa_obj, tpi)
@@ -137,7 +137,7 @@ function process_crl(crl_fn::String, lookup::Lookup, tpi::TmpParseInfo) ::RPKINo
     crl_obj::RPKIObject{CRL} = check_ASN1(RPKIObject{CRL}(crl_fn), tpi)
     crl_node = RPKINode(crl_obj)
     add_filename!(lookup, crl_fn, crl_node)
-    crl_node.remark_counts_me = count_remarks(crl_obj) + count_remarks(crl_obj.tree)
+    crl_node.remark_counts_me = count_remarks(crl_obj)
     if tpi.stripTree
         crl_obj.tree = nothing
     end
@@ -162,7 +162,6 @@ function process_mft(mft_fn::String, lookup::Lookup, tpi::TmpParseInfo, cer_node
     mft_node = RPKINode(mft_obj)
     # we add the remarks_counts for the mft_obj after we actually processed the
     # fileList on the manifest, as more remarks might be added there
-    mft_node.remark_counts_me = count_remarks(mft_obj.tree)
     if tpi.stripTree
         mft_obj.tree = nothing 
     end
@@ -244,7 +243,7 @@ function process_mft(mft_fn::String, lookup::Lookup, tpi::TmpParseInfo, cer_node
     end
 
     # returning:
-    mft_node.remark_counts_me += count_remarks(mft_obj) 
+    mft_node.remark_counts_me = count_remarks(mft_obj) 
     add(mft_node, listed_files)
     add_filename!(lookup, mft_fn, mft_node)
     mft_node
@@ -348,7 +347,6 @@ function process_cer(cer_fn::String, lookup::Lookup, tpi::TmpParseInfo) :: RPKIN
     end
     =#
 
-    cer_node.remark_counts_me = count_remarks(cer_obj.tree)
     if tpi.stripTree
         cer_obj.tree = nothing
     end
@@ -374,7 +372,7 @@ function process_cer(cer_fn::String, lookup::Lookup, tpi::TmpParseInfo) :: RPKIN
     end
 
     # we already counted the remarks from .tree, now add those from the object:
-    cer_node.remark_counts_me += count_remarks(cer_obj)
+    cer_node.remark_counts_me = count_remarks(cer_obj)
 
     add_filename!(lookup, cer_fn, cer_node)
     pop!(tpi.issuer)

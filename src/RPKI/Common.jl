@@ -53,8 +53,8 @@ mutable struct RPKINode
     siblings::Union{Nothing, Vector{RPKINode}}
     obj::Union{Nothing, RPKIObject, String}
     # remark_counts_me could be a wrapper to the obj.remark_counts_me 
-    remark_counts_me::RemarkCounts_t
-    remark_counts_children::RemarkCounts_t
+    remark_counts_me::Union{Nothing, RemarkCounts_t}
+    remark_counts_children::Union{Nothing, RemarkCounts_t}
 end
 
 RPKINode() = RPKINode(nothing, RPKINode[], nothing, nothing, RemarkCounts(), RemarkCounts())

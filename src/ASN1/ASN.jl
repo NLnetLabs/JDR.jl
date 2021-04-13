@@ -147,6 +147,15 @@ function value(t::Tag; force_reinterpret=false)
     end
 end
 
+function Base.show(io::IO, t::Tag)
+    if !iscontextspecific(t)
+        print(io, t.number)
+    else
+        print(io, '[', Int(t.number), ']')
+    end
+    print(io, " (", t.len, ')' )
+end
+
 ##
 ## TMP commented out, first get DER.parse_recursive working
 ##
@@ -326,14 +335,14 @@ Base.getindex(node::Node, indices...) = child(node, indices...)
 
 function Base.show(io::IO, n::Node)
     if !isnothing(n.tag)
-        if !isnothing(n.nicename) printstyled(io, n.nicename, color=:cyan) end
+        if !isnothing(n.nicename) printstyled(io, n.nicename, ' ', color=:cyan) end
         if n.validated
             printstyled(io, n.tag, color=:green)
         else
             print(io, n.tag)
         end
         if !isnothing(n.nicevalue)
-            printstyled(io, n.nicevalue; color=:magenta)
+            printstyled(io, ' ', n.nicevalue; color=:magenta)
         end
         if !isnothing(n.remarks) && !isempty(n.remarks)
             printstyled(io, " [$(length(n.remarks))] "; color=:red)

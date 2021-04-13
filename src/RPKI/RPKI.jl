@@ -130,6 +130,7 @@ Base.showerror(io::IO, e::LoopError) = print(io, "loop between ", e.file1, " and
 
 function process_crl(crl_fn::String, lookup::Lookup, tpi::TmpParseInfo) ::RPKINode
     crl_obj::RPKIObject{CRL} = check_ASN1(RPKIObject{CRL}(crl_fn), tpi)
+    check_cert(crl_obj, tpi)
     crl_node = RPKINode(crl_obj)
     add_filename!(lookup, crl_fn, crl_node)
     crl_node.remark_counts_me = count_remarks(crl_obj)

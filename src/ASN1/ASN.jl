@@ -281,6 +281,7 @@ mutable struct Node
 	remarks::Union{Nothing, Vector{Remark}}
     nicename::Union{Nothing, String}
     nicevalue::Union{Nothing, String}
+    buf::Union{Nothing, IOBuffer}
 end
 
 function append!(p::Node, c::Node) :: Node
@@ -306,7 +307,7 @@ function count_remarks(tree::Node) :: RemarkCounts_t
     cnts
 end
 
-Node(t::Tag) = Node(nothing, t, false, nothing, nothing, nothing)
+Node(t::Tag) = Node(nothing, t, false, nothing, nothing, nothing, nothing)
 
 function child(node::Node, indices...) :: Node
     current = node

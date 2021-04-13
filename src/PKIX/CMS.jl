@@ -170,7 +170,7 @@ end
     # RFC6488: MUST include the content-type and message-digest attributes
 
     # now hash the signedAttrs for the signature check later on
-    sa_raw = read(o.filename, node.tag.offset_in_file - 1 + node.tag.len + 2 )[node.tag.offset_in_file:end]
+    sa_raw = @view o.tree.buf.data[node.tag.offset_in_file:node.tag.offset_in_file + node.tag.len + 2 - 1]
 
     # the hash is calculated based on the DER EXPLICIT SET OF tag, not the
     # IMPLICIT [0], so we overwrite the first byte:

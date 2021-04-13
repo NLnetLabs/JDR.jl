@@ -174,7 +174,7 @@ function check_cert(o::RPKIObject{CRL}, tpi::TmpParseInfo) :: RPKI.RPKIObject{CR
     v.size = 4
     v_str = string(v, base=16, pad=64)
 
-    tbs_raw = read(o.filename, o.tree[2].tag.offset_in_file-1)[o.tree[1].tag.offset_in_file:end]
+    tbs_raw = @view o.tree.buf.data[o.tree[1].tag.offset_in_file:o.tree[2].tag.offset_in_file-1]
     my_hash = bytes2hex(sha256(tbs_raw))
 
     # compare hashes

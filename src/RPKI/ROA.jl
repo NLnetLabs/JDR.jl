@@ -151,7 +151,7 @@ import .RPKI:check_cert
 function check_cert(o::RPKIObject{ROA}, tpi::TmpParseInfo)
     # hash tpi.eeCert
     @assert !isnothing(tpi.eeCert)
-    tbs_raw = read(o.filename, tpi.eeCert.tag.offset_in_file + tpi.eeCert.tag.len + 4 - 1)[tpi.eeCert.tag.offset_in_file+0:end]
+    tbs_raw = @view o.tree.buf.data[tpi.eeCert.tag.offset_in_file:tpi.eeCert.tag.offset_in_file + tpi.eeCert.tag.len + 4 - 1]
     my_hash = bytes2hex(sha256(tbs_raw))
 
     # decrypt tpi.eeSig 

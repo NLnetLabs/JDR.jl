@@ -186,14 +186,16 @@ function _parse!(tag, buf, indef_stack::Stack)
     return me
 end
 
-function parse_file_recursive(fn::String) 
+function parse_file_recursive(fn::String) :: Node
     fd = open(fn)
     buf = DER.Buf(fd)
     tag = DER.next!(buf)
     close(fd)
 
     # this returns the actual tree, so it MUST be the last statement
-    _parse!(tag, buf, Stack(0))
+    firsttag = _parse!(tag, buf, Stack(0))
+    firsttag.buf = buf.iob
+    firsttag
 end
 
 function parse_replace_children!(buf::Buf, to_replace::Node)

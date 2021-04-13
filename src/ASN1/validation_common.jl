@@ -36,7 +36,7 @@ function check_tag(node::Node, ts::Vector{Tagnumber})
     remark_ASN1Issue!(node, "unexpected type $(nameof(typeof(node.tag).parameters[1]))")
 end
 
-function check_contextspecific(node::Node, tagnum::Union{Nothing, Tagnumber}=nothing)
+function check_contextspecific(node::Node, tagnum::Union{Nothing, UInt8}=nothing)
     if !iscontextspecific(node.tag)
         if !isnothing(tagnum) && istag(node.tag, tagnum)
             remark_ASN1Issue!(node, "expected this to be a Context-Specific $(tagnum)")

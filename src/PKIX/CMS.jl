@@ -37,7 +37,7 @@ end
 
 
 @check "eContent" begin
-    check_contextspecific(node, ASN1.RESERVED_ENC)
+    check_contextspecific(node, 0x00)
     # optional second pass on the EXPLICIT OCTETSTRING:
     # if the manifest is BER encoded (instead of DER), the encapsulated ASN1
     # nodes have already been parsed
@@ -102,7 +102,7 @@ end
 end
 
 @check "certificates" begin
-    check_contextspecific(node, ASN1.RESERVED_ENC)
+    check_contextspecific(node, 0x00)
     if length(node[1].children) > 3
         @info "More than one certificate in $(o.filename)?"
     end
@@ -113,7 +113,7 @@ end
 end
 
 @check "sid" begin
-    check_contextspecific(node, ASN1.RESERVED_ENC)
+    check_contextspecific(node, 0x00)
     tpi.signerIdentifier = node.tag.value
 
     #TODO, do we check here on tpi.subjectKeyIdentifier == tpi.signerIdentifier
@@ -159,7 +159,7 @@ end
     end
 end
 @check "signedAttrs" begin
-    check_contextspecific(node, ASN1.RESERVED_ENC)
+    check_contextspecific(node, 0x00)
     # store a pointer to the signedAttrs, so we can do specific checks in
     # MFT/ROA.jl
     tpi.signedAttrs = node
@@ -253,8 +253,8 @@ end
 end
 
 @check "content" begin
-    check_contextspecific(node, ASN1.RESERVED_ENC)
-	 
+    
+    check_contextspecific(node, 0x00)
     (@__MODULE__).check_ASN1_signedData(o, node[1], tpi)
 end
 

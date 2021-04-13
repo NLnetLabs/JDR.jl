@@ -28,7 +28,7 @@ function Base.show(io::IO, roa::ROA)
 end
 
 @check "version" begin
-    check_contextspecific(node, ASN1.RESERVED_ENC)
+    check_contextspecific(node, 0x00)
     # EXPLICIT tagging, so the version node be in a child
     childcount(node, 1)
     check_tag(node[1], ASN1.INTEGER)

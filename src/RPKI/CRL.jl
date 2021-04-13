@@ -97,7 +97,7 @@ function check_ASN1_extension(oid::Vector{UInt8}, o::RPKIObject{T}, node::Node, 
     end
 end
 @check "crlExtensions" begin
-    check_contextspecific(node, ASN1.RESERVED_ENC)
+    check_contextspecific(node, 0x00)
     check_extensions(node, (@__MODULE__).MANDATORY_EXTENSIONS)
 end
 

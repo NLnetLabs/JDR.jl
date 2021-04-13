@@ -33,7 +33,7 @@ const MANDATORY_EXTENSIONS = Vector{Pair{Vector{UInt8}, String}}([
         childcount(access_description, 2)
         check_tag(access_description[1], ASN1.OID)
         # [6] is a uniformResourceIdentifier, RFC5280
-        check_contextspecific(access_description[2], ASN1.OID)
+        check_contextspecific(access_description[2], 0x06)
 
         #now check for the MUST-be presents:
         if access_description[1].tag.value == @oid "1.3.6.1.5.5.7.48.5"
@@ -147,26 +147,26 @@ end
         # expect either a [0] or [1]
         #check_tag(asidentifierchoice, ASN1.CONTEXT_SPECIFIC)
         check_contextspecific(asidentifierchoice)
-        if asidentifierchoice.tag.number == 0
+        if asidentifierchoice.tag.number == ASN1.Tagnumber(0)
             #DER.parse_append!(DER.Buf(asidentifierchoice.tag.value), asidentifierchoice)
             # or NULL (inherit) or SEQUENCE OF ASIdOrRange
-            if asidentifierchoice[1].tag isa Tag{ASN1.NULL}
+            if istag(asidentifierchoice[1].tag, ASN1.NULL)
                 if o.object isa CER
                     o.object.inherit_ASNs = true
                 end
                 #throw("implement inherit for ASIdentifierChoice")
-            elseif asidentifierchoice[1].tag isa Tag{ASN1.SEQUENCE}
+            elseif istag(asidentifierchoice[1].tag, ASN1.SEQUENCE)
                 # now it can be or a single INTEGER, or again a SEQUENCE
                 asidentifierchoice[1].validated = true
                 if o.object isa CER
                     o.object.inherit_ASNs = false
                 end
                 for asid_or_range in asidentifierchoice[1].children
-                    if asid_or_range.tag isa Tag{ASN1.INTEGER}
+                    if istag(asid_or_range.tag, ASN1.INTEGER)
                         asid = UInt32(ASN1.value(asid_or_range.tag))
                         push!(o.object.ASNs, AutSysNum(asid))
                         asid_or_range.validated = true
-                    elseif asid_or_range.tag isa Tag{ASN1.SEQUENCE}
+                    elseif istag(asid_or_range.tag, ASN1.SEQUENCE)
                         asmin = UInt32(ASN1.value(asid_or_range[1].tag))
                         asmax = UInt32(ASN1.value(asid_or_range[2].tag))
                         push!(o.object.ASNs, AutSysNumRange(asmin, asmax))
@@ -181,7 +181,7 @@ end
                 remark_ASN1Issue!(asidentifierchoice[1], "expected either a SEQUENCE OF or a NULL here")
             end
 
-        elseif asidentifierchoice.tag.number == 1
+        elseif asidentifierchoice.tag.number == ASN1.Tagnumber(1)
             throw("implement rdi for ASIdentifierChoice")
         else
             remark_ASN1Error!(asidentifierchoice, "Unknown Context-Specific tag number, expecting 0 or 1")
@@ -237,11 +237,11 @@ end
     for c in node[1].children
         check_tag(c, ASN1.SEQUENCE)
         check_contextspecific(c[1])
-        if c[1].tag.number == 0
+        if c[1].tag.number == ASN1.Tagnumber(0)
             #distributionPoint
-            if c[1,1].tag.number == 0
+            if c[1,1].tag.number == ASN1.Tagnumber(0)
                 #fullName
-                if c[1,1,1].tag.number == 6
+                if c[1,1,1].tag.number == ASN1.Tagnumber(6)
                     # uniformResourceIdentifier
                     if tpi.setNicenames
                         c[1,1,1].nicevalue = String(copy(c[1,1,1].tag.value))
@@ -306,7 +306,7 @@ end
 
 @check "version"  begin
     # Version == 0x02? (meaning version 3)
-    check_contextspecific(node, ASN1.RESERVED_ENC)
+    check_contextspecific(node, 0x00)
     check_value(node[1], ASN1.INTEGER, 0x02)
     if tpi.setNicenames
         node.nicevalue = string(ASN1.value(node[1].tag))
@@ -471,7 +471,7 @@ const MANDATORY_EXTENSIONS_EE = Vector{Vector{UInt8}}([
                                                    ])
 
 @check "extensions" begin
-    check_contextspecific(node, ASN1.BITSTRING)
+    check_contextspecific(node, 0x03)
 
     #mandatory_extensions = Vector{Vector{UInt8}}()
 

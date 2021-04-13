@@ -161,7 +161,7 @@ function RPKI.check_cert(o::RPKIObject{MFT}, tpi::TmpParseInfo)
     my_hash = bytes2hex(sha256(tbs_raw))
 
     # decrypt tpi.eeSig 
-    v = powermod(to_bigint(tpi.eeSig.tag.value[2:end]), tpi.certStack[end].rsa_exp,tpi.certStack[end].rsa_modulus)
+    v = powermod(to_bigint(@view tpi.eeSig.tag.value[2:end]), tpi.certStack[end].rsa_exp,tpi.certStack[end].rsa_modulus)
     v.size = 4
     v_str = string(v, base=16, pad=64)
     

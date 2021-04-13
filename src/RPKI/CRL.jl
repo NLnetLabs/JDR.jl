@@ -169,7 +169,7 @@ end
 import .RPKI:check_cert
 function check_cert(o::RPKIObject{CRL}, tpi::TmpParseInfo) :: RPKI.RPKIObject{CRL}
     sig = o.tree.children[3]
-    signature = to_bigint(sig.tag.value[2:end])
+    signature = to_bigint(@view sig.tag.value[2:end])
     v = powermod(signature, tpi.certStack[end].rsa_exp, tpi.certStack[end].rsa_modulus)
     v.size = 4
     v_str = string(v, base=16, pad=64)

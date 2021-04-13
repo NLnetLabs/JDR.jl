@@ -42,7 +42,7 @@ function check_cert(o::RPKIObject{CER}, tpi::TmpParseInfo) :: RPKI.RPKIObject{CE
         remark_validityIssue!(o, "subject != issuer for child cert")
     end
     sig = o.tree.children[3]
-    signature = to_bigint(sig.tag.value[2:end])
+    signature = to_bigint(@view sig.tag.value[2:end])
     @assert !isnothing(o.object.selfsigned)
     v = if o.object.selfsigned
         powermod(signature, tpi.certStack[end].rsa_exp, tpi.certStack[end].rsa_modulus)

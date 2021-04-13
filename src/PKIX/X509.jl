@@ -445,7 +445,7 @@ end
     # 256 bytes + the first byte indicating unused bits == 257
     @assert encaps_modulus.tag.len == 257
     if o.object isa CER
-        o.object.rsa_modulus   = to_bigint(encaps_modulus.tag.value[2:end])
+        o.object.rsa_modulus   = to_bigint(@view encaps_modulus.tag.value[2:end])
         o.object.rsa_exp       = ASN1.value(encaps_exponent.tag)
     end
     if o.object isa ROA || o.object isa MFT

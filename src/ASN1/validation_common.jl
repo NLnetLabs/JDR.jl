@@ -297,7 +297,7 @@ function bitstrings_to_v6range(raw_min::Vector{UInt8}, raw_max::Vector{UInt8}) :
     IPRange(IPv6(min_addr), IPv6(max_addr))
 end
 
-function to_bigint(raw::Vector{UInt8}) :: BigInt
+function to_bigint(raw::AbstractArray{UInt8}) :: BigInt
     @assert length(raw) % 16 == 0
     parse(BigInt, bytes2hex(raw), base=16)
 end

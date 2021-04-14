@@ -218,9 +218,16 @@ function get_vue_leaf_node(node::RPKI.RPKINode) ::RPKINode
     if node.obj.object isa CRL
         @assert length(node.siblings) == 1
         @assert node.siblings[1].obj.object isa CER
-        @assert length(node.siblings[1].children) == 1
-        @assert node.siblings[1].children[1].obj.object isa MFT
-        node.siblings[1].children[1]
+
+        # the sibling CER should have exactly 1 child (the MFT), but whenever
+        # that MFT is missing, we still want to serve, so we check on <= 1
+        @assert length(node.siblings[1].children) <= 1
+        if length(node.siblings[1].children) == 1
+            @assert node.siblings[1].children[1].obj.object isa MFT
+            node.siblings[1].children[1]
+        else
+            node.siblings[1]
+        end
     elseif node.obj.object isa CER
         if !isempty(node.children)
             @assert length(node.children) == 1

@@ -16,13 +16,10 @@ JSON2.@format RPKI.RPKIObject{T} where T begin
         tree => (;exclude=true,)
 end
 
-function JSON2.write(io::IO, vrp::RPKI.VRP{T} where {T<:IPAddr})
-    JSON2.write(io, string(vrp))
+JSON2.@format ASN1.Node begin
+    buf => (;exclude=true,)
 end
 
-function JSON2.write(io::IO, vrps::RPKICommon.VRPS)
-    JSON2.write(io, ["$(IPRange(ipr.first, ipr.last))-$(ipr.value)" for ipr in vcat(collect(vrps.resources_v6), collect(vrps.resources_v4))])
-end
 JSON2.@format RPKI.ROA begin
         resources_v6 => (;exclude=true,)
         resources_v4 => (;exclude=true,)
@@ -30,7 +27,9 @@ JSON2.@format RPKI.ROA begin
         vrp_tree =>(;name="vrps",)
 end
 
-function JSON2.write(io::IO, i::IntervalValue{<:IPAddr, T}) where T 
+
+# for linked resources from CER to subCER/ROA:
+function JSON2.write(io::IO, i::IntervalValue{<:IPAddr, Vector{RPKINode}})
     # string(i) is the prefix
     # value(i) is the Vector of RPKINodes
     cers = filter(e->e.obj.object isa RPKI.CER, value(i))
@@ -41,6 +40,11 @@ function JSON2.write(io::IO, i::IntervalValue{<:IPAddr, T}) where T
                          )
                     )
                )
+end
+
+# for VRPs, where the IntervalValue represents the maxlen
+function JSON2.write(io::IO, i::IntervalValue{<:IPAddr, UInt8})
+    JSON2.write(io, "$(string(i))-$(value(i))")
 end
 
 JSON2.write(io::IO, it::IntervalTree{T, IntervalValue{T, U}}) where {T<:IPAddr, U} = JSON2.write(io, collect(it))
@@ -60,7 +64,7 @@ struct ObjectDetails{T}
     sig_valid::Union{Nothing, Bool}
 end
 
-function ObjectDetails(r::RPKI.RPKIObject, rc::RemarkCounts_t) 
+function ObjectDetails(r::RPKI.RPKIObject, rc::Union{Nothing, RemarkCounts_t})
     # we parse this again, because it is removed from the main tree/lookup 
     tmp = RPKI.RPKIObject(r.filename)
     RPKI.check_ASN1(tmp, RPKI.TmpParseInfo(;nicenames=true))
@@ -86,8 +90,8 @@ struct ObjectSlim{T}
     object::T # FIXME force this to be a SlimCER or SlimMFT etc
     objecttype::String
     remarks::Union{Nothing, Vector{RPKI.Remark}}
-    remark_counts_me::RemarkCounts_t
-    remark_counts_children::RemarkCounts_t
+    remark_counts_me::Union{Nothing, RemarkCounts_t}
+    remark_counts_children::Union{Nothing, RemarkCounts_t}
 end
 
 
@@ -100,7 +104,7 @@ struct RemarkDeeplink
 end
 RemarkDeeplink(r::Remark, filename::String) = RemarkDeeplink(r.lvl, r.type, r.msg, r.tid, filename)
 
-function ObjectSlim(r::RPKI.RPKIObject, rcm::RemarkCounts_t, rcc::RemarkCounts_t) 
+function ObjectSlim(r::RPKI.RPKIObject, rcm::Union{Nothing, RemarkCounts_t}, rcc::Union{Nothing, RemarkCounts_t})
     ObjectSlim(r.filename,
                details_url(r.filename),
                to_slim(r.object),
@@ -121,13 +125,9 @@ end
 JSON2.write(io::IO, bn::Basename) = JSON2.write(io, basename(bn.filename))
 Base.convert(::Type{Basename}, s) = Basename(s)
 
-function JSON2.write(io::IO, t::ASN1.Tag{T}) where {T}
-    JSON2.write(io, "$(nameof(ASN1.tagtype(t))) ($(t.len))")
-    #JSON2.write(io, " ($(t.len))")
+function JSON2.write(io::IO, tag::ASN1.Tag)
+    JSON2.write(io, "$(tag.number) ($(tag.len))")
 end
-
-
-#JSON2.write(io::IO, p::IPNet) = JSON2.write(io, string(p.netaddr)*'/'*string(p.netmask))
 
 
 # Slim copy of RPKI.CER, with empty prefixes and ASNs Vectors

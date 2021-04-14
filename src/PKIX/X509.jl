@@ -77,8 +77,12 @@ AFI_v6 = 0x02
     for ipaddrblock in node[1].children 
         check_tag(ipaddrblock, ASN1.SEQUENCE)
         check_tag(ipaddrblock[1], ASN1.OCTETSTRING)
-        afi = reinterpret(UInt16, reverse(ipaddrblock[1].tag.value))[1]
-        @assert afi in [AFI_v6,AFI_v4] 
+        afi = ipaddrblock[1].tag.value[2]
+        if afi != AFI_v6 && afi != AFI_v4
+            @error "illegal AFI"
+            remark_ASN1Error!(ipaddrblock, "Unknown AFI, not IPv6 or IPv4")
+            return
+        end
 
         #if typeof(ipaddrblock[2].tag) == Tag{ASN1.SEQUENCE}
         if istag(ipaddrblock[2].tag, ASN1.SEQUENCE)

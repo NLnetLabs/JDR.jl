@@ -30,6 +30,18 @@ mutable struct State
     last_update_serial::Int64
 end
 
+struct Metadata
+    results_total::Int
+    results_shown::Union{Nothing, Int}
+end
+Metadata(n::Int) = Metadata(n, nothing)
+
+JSON2.@format Metadata begin
+    results_shown => (omitempty=true,)
+end
+
+
+
 const STATE = State(RPKI.RPKINode(),
                     RPKI.Lookup(),
                     BGP.RISTree{IPv6}(),
@@ -56,9 +68,9 @@ function asn(req::HTTP.Request)
     if length(HTTP.URIs.splitpath(req.target)) > 4 && 
         HTTP.URIs.splitpath(req.target)[5]  == "raw"
         @info "RAW request"
-        return [to_root(r) for r in res] 
+        return [to_root(r) for r in res], Metadata(length(res))
     else
-        return to_vue_tree(map(to_vue_branch, res))
+        return to_vue_tree(map(to_vue_branch, res)), Metadata(length(res))
     end
 end
 
@@ -90,24 +102,23 @@ function prefix(req::HTTP.Request)
 
          
     include_more_specific = true
-    #res = collect(RPKI.search(LOOKUP[], prefix))
-    #res = RPKI.search(TREE[], iprange, include_more_specific)
     res = RPKI.search(STATE.lookup, iprange, include_more_specific)
-
 
     if length(res) > PREFIX_RESULT_MAX
         @warn "more than $(PREFIX_RESULT_MAX) results ($(length(res))) for /prefix search on '$(iprange)', limiting .."
+        meta = Metadata(length(res), PREFIX_RESULT_MAX)
         res = Iterators.take(res, PREFIX_RESULT_MAX)
     else
         @info "prefix search on '$(iprange)': $(length(res)) result(s)"
+        meta = Metadata(length(res))
     end
 
     if length(HTTP.URIs.splitpath(req.target)) > 5 && 
         HTTP.URIs.splitpath(req.target)[6]  == "raw"
         @info "RAW request"
-        return [to_root(r) for r in res]
+        return [to_root(r) for r in res], meta
     else
-        return to_vue_tree(map(to_vue_branch, res))
+        return to_vue_tree(map(to_vue_branch, res)), meta
     end
 end
 
@@ -119,9 +130,11 @@ function filename(req::HTTP.Request)
     res = RPKI.search(STATE.lookup, filename)
     if length(res) > FILENAME_RESULT_MAX
         @warn "more than $(FILENAME_RESULT_MAX) results ($(length(res))) for /filename search on '$(filename)', limiting .."
+        meta = Metadata(length(res), FILENAME_RESULT_MAX)
         res = map(e->e.second, (Iterators.take(res, FILENAME_RESULT_MAX)))
     else
         @info "filename search on '$(filename)': $(length(res)) result(s)"
+        meta = Metadata(length(res))
     end
 
     # because we can match on e.g. parts of a directory name, the results can
@@ -135,7 +148,7 @@ function filename(req::HTTP.Request)
         get_vue_leaf_node |>
         unique .|>
         to_vue_branch |>
-        to_vue_tree
+        to_vue_tree, meta
 end
 
 function object(req::HTTP.Request)
@@ -151,17 +164,17 @@ function object(req::HTTP.Request)
         @warn "more than 1 result for this query, unexpected"
     end
     
-    ObjectDetails(first(res).second.obj, first(res).second.remark_counts_me)
+    ObjectDetails(first(res).second.obj, first(res).second.remark_counts_me), Metadata(length(res))
 end
 
 function pubpoints(req::HTTP.Request)
     # /api/v1/pubpoints
-    to_vue_pubpoints(STATE.tree)
+    to_vue_pubpoints(STATE.tree), Metadata(1)
 end
 
 function ppstatus(req::HTTP.Request)
     # /api/v1/ppstatus
-    STATE.AtlasStatus
+    STATE.AtlasStatus, Metadata(1)
 end
 
 function uris(req::HTTP.Request)
@@ -176,7 +189,7 @@ function uris(req::HTTP.Request)
                  :rsync => _.pubpoint,
                  :rrdp => _.rrdp_notify) ) |>
         es -> unique(e->e[:name], es) |>
-        collect
+        collect, Metadata(1)
 end
 
 function repostats(req::HTTP.Request)
@@ -202,7 +215,7 @@ function repostats(req::HTTP.Request)
     #@filter(!isempty(_.second["remarks"])) |> # filter out repos with no remarks
     sort!(res, by=e->length(e["remarks"]), rev=true)
 
-    res
+    res, Metadata(1)
 end
 
 function newsince(req::HTTP.Request)
@@ -227,12 +240,12 @@ function newsince(req::HTTP.Request)
             RPKI.CER
         end
     end
-    RPKI.new_since(STATE.tree, timeperiod) |>
+    res = RPKI.new_since(STATE.tree, timeperiod) |>
         @filter(isnothing(filtertype) || _.obj.object isa filtertype) .|>
         get_vue_leaf_node |>
-        unique .|>
-        to_vue_branch |>
-        to_vue_tree
+        unique
+
+    res .|> to_vue_branch |> to_vue_tree , Metadata(length(res))
 end
 
 function bgp(req::HTTP.Request)
@@ -308,7 +321,7 @@ function bgp(req::HTTP.Request)
              )
     end
 
-    res2
+    res2, Metadata(length(res2))
 end
 
 
@@ -548,11 +561,12 @@ struct Envelope
     last_update::DateTime
     serial::Integer
     timestamp::DateTime
+    meta::Any
     data::Any
     error::Union{Nothing, Any}
 end
 
-Envelope(l, s, t, d) = Envelope(l, s, t, d, nothing)
+Envelope(l, s, t, m, d) = Envelope(l, s, t, m, d, nothing)
 
 JSON2.@format Envelope begin
     error => (omitempty=true,)
@@ -569,18 +583,19 @@ function JSONHandler(req::HTTP.Request)
     try
         # first check if there's any request body
         body = IOBuffer(HTTP.payload(req))
+        meta = nothing
         lock(UPDATELK)
         if eof(body)
             # no request body
-            response_body = HTTP.Handlers.handle(ROUTER, req)
+            response_body, meta = HTTP.Handlers.handle(ROUTER, req)
         else
             # there's a body, so pass it on to the handler we dispatch to
-            response_body = handle(ROUTER, req, JSON2.read(body))
+            response_body, meta = handle(ROUTER, req, JSON2.read(body))
         end
         unlock(UPDATELK)
 
         # wrap the response in an envelope
-        response = Envelope(STATE.last_update, STATE.last_update_serial, now(UTC), response_body)
+        response = Envelope(STATE.last_update, STATE.last_update_serial, now(UTC), meta, response_body)
         time_needed = now() - _tstart
         #if time_needed > Dates.Millisecond(200)
         #    @debug "[$(now())] returning response, took long: $(time_needed)"

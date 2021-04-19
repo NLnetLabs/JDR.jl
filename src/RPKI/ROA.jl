@@ -13,8 +13,6 @@ using IntervalTrees
 
 import ...PKIX.@check
 
-export check_ASN1
-
 
 function Base.show(io::IO, roa::ROA)
     println(io, "ASID: ", roa.asid)

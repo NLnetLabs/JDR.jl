@@ -10,8 +10,6 @@ using IntervalTrees
 using IPNets # FIXME refactor this out
 using Sockets
 
-export check_ASN1, check_cert, check_resources, add_resource!
-
 import .RPKI:check_ASN1
 function check_ASN1(o::RPKIObject{CER}, tpi::TmpParseInfo=TmpParseInfo()) :: RPKIObject{CER}
     # The certificate should consist of three parts: (RFC5280)

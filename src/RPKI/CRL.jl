@@ -10,8 +10,6 @@ using ...PKIX
 using Dates
 using SHA
 
-export CRL, check_ASN1
-
 import ...PKIX.@check
 
 

@@ -78,16 +78,6 @@ const PREFIX_RESULT_MAX = 20
 function prefix(req::HTTP.Request)
     # /api/v1/prefix/1.2.3.4/24, get and unescape prefix
     parts = HTTP.URIs.splitpath(req.target)
-    #prefix = if length(parts) == 4
-    #    # no prefixlen passed
-    #    IPNet(parts[4])
-    #elseif length(parts) > 4
-    #    _prefix = HTTP.URIs.splitpath(req.target)[4] 
-    #    _prefixlen = HTTP.URIs.splitpath(req.target)[5] 
-    #    IPNet(_prefix*'/'*_prefixlen)
-    #else
-    #    throw("error: illegal prefix request")
-    #end
 
     iprange = if length(parts) == 4
         # no prefixlen passed
@@ -324,124 +314,6 @@ function bgp(req::HTTP.Request)
     res2, Metadata(length(res2))
 end
 
-
-#= # not needed anymore because the NCC takes care of the measurements now
-function _generate_msm_definitions(cer::RPKI.CER; params...) #:: Vector{Atlas.Definition}
-    definitions = Vector()
-    host_rsync, _ = split_scheme_uri(cer.pubpoint)
-    common_params = Dict(
-                         :resolve_on_probe => true,
-                         :skip_dns_check => true,
-                         :tags => ["jdr"],
-                         :interval => 900,
-                        )
-    push!(definitions, Ping6(host_rsync; common_params..., params...))
-    push!(definitions, Ping4(host_rsync; common_params..., params...))
-
-    if !isempty(cer.rrdp_notify)
-        rrdp_host, rrdp_path = split_rrdp_path(cer.rrdp_notify)
-        if rrdp_host != host_rsync
-            push!(definitions, Ping6(rrdp_host; common_params..., params...))
-            push!(definitions, Ping4(rrdp_host; common_params..., params...))
-        end
-        # RIPE Atlas only allows HTTP measurements towards Atlas Anchors..
-        # push!(definitions, HTTP6(cer.obj.object.rrdp_notify))
-        # push!(definitions, HTTP4(cer.obj.object.rrdp_notify))
-    end
-    definitions
-end
-function _probe_selection() 
-    Atlas.Probes(
-                         tags=
-                         Atlas.ProbeTags(
-                                         include=["datacentre",
-                                                  "native-ipv6",
-                                                  "native-ipv4"],
-                                         exclude=[]
-                                        )
-                        )
-end
-
-# generate_msm() is a helper to create a HTTP POST curl (or equivalent) call, to
-# make measurements for all pubpoints currently in the RPKI repository
-# wget http://localhost:8081/api/v1/generate_msm -O- | jq '.["data"]' > atlas_new_measurement.json
-# noglob curl --dump-header - -H "Content-Type: application/json" -H "Accept: application/json" -X POST -d @atlas_new_measurement.json \
-#  https://atlas.ripe.net/api/v2/measurements//?key=YOUR_ATLAS_API_KEY
-function generate_msm(req::HTTP.Request)
-    @info "generate_msm()"
-
-    new_msm = Atlas.CreateMeasurement()
-    for cer in values(LOOKUP[].pubpoints)
-        for def in _generate_msm_definitions(cer.obj.object)
-            Atlas.add_definition(new_msm, def)
-        end
-    end
-
-    Atlas.add_probes(new_msm, _probe_selection())
-    new_msm
-end
-
-=#
-
-#= # RIPE NCC is doing everything for us now
-function DEPRget_current_msm() :: Atlas.Measurement
-    # fetch based on tag 'jdr'
-    # determine and return group id
-    current = Atlas.get_my(Dict("tags" => "jdr", "page_size" => "200"))
-    # there should only be one active group_id for this tag:
-    @debug "pre assert in get_current_msm"
-    @assert length(unique([r.group_id for r in current.results])) == 1
-    @debug "post assert"
-    Atlas.Measurement(current.results[1].group_id)
-end
-=#
-#= # TODO: extract the check to see if we are missing things
-function renew_msm()
-    # determine missing pp from current msm
-    # setdiff returns what is in the first argument but not in the second
-    # (thus we do not yield pubpoints that are in PP2Atlas but not in LOOKUP)
-    get_atlas_info()
-    missing_pps = setdiff(Set(keys(LOOKUP[].pubpoints)), Set(keys(PP2Atlas[])))
-    @debug "in LOOKUP:"
-    @debug keys(LOOKUP[].pubpoints)
-    @debug "in PP2Atlas:"
-    @debug keys(PP2Atlas[])
-
-    current_msm = get_current_msm()
-    @debug "current msm: $(current_msm.id)"
-    if !isempty(missing_pps)
-        @info "new pubpoints: $(missing_pps)"
-        # create one api call to add new ping6/ping4 for all these pubpoints
-        # use the existing group_id
-        new_msm = Atlas.CreateMeasurement()
-        probes = Probes(; type = "msm", value=current_msm.id)
-        add_probes(new_msm, probes)
-        _params = Dict(
-                       :group_id=>current_msm.id,
-                       :resolve_on_probe => true,
-                       :skip_dns_check => true,
-                       :tags => ["jdr"],
-                       :interval => 900,
-                      )
-        for new_pp in missing_pps
-            Atlas.add_definition(new_msm, Atlas.Ping6(new_pp; _params...))
-            Atlas.add_definition(new_msm, Atlas.Ping4(new_pp; _params...))
-        end
-        @debug new_msm
-        # and now POST to the Atlas API:
-        Atlas.start_measurement(new_msm)
-    else
-        @info "got measurements for all pubpoints"
-    end
-    # add those, using group_id from get_current_msm
-    # delete missing?
-
-    missing_pps
-end
-
-=#
-
-
 ##############################
 # Background workers/helpers 
 ##############################
@@ -461,31 +333,6 @@ function update_repostatus()
 
     STATE.AtlasStatus = ppstatus(df)
 end
-
-
-#=
-function status_check()
-    @debug "status_check(), length of PP2Atlas[] = $(length(PP2Atlas[]))"
-    for pp in keys(LOOKUP[].pubpoints)
-        if ! (pp in keys(PP2Atlas[]))
-            @error "$(pp) in Lookup but not in Atlas measurements"
-            continue
-        end
-        PPSTATUS[][pp] = PPStatus()
-        for msm in PP2Atlas[][pp]
-            try
-                @debug "updating PPSTATUS for $(pp) based on $(msm.id)"
-                status = Atlas.get_statuscheck(Atlas.Measurement(msm.id), pta=3)
-                setproperty!(PPSTATUS[][pp], Symbol(msm.type, msm.af), status)
-            catch e
-                @error e
-            end
-        end
-
-    end
-    @info "end of status_check"
-end
-=#
 
 function update()
     @info "update() on thread $(Threads.threadid())"
@@ -510,15 +357,6 @@ function update()
     unlock(UPDATELK)
 
     try
-        #= OLD remove
-        #@info "skipping renew_msm(), using rpki-repositories-bundle msm"
-        #@info "update() calling renew_msm()"
-        #renew_msm()
-        #get_atlas_info()
-        #@info "update() calling status_check()"
-        #status_check()
-        =#
-        
         # TMP commented out for dev
         @info "updating repository status based on RIPE Atlas measurements"
         update_repostatus()

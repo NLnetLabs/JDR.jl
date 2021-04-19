@@ -21,6 +21,7 @@ mutable struct RPKIObject{T}
     remarks::Union{Nothing, Vector{Remark}}
     remarks_tree::Union{Nothing, Vector{Remark}}
     sig_valid::Union{Nothing, Bool}
+    cms_digest_valid::Union{Nothing, Bool}
 end
 
 function add_resource!(::T, ::U, ::U) where {T,U} end
@@ -40,7 +41,7 @@ end
 
 
 function RPKIObject{T}(filename::String, tree::Node) where T 
-    RPKIObject{T}(filename, tree, T(), nothing, nothing, nothing)
+    RPKIObject{T}(filename, tree, T(), nothing, nothing, nothing, nothing)
 end
 
 # TODO:
@@ -148,6 +149,8 @@ mutable struct TmpParseInfo
     cwd::String
     # for ROA:
     afi::UInt32
+    # to verify CMS digest in MFT/ROAs:
+    cms_message_digest::String
 end
 TmpParseInfo(;repodir=JDR.CFG["rpki"]["rsyncrepo"],lookup=Lookup(),nicenames::Bool=true,stripTree=false) = TmpParseInfo(repodir, lookup, nicenames, stripTree,
                                                     [],
@@ -165,7 +168,8 @@ TmpParseInfo(;repodir=JDR.CFG["rpki"]["rsyncrepo"],lookup=Lookup(),nicenames::Bo
                                                     nothing,
                                                     [],
                                                     "",
-                                                    0x0)
+                                                    0x0,
+                                                    "")
 
 
 
@@ -175,7 +179,7 @@ struct RootCER
     resources_v4::IntervalTree{IPv4, IntervalValue{IPv4, Vector{RPKINode}}}
 end
 RootCER() = RootCER(IntervalTree{IPv6, IntervalValue{IPv6, Vector{RPKINode}}}(), IntervalTree{IPv4, IntervalValue{IPv4, Vector{RPKINode}}}())
-RPKIObject{RootCER}(rootcer::RootCER=RootCER()) = RPKIObject("", nothing, rootcer, nothing, nothing, nothing)
+RPKIObject{RootCER}(rootcer::RootCER=RootCER()) = RPKIObject("", nothing, rootcer, nothing, nothing, nothing, nothing)
 
 
 struct ASIdentifiers

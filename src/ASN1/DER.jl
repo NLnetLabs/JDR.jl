@@ -26,7 +26,7 @@ struct Buf
     Buf(iob) = new(iob)
 end
 
-Buf(b::Array{UInt8,1})  = Buf(IOBuffer(b))
+Buf(b::AbstractArray{UInt8,1})  = Buf(IOBuffer(b))
 Buf(s::IOStream)        = Buf(IOBuffer(read(s)))
 Buf(fn::String)         = Buf(IOBuffer(read(fn)))
 
@@ -44,8 +44,9 @@ Base.showerror(io::IO, e::NotImplementedYetError) = print(io, "Not Yet Implement
 
 
 
-function next!(buf::Buf) #:: Tag{<:AbstractTag} #:: Union{Tag{<:AbstractTag}, Nothing}
-    offset_in_file = buf.iob.ptr
+function next!(buf::Buf, offset::Int=1) 
+    _ptr_start = buf.iob.ptr
+    offset_in_file = buf.iob.ptr + offset - 1
     first_byte = lookahead(buf)
 
     tagclass    = first_byte  >> 6; # bit 8-7
@@ -97,13 +98,14 @@ function next!(buf::Buf) #:: Tag{<:AbstractTag} #:: Union{Tag{<:AbstractTag}, No
         return Tag{InvalidTag}()
     end
 
+    _header_len = buf.iob.ptr - _ptr_start 
     value = nothing
     if !constructed && Tagnumber(tagnumber) != ASN.NULL
         value = zeros(UInt8, len)
         readbytes!(buf.iob, value, len)
     end
 
-    Tag(first_byte, tagnumber, len, len_indef, value, offset_in_file)
+    Tag(first_byte, tagnumber, len, len_indef, _header_len, value, offset_in_file)
 end
 
 mutable struct Stack
@@ -113,7 +115,7 @@ push(s::Stack) = s.level += 1
 pop(s::Stack) = s.level -= 1
 empty(s::Stack) = s.level == 0
 
-function _parse!(tag, buf, indef_stack::Stack)
+function _parse!(tag::ASN.Tag, buf::Buf, indef_stack::Stack) :: ASN.Node
     #@debug (tag, indef_stack, buf.iob.ptr)
 
     me = Node(tag) 
@@ -183,7 +185,7 @@ function _parse!(tag, buf, indef_stack::Stack)
             #@debug "post while, tmp_protect $(tmp_protect)"
         end
     end
-    return me
+    me
 end
 
 function parse_file_recursive(fn::String) :: Node
@@ -199,12 +201,12 @@ function parse_file_recursive(fn::String) :: Node
 end
 
 function parse_replace_children!(buf::Buf, to_replace::Node)
-    tag = DER.next!(buf)
+    tag = DER.next!(buf, to_replace.tag.offset_in_file + to_replace.tag.headerlen)
     result = _parse!(tag, buf, Stack(0))
     to_replace.children = [result]
 end
 function parse_append!(buf::Buf, parent::Node)
-    tag = DER.next!(buf)
+    tag = DER.next!(buf, parent.tag.offset_in_file + parent.tag.headerlen)
     result = _parse!(tag, buf, Stack(0))
     ASN.append!(parent, result)
 end

@@ -88,6 +88,7 @@ struct Tag
     number::Tagnumber
     len::Int32
     len_indef::Bool
+    headerlen::Int8
     value::Union{Nothing, Vector{UInt8}}
     offset_in_file::Integer
 end

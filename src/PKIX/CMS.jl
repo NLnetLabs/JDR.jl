@@ -43,6 +43,7 @@ end
     # nodes have already been parsed
     # in case of BER, the 'first' OCTETSTRING has indef length
     if ! node[1].tag.len_indef
+        tpi.cms_message_digest = bytes2hex(sha256(node[1].tag.value))
         DER.parse_append!(DER.Buf(node[1].tag.value), node[1])
     else
         # already parsed, but can we spot the chunked OCTETSTRING case?
@@ -51,7 +52,10 @@ end
             #@debug "found multiple children in node[1]"
             concatted = collect(Iterators.flatten([n.tag.value for n in node[1].children]))
             buf = DER.Buf(concatted)
+            tpi.cms_message_digest = bytes2hex(sha256(concatted))
             DER.parse_replace_children!(buf, node[1])
+        else
+            tpi.cms_message_digest = ""
         end
 
     end
@@ -140,6 +144,20 @@ end
 
 @check "messageDigest" begin
     check_tag(node, ASN1.SET)
+    md = bytes2hex(node[1].tag.value)
+
+    o.cms_digest_valid = if tpi.cms_message_digest == ""
+        _ec_offset = tpi.eContent.tag.offset_in_file
+        _ec_len = tpi.eContent.tag.len + tpi.eContent.tag.headerlen
+        ec_raw = @view o.tree.buf.data[_ec_offset:_ec_offset+_ec_len-1]
+        md == bytes2hex(sha256(ec_raw))
+    else
+        md == tpi.cms_message_digest
+    end
+    if !o.cms_digest_valid
+        remark_ASN1Error!(o, "CMS Digest incorrect")
+        @error "Incorrect CMS digest for $(o.filename)"
+    end
 end
 
 @check "signingTime" begin

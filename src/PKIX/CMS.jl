@@ -205,7 +205,7 @@ end
 
 @check "signature" begin
     # Decrypt signature using the EE certificate in the ROA 
-    v = powermod(to_bigint(node.tag.value), ASN1.value(tpi.ee_rsaExponent.tag), to_bigint(tpi.ee_rsaModulus.tag.value[2:end]))
+    v = powermod(to_bigint(node.tag.value), ASN1.value(tpi.ee_rsaExponent.tag), to_bigint(@view tpi.ee_rsaModulus.tag.value[2:end]))
     v.size = 4
     v_str = string(v, base=16, pad=64)
     if tpi.saHash == v_str

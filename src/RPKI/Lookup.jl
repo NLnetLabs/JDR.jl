@@ -237,3 +237,24 @@ function search(l::Lookup, q1::T, q2::T, include_more_specific::Bool) :: Vector{
     end
     map(e->e.value, matches) |> unique
 end
+
+
+struct IssuerSubject
+    id::String
+end
+export IssuerSubject
+"""
+    search(tree::RPKINode, id::IssuerSubject)
+
+Search certificates containing this issuer/subject ID
+
+"""
+function search(tree::RPKINode, issuer_subject::IssuerSubject) :: Vector{RPKINode}
+    tree |>
+    @filter(_.obj.object isa CER &&
+            (_.obj.object.issuer == issuer_subject.id ||
+             _.obj.object.subject == issuer_subject.id
+            )
+           ) |>
+    unique
+end

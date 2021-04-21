@@ -9,6 +9,8 @@ using FileWatching
 using ThreadPools
 using Query
 
+using ReadWriteLocks
+
 using JDR
 using JDR.BGP
 using JDR.Common
@@ -52,7 +54,8 @@ const STATE = State(RPKI.RPKINode(),
                    )
 
 const WATCH_FN = "/tmp/rpkicache.updated"
-const UPDATELK = ReentrantLock()
+
+const rwlock = ReadWriteLock()
 
 
 ##############################
@@ -327,37 +330,48 @@ repositories have network level issues, and store the results in PPSTATUS[].
 
 """
 function update_repostatus()
+    global rwlock
     msms = fetch_measurements()
     @time df = fetch_results(msms) |> create_df
     df = join_msm_def(df, msms);
 
-    STATE.AtlasStatus = ppstatus(df)
+    new_atlas_status = ppstatus(df)
+    lock!(write_lock(rwlock))
+    STATE.AtlasStatus = new_atlas_status
+    unlock!(write_lock(rwlock))
 end
 
 function update()
+    global rwlock
     @info "update() on thread $(Threads.threadid())"
-    @info "resetting Common.remarkTID"
-    Common.resetRemarkTID()
-    @assert Common.remarkTID == 0
 
     @time (tree, lookup) = RPKI.retrieve_all(JDR.CFG["rpki"]["tals"]; stripTree=true, nicenames=false)
     RPKI.link_resources!.(tree.children)
 
+    new_RISv6 = new_RISv4 = nothing
     try
-        STATE.RISv4 = JDR.BGP.ris_from_file(IPv4, "riswhoisdump.IPv4")
-        STATE.RISv6 = JDR.BGP.ris_from_file(IPv6, "riswhoisdump.IPv6")
+        new_RISv4 = JDR.BGP.ris_from_file(IPv4, "riswhoisdump.IPv4")
+        new_RISv6 = JDR.BGP.ris_from_file(IPv6, "riswhoisdump.IPv6")
     catch
         @error "failed to parse RIS whois dumps"
     end
-    @debug "linked!"
-    lock(UPDATELK)
+
+    lock!(write_lock(rwlock))
     STATE.tree = tree
     STATE.lookup = lookup
-    tree = lookup = nothing
-    unlock(UPDATELK)
+    if !isnothing(new_RISv6)
+        STATE.RISv6 = new_RISv6
+    end
+    if !isnothing(new_RISv4)
+        STATE.RISv4 = new_RISv4
+    end
+    set_last_update()
+    unlock!(write_lock(rwlock))
+
+    new_RISv6 = new_RISv4 = tree = lookup = nothing
+    GC.gc()
 
     try
-        # TMP commented out for dev
         @info "updating repository status based on RIPE Atlas measurements"
         update_repostatus()
     catch e
@@ -365,7 +379,6 @@ function update()
         @error e
     end
 
-    set_last_update()
     @info "update() done, serial: $(STATE.last_update_serial)"
 end
 function update(req::HTTP.Request)
@@ -416,13 +429,15 @@ function set_last_update()
 end
 
 function JSONHandler(req::HTTP.Request)
+    global rwlock
+
     _tstart = now()
 
     try
         # first check if there's any request body
         body = IOBuffer(HTTP.payload(req))
         meta = nothing
-        lock(UPDATELK)
+        lock!(read_lock(rwlock))
         if eof(body)
             # no request body
             response_body, meta = HTTP.Handlers.handle(ROUTER, req)
@@ -430,7 +445,6 @@ function JSONHandler(req::HTTP.Request)
             # there's a body, so pass it on to the handler we dispatch to
             response_body, meta = handle(ROUTER, req, JSON2.read(body))
         end
-        unlock(UPDATELK)
 
         # wrap the response in an envelope
         response = Envelope(STATE.last_update, STATE.last_update_serial, now(UTC), meta, response_body)
@@ -453,10 +467,7 @@ function JSONHandler(req::HTTP.Request)
                              body=JSON2.write(response)
                             )
     finally
-        if islocked(UPDATELK) && UPDATELK.locked_by === current_task()
-            @debug "in JSONHandler finally clause: unlocking UPDATELK"
-            unlock(UPDATELK)
-        end
+        unlock!(read_lock(rwlock))
     end
 end
 

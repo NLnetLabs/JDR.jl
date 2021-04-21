@@ -7,7 +7,6 @@ using ...RPKI
 using ...RPKICommon
 using ...ASN1
 
-using IPNets
 using Sockets
 using IntervalTrees
 

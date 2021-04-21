@@ -1,4 +1,3 @@
-using IPNets
 using Sockets
 export tagvalue, tagisa, tag_OID, tag_OIDs, childcount, containAttributeTypeAndValue
 export tagis_contextspecific, check_extensions, get_extensions

@@ -5,7 +5,6 @@ using ...JDR.RPKICommon
 
 # for the uses of @check in X509 and CMS:
 using SHA 
-using IPNets
 using IntervalTrees
 using Sockets
 

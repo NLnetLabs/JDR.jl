@@ -1,7 +1,6 @@
 module DER
 using ...JDR.Common
 using ..ASN1.ASN
-using Mmap
 
 # Possible/common mistakes or violations:
 # - a primitive BITSTRING actually containing other tags (thus being constructed)

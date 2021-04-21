@@ -7,7 +7,6 @@ using ...ASN1
 using ...PKIX.X509
 using SHA
 using IntervalTrees
-using IPNets # FIXME refactor this out
 using Sockets
 
 import .RPKI:check_ASN1

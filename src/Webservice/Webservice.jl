@@ -496,31 +496,6 @@ function updater()
     end
 end
 
-#=
-function DEPR_get_atlas_info()
-    pp2atlas = Dict{String}{Vector{NamedTuple}}()
-    #TODO: hardcoding page_size is not nice
-    #jdr_tagged = Atlas.get_my(Dict("tags" => "jdr", "page_size" => "200"))
-    msms = Atlas.get_measurement(Dict("tags" => "rpki-repositories-bundle", "page_size" => "500"))
-    if length(unique([r.group_id for r in msms.results])) == 0 
-        @error "no Atlas group measurement found for JDR"
-        return
-    elseif length(unique([r.group_id for r in msms.results])) > 1
-        @warn "got more than one group id for JDR tagged Atlas measurements"
-    end
-    @info "got $(length(msms.results)) measurements tagged 'jdr' from Atlas"
-    group_id = msms.results[1].group_id
-    for r in msms.results
-        if !(r.target in keys(pp2atlas))
-            pp2atlas[r.target] = [r]
-        else
-            push!(pp2atlas[r.target], r)
-        end
-
-    end
-    return PP2Atlas[] = pp2atlas
-end
-=#
 
 serverhandle = nothing
 using Sockets

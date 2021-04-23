@@ -16,7 +16,6 @@ function fetch_results(msms::NamedTuple) #:: Vector{NamedTuple}
 end
 
 function create_df(results::Array) :: DataFrame
-    @info length(results)
     df = DataFrame(
         msm_id=Int[],
         prb_id=Int[],

@@ -8,11 +8,12 @@ using Dates
 using IntervalTrees
 using Sockets
 
-export RPKIObject, RPKINode, TmpParseInfo, Lookup, print_ASN1
-export RootCER, CER, MFT, ROA, CRL
-export add_resource!
-export root_to
-export iterate
+export
+    # structs
+    RPKIObject, RPKINode, TmpParseInfo, Lookup,
+    RootCER, CER, MFT, ROA, CRL,
+    # methods
+    add_resource!, root_to, iterate, print_ASN1
 
 mutable struct RPKIObject{T}
     filename::String
@@ -122,6 +123,40 @@ function Base.show(io::IO, m::MIME"text/html", node::RPKINode)
 end
 
 include("Lookup.jl")
+
+"""
+    remarks_above(node::RPKINode)
+
+Find nodes between root and `node` carrying Remarks.
+
+The result does not include `node` itself.
+Note that because of the RPKINode tree structure, a path upwards from `node` to
+root will consist of only manifests and certificates.
+
+TODO: should we check siblings (i.e. CRLs) ?
+
+"""
+function remarks_above(node::RPKINode) :: Vector{RPKINode}
+    root_to(node)[1:end-1] |> @filter(!isnothing(_.obj.remarks)) |> collect
+end
+
+
+"""
+    remarks_below(node::RPKINode)
+
+Find descendants from `node` carrying Remarks.
+
+The result does not include `node` itself.
+
+"""
+function remarks_below(node::RPKINode) :: Vector{RPKINode}
+    node.children |>
+        @map(collect(_)) |>
+        Iterators.flatten |>
+        @filter(!isnothing(_.obj.remarks)) |>
+    collect
+end
+
 
 mutable struct TmpParseInfo
     repodir::String

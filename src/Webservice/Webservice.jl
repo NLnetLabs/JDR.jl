@@ -472,6 +472,7 @@ end
 
 function updater()
     @info "updater spawned on thread $(Threads.threadid())"
+    update()
     while true
         # watch file, to be touched whenever the RPKI repo on disk is updated
         try 
@@ -510,7 +511,6 @@ function start()
     if !isfile(WATCH_FN)
         touch(WATCH_FN)
     end
-    update()
 
     ThreadPools.@tspawnat 2 updater()
 

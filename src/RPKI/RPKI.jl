@@ -473,7 +473,10 @@ function retrieve_all(tal_urls=JDR.CFG["rpki"]["tals"]; stripTree::Bool=false, n
         end
         @info "pushing branch for $(rir) from thread $(Threads.threadid())"
         push!(branches, root)
+        root = nothing
+        GC.gc()
     end
+    GC.gc()
 
     (reduce(_merge_RIRs, branches) |> _glue_rootnode, lookup)
 end

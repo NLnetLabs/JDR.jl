@@ -1,4 +1,5 @@
 using JDR.ASN1
+using JDR.RPKICommon
 
 using Sockets
 using IntervalTrees # for IP prefixes on certificates
@@ -7,51 +8,50 @@ details_url(filename::String) = JDR.CFG["webservice"]["domain"] * "/api/v1/objec
 details_url(n::RPKINode) = details_url(n.obj.filename)
 details_url(o::RPKIObject{T}) where T = details_url(o.filename)
 
-JSON2.@format RPKI.RPKINode begin
-        parent => (;exclude=true,)
-        siblings => (;exclude=true,)
-end
+StructTypes.StructType(::Type{RPKI.RPKINode}) = StructTypes.Struct()
+StructTypes.excludes(::Type{RPKI.RPKINode}) = (:parent, :siblings)
 
-JSON2.@format RPKI.RPKIObject{T} where T begin
-        tree => (;exclude=true,)
-end
+StructTypes.StructType(::Type{RPKI.RPKIObject}) = StructTypes.Struct()
+StructTypes.excludes(::Type{RPKI.RPKIObject}) = (:tree,) #TODO perhaps omitempties suffices here, because we do stripTree?
 
-JSON2.@format ASN1.Node begin
-    buf => (;exclude=true,)
-end
+StructTypes.StructType(::Type{ASN1.Node}) = StructTypes.Struct()
+StructTypes.excludes(::Type{ASN1.Node}) = (:buf,)
 
-JSON2.@format RPKI.ROA begin
-        resources_v6 => (;exclude=true,)
-        resources_v4 => (;exclude=true,)
-        vrps => (;exclude=true,) #TMP, remove after removing vrps from ROA altogether
-        vrp_tree =>(;name="vrps",)
-end
+StructTypes.StructType(::Type{RPKI.ROA}) = StructTypes.Struct()
+StructTypes.excludes(::Type{RPKI.ROA}) = (:resources_v6, :resources_v4)
+StructTypes.names(::Type{RPKI.ROA}) = ((:vrp_tree, :vrps),)
 
 
-# for linked resources from CER to subCER/ROA:
-function JSON2.write(io::IO, i::IntervalValue{<:IPAddr, Vector{RPKINode}})
+function _serialize_linked_resource(i::IntervalValue{<:IPAddr, Vector{RPKINode}})
     # string(i) is the prefix
     # value(i) is the Vector of RPKINodes
     cers = filter(e->e.obj.object isa RPKI.CER, value(i))
     roas = filter(e->e.obj.object isa RPKI.ROA, value(i))
-    JSON2.write(io, (Dict("prefix" => string(i),
-                          "CERs" => map(e->e.obj.filename, cers),
-                          "ROAs" => map(e->e.obj.filename, roas)
-                         )
-                    )
-               )
+    Dict("prefix" => string(i),
+         "CERs" => map(e->e.obj.filename, cers),
+         "ROAs" => map(e->e.obj.filename, roas)
+        )
 end
-
-# for VRPs, where the IntervalValue represents the maxlen
-function JSON2.write(io::IO, i::IntervalValue{<:IPAddr, UInt8})
-    JSON2.write(io, "$(string(i))-$(value(i))")
+function _serialize_linked_resources(res::RPKICommon.LinkedResources)
+    map(_serialize_linked_resource, collect(res))
 end
+StructTypes.StructType(::Type{<:RPKICommon.LinkedResources}) = StructTypes.CustomStruct()
+StructTypes.lower(x::RPKICommon.LinkedResources) = _serialize_linked_resources(x)
+StructTypes.lowertype(::Type{<:RPKICommon.LinkedResources}) = Vector
 
-JSON2.write(io::IO, it::IntervalTree{T, IntervalValue{T, U}}) where {T<:IPAddr, U} = JSON2.write(io, collect(it))
+
+#TODO must be adapted to also feature 'empty' maxlens
+function _serialize_vrps(vrps::RPKICommon._VRPS)
+    ["$(string(v))-$(value(v))" for v in vrps]
+end
+StructTypes.StructType(::Type{RPKICommon.VRPS}) = StructTypes.Struct()
+StructTypes.StructType(::Type{<:RPKICommon._VRPS}) = StructTypes.CustomStruct()
+StructTypes.lower(x::RPKICommon._VRPS) = _serialize_vrps(x)
+StructTypes.lowertype(::Type{RPKICommon._VRPS}) = Vector
 
 # custom view for RPKIObject{T}
 # includes the tree, but does not link to parent or children
-# howto: https://github.com/quinnj/JSON2.jl/issues/12
+# TODO: do we still need this, with the .excludes on those fields?
 struct ObjectDetails{T}
     filename::String
     path::String
@@ -64,6 +64,9 @@ struct ObjectDetails{T}
     sig_valid::Union{Nothing, Bool}
 end
 
+StructTypes.StructType(::Type{RPKI.Remark}) = StructTypes.Struct()
+StructTypes.StructType(::Type{RPKI.RemarkCounts_t}) = StructTypes.DictType()
+
 function ObjectDetails(r::RPKI.RPKIObject, rc::Union{Nothing, RemarkCounts_t})
     # we parse this again, because it is removed from the main tree/lookup 
     tmp = RPKI.RPKIObject(r.filename)
@@ -71,7 +74,7 @@ function ObjectDetails(r::RPKI.RPKIObject, rc::Union{Nothing, RemarkCounts_t})
     @assert isnothing(tmp.remarks_tree)
     RPKI.collect_remarks_from_asn1!(tmp, tmp.tree)
     
-    d = ObjectDetails(r.filename,
+    d = ObjectDetails(basename(r.filename),
                       dirname(r.filename),
                       tmp.tree,
                       r.object,
@@ -83,6 +86,17 @@ function ObjectDetails(r::RPKI.RPKIObject, rc::Union{Nothing, RemarkCounts_t})
                     )
     return d
 end
+StructTypes.StructType(::Type{RPKI.CER}) = StructTypes.Struct()
+StructTypes.excludes(::Type{RPKI.CER}) = (:rsa_modulus, )
+StructTypes.StructType(::Type{AutSysNum}) = StructTypes.Struct()
+StructTypes.StructType(::Type{AutSysNumRange}) = StructTypes.Struct()
+
+
+StructTypes.StructType(::Type{RPKI.MFT}) = StructTypes.Struct()
+StructTypes.StructType(::Type{RPKI.CRL}) = StructTypes.Struct()
+StructTypes.StructType(::Type{RPKICommon.SerialNumber}) = StructTypes.StringType()
+
+StructTypes.StructType(::Type{<:ObjectDetails}) = StructTypes.Struct()
 
 struct ObjectSlim{T}
     filename::String
@@ -104,6 +118,8 @@ struct RemarkDeeplink
 end
 RemarkDeeplink(r::Remark, filename::String) = RemarkDeeplink(r.lvl, r.type, r.msg, r.tid, filename)
 
+StructTypes.StructType(::Type{RemarkDeeplink}) = StructTypes.Struct()
+
 function ObjectSlim(r::RPKI.RPKIObject, rcm::Union{Nothing, RemarkCounts_t}, rcc::Union{Nothing, RemarkCounts_t})
     ObjectSlim(r.filename,
                details_url(r.filename),
@@ -114,20 +130,9 @@ function ObjectSlim(r::RPKI.RPKIObject, rcm::Union{Nothing, RemarkCounts_t}, rcc
                rcc
             )
 end
+StructTypes.StructType(::Type{<:ObjectSlim}) = StructTypes.Struct()
 
-
-struct Basename
-    filename::String
-end
-JSON2.@format ObjectDetails begin
-    filename => (; jsontype=Basename,)
-end
-JSON2.write(io::IO, bn::Basename) = JSON2.write(io, basename(bn.filename))
-Base.convert(::Type{Basename}, s) = Basename(s)
-
-function JSON2.write(io::IO, tag::ASN1.Tag)
-    JSON2.write(io, "$(tag.number) ($(tag.len))")
-end
+StructTypes.StructType(::Type{ASN1.Tag}) = StructTypes.StringType()
 
 
 # Slim copy of RPKI.CER, with empty prefixes and ASNs Vectors
@@ -135,52 +140,34 @@ struct SlimCER
     pubpoint::String
     manifest::String
     rrdp_notify::String
-
     inherit_v6_prefixes::Union{Nothing,Bool}
     inherit_v4_prefixes::Union{Nothing,Bool}
-
-    #prefixes::Vector{Union{IPNet, Tuple{IPNet, IPNet}}}
     inherit_ASNs::Union{Nothing, Bool}
-    ASNs::Vector{Union{Tuple{UInt32, UInt32}, UInt32}}
 end
 SlimCER(cer::RPKI.CER) = begin
     SlimCER(cer.pubpoint, cer.manifest, cer.rrdp_notify,
                                  cer.inherit_v6_prefixes, cer.inherit_v4_prefixes,
                                  #[],
-                                 cer.inherit_ASNs, [])
+                                 cer.inherit_ASNs)#, [])
 end
-JSON2.@format SlimCER begin
-    ASNs => (;exclude=true,)
-end
+StructTypes.StructType(::Type{SlimCER}) = StructTypes.Struct()
 
 # Slim copy of RPKI.MFT, with an empty files Vector
 struct SlimMFT
-    files::Vector{String}
     loops::Union{Nothing, Vector{String}}
     missing_files::Union{Nothing, Vector{String}}
     this_update::Union{Nothing, DateTime}
     next_update::Union{Nothing, DateTime}
 end
-SlimMFT(mft::RPKI.MFT) = SlimMFT([], mft.loops, mft.missing_files, mft.this_update, mft.next_update)
-JSON2.@format SlimMFT begin
-    files => (;exclude=true,)
-end
+
+SlimMFT(mft::RPKI.MFT) = SlimMFT(mft.loops, mft.missing_files, mft.this_update, mft.next_update)
+StructTypes.StructType(::Type{SlimMFT}) = StructTypes.Struct()
 
 
 struct SlimCRL end
 SlimCRL(crl::RPKI.CRL) = SlimCRL()
 
-struct HexSerials
-    revoked_serials::Vector{String}
-end
-Base.convert(::Type{HexSerials}, serials) = begin
-    HexSerials(uppercase.(string.(serials, base=16)))
-end
-JSON2.@format RPKI.CRL begin
-    revoked_serials => (;jsontype=HexSerials,)
-end
-JSON2.write(io::IO, hs::HexSerials) = JSON2.write(io, hs.revoked_serials)
-
+StructTypes.StructType(::Type{SlimCRL}) = StructTypes.Struct()
 
 to_slim(o::RPKI.MFT) = SlimMFT(o)
 to_slim(o::RPKI.CER) = SlimCER(o)
@@ -208,10 +195,8 @@ mutable struct VueNode
     newPubpoint::Union{Nothing,String}
 end
 
-JSON2.@format VueNode begin
-    children => (omitempty=true,)
-    mates => (omitempty=true,)
-end
+StructTypes.StructType(::Type{VueNode}) = StructTypes.Struct()
+StructTypes.omitempties(::Type{VueNode}) = (:children, :mates)
 
 
 function get_vue_leaf_node(node::RPKI.RPKINode) ::RPKINode

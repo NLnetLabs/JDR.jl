@@ -205,6 +205,12 @@ git-tree-sha1 = "66397cc6c08922f98a28ab05a8d3002f9853b129"
 uuid = "2535ab7d-5cd8-5a07-80ac-9b1792aadce3"
 version = "0.3.2"
 
+[[JSON3]]
+deps = ["Dates", "Mmap", "Parsers", "StructTypes", "UUIDs"]
+git-tree-sha1 = "65798ad6ddb0d7068f2b1885e0b0d876efca16f5"
+uuid = "0f8b85d8-7281-11e9-16c2-39a750bddbf1"
+version = "1.8.1"
+
 [[Jive]]
 deps = ["Distributed", "FileWatching", "Pkg", "Printf", "REPL", "Test"]
 git-tree-sha1 = "4b0b863746b73e906309ef2c045c7d2a375ab87a"
@@ -424,9 +430,9 @@ version = "0.33.5"
 
 [[StructTypes]]
 deps = ["Dates", "UUIDs"]
-git-tree-sha1 = "ad4558dee74c5d26ab0d0324766b1a3ee6ae777a"
+git-tree-sha1 = "e36adc471280e8b346ea24c5c87ba0571204be7a"
 uuid = "856f2bd8-1eba-4b0a-8007-ebc267875bd4"
-version = "1.7.1"
+version = "1.7.2"
 
 [[TOML]]
 deps = ["Dates"]

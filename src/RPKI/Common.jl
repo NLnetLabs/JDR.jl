@@ -186,8 +186,16 @@ struct ASIdentifiers
     ids::Vector{AutSysNum}
     ranges::Vector{OrdinalRange{AutSysNum}}
 end
+
+struct SerialNumber
+    serial::Integer
+end
+Base.convert(::Type{SerialNumber}, i::Integer) = SerialNumber(i)
+Base.string(s::SerialNumber) = uppercase(string(s.serial, base=16))
+
+const LinkedResources{T<:IPAddr} = IntervalMap{T, Vector{RPKINode}}
 Base.@kwdef mutable struct CER 
-    serial::Integer = 0
+    serial::SerialNumber = 0
     notBefore::Union{Nothing, DateTime} = nothing
     notAfter::Union{Nothing, DateTime} = nothing
     pubpoint::String = ""
@@ -203,8 +211,8 @@ Base.@kwdef mutable struct CER
 
     inherit_v6_prefixes::Union{Nothing, Bool} = nothing
     inherit_v4_prefixes::Union{Nothing, Bool} = nothing
-    resources_v6::IntervalTree{IPv6, IntervalValue{IPv6, Vector{RPKINode}}} = IntervalTree{IPv6, IntervalValue{IPv6, Vector{RPKINode}}}()
-    resources_v4::IntervalTree{IPv4, IntervalValue{IPv4, Vector{RPKINode}}} = IntervalTree{IPv4, IntervalValue{IPv4, Vector{RPKINode}}}()
+    resources_v6::LinkedResources{IPv6} = LinkedResources{IPv6}() 
+    resources_v4::LinkedResources{IPv4} = LinkedResources{IPv4}() 
 
     inherit_ASNs::Union{Nothing, Bool} = nothing
     ASNs::AsIdsOrRanges = AsIdsOrRanges()
@@ -234,6 +242,7 @@ end
 MFT() = MFT([], nothing, nothing, nothing, nothing)
 
 
+const _VRPS{T<:IPAddr} = IntervalMap{T, UInt8}
 """
     VRPS
 
@@ -242,10 +251,10 @@ MFT() = MFT([], nothing, nothing, nothing, nothing)
 
 """
 struct VRPS
-    resources_v6::IntervalTree{IPv6, IntervalValue{IPv6, UInt8}} 
-    resources_v4::IntervalTree{IPv4, IntervalValue{IPv4, UInt8}}# = IntervalTree{T, IntervalValue{T, Int}}
+    resources_v6::_VRPS{IPv6}
+    resources_v4::_VRPS{IPv4}
 end
-VRPS() = VRPS(IntervalTree{IPv6, IntervalValue{IPv6, UInt8}}() , IntervalTree{IPv4, IntervalValue{IPv4, UInt8}}())
+VRPS() = VRPS(_VRPS{IPv6}(), _VRPS{IPv4}())
 
 mutable struct ROA
     asid::Integer
@@ -262,7 +271,7 @@ ROA() = ROA(0, VRPS(),
 
 
 mutable struct CRL 
-    revoked_serials::Vector{Integer}
+    revoked_serials::Vector{SerialNumber} # TODO also include Revocation Date for each serial
     this_update::Union{Nothing, DateTime}
     next_update::Union{Nothing, DateTime}
 end

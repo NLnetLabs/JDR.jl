@@ -1,7 +1,10 @@
 module Webservice
 using HTTP
 using Dates
-using JSON2
+
+using JSON3
+using StructTypes
+
 using Atlas
 
 #using IPNets
@@ -38,11 +41,8 @@ struct Metadata
 end
 Metadata(n::Int) = Metadata(n, nothing)
 
-JSON2.@format Metadata begin
-    results_shown => (omitempty=true,)
-end
-
-
+StructTypes.StructType(::Type{Metadata}) = StructTypes.Struct()
+StructTypes.omitempties(::Type{Metadata}) = (:results_shown,)
 
 const STATE = State(RPKI.RPKINode(),
                     RPKI.Lookup(),
@@ -419,9 +419,8 @@ end
 
 Envelope(l, s, t, m, d) = Envelope(l, s, t, m, d, nothing)
 
-JSON2.@format Envelope begin
-    error => (omitempty=true,)
-end
+StructTypes.StructType(::Type{Envelope}) = StructTypes.Struct()
+StructTypes.omitempties(::Type{Envelope}) = (:error,)
 
 function set_last_update()
     STATE.last_update = now(UTC)
@@ -443,7 +442,7 @@ function JSONHandler(req::HTTP.Request)
             response_body, meta = HTTP.Handlers.handle(ROUTER, req)
         else
             # there's a body, so pass it on to the handler we dispatch to
-            response_body, meta = handle(ROUTER, req, JSON2.read(body))
+            response_body, meta = handle(ROUTER, req, JSON3.read(body))
         end
 
         # wrap the response in an envelope
@@ -455,7 +454,7 @@ function JSONHandler(req::HTTP.Request)
         @info "[$(_tstart)] [took $(time_needed)] request: $(req.target)"
         return HTTP.Response(200,
                              [("Content-Type" => "application/json")];
-                             body=JSON2.write(response)
+                             body=JSON3.write(response)
                             )
     catch e
         @error "[$(_tstart) something when wrong, showing stacktrace but continuing service"
@@ -464,7 +463,7 @@ function JSONHandler(req::HTTP.Request)
         response = Envelope(STATE.last_update, STATE.last_update_serial, now(UTC), nothing, e)
         return HTTP.Response(500,
                              [("Content-Type" => "application/json")];
-                             body=JSON2.write(response)
+                             body=JSON3.write(response)
                             )
     finally
         unlock!(read_lock(rwlock))

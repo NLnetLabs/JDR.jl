@@ -151,7 +151,7 @@ function object(req::HTTP.Request)
     res = RPKI.search(STATE.lookup, object)
     if isempty(res)
         @warn "no results, returning empty array"
-        return []
+        return [], Metadata(0)
     end
     if length(res) > 1
         @warn "more than 1 result for this query, unexpected"
@@ -460,7 +460,7 @@ function JSONHandler(req::HTTP.Request)
         @error "[$(_tstart) something when wrong, showing stacktrace but continuing service"
         @error "req:", req
         showerror(stderr,e, catch_backtrace())
-        response = Envelope(STATE.last_update, STATE.last_update_serial, now(UTC), nothing, e)
+        response = Envelope(STATE.last_update, STATE.last_update_serial, now(UTC), nothing, nothing, string(e))
         return HTTP.Response(500,
                              [("Content-Type" => "application/json")];
                              body=JSON3.write(response)

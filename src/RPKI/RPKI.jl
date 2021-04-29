@@ -183,8 +183,8 @@ function process_mft(mft_fn::String, lookup::Lookup, tpi::TmpParseInfo, cer_node
                 #    throw("possible loop in $(subcer_fn)" )
                 #end
                 #@debug "process_cer from _mft for $(basename(subcer_fn))"
-                cer_node = process_cer(subcer_fn, lookup, tpi)
-                add(mft_node, cer_node)
+                sub_cer_node = process_cer(subcer_fn, lookup, tpi)
+                add(mft_node, sub_cer_node)
             catch e
                 if e isa LoopError
                     #@warn "LoopError, trying to continue"

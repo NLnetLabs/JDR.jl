@@ -25,8 +25,8 @@ StructTypes.names(::Type{RPKI.ROA}) = ((:vrp_tree, :vrps),)
 function _serialize_linked_resource(i::IntervalValue{<:IPAddr, Vector{RPKINode}})
     # string(i) is the prefix
     # value(i) is the Vector of RPKINodes
-    cers = filter(e->e.obj.object isa RPKI.CER, value(i))
-    roas = filter(e->e.obj.object isa RPKI.ROA, value(i))
+    cers = filter(e->e.obj.object isa RPKI.CER, value(i)) |> unique
+    roas = filter(e->e.obj.object isa RPKI.ROA, value(i)) |> unique
     Dict("prefix" => string(i),
          "CERs" => map(e->e.obj.filename, cers),
          "ROAs" => map(e->e.obj.filename, roas)

@@ -5,7 +5,7 @@ using JDR.Common
 using IntervalTrees
 using Sockets
 
-const MIN_NO_PEERS=Int(10)
+const MIN_NO_PEERS=Int(20)
 const RISTree{T} = IntervalTree{T, IntervalValue{T, AutSysNum}} where {T<:IPAddr}
 RISTree(ivs::Vector{IntervalValue{T,V}}) where {T,V} = RISTree{T}(ivs)
 

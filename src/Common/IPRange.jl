@@ -66,7 +66,9 @@ function Base.show(io::IO, r::IPRange{IPv4})
 end
 function Base.show(io::IO, r::IPRange{IPv6})
     r_size = r.last.host - r.first.host + 1
-    if count_ones(r_size) == 1
+    if r.first.host == 0 && r.last.host == typemax(UInt128)
+        print(io, "::/0")
+    elseif count_ones(r_size) == 1
         print(io, "$(r.first)/$(128 - Int(log2(r_size)))")
     else
         print(io, "$(r.first) .. $(r.last)")
@@ -83,22 +85,5 @@ Base.zero(::Type{IPv4}) = IPv4(0)
 Base.zero(::Type{IPv6}) = IPv6(0)
 
 
-function Base.string(i::IntervalValue{IPv4, T}) :: String where T
-    i_size = i.last.host - i.first.host + 1
-    if count_ones(i_size) == 1
-         "$(i.first)/$(32 - Int(log2(i_size)))"
-    else
-        "$(i.first) .. $(i.last)"
-    end
-end
-function Base.string(i::IntervalValue{IPv6, T}) :: String where T 
-    if i.first.host == 0 && i.last.host == typemax(UInt128)
-        return "::/0"
-    end
-    i_size = i.last.host - i.first.host + 1
-    if count_ones(i_size) == 1
-        "$(i.first)/$(128 - Int(log2(i_size)))"
-    else
-        "$(i.first) .. $(i.last)"
-    end
-end
+Base.string(i::IntervalValue{IPv6, T}) where T = string(IPRange{IPv6}(i.first, i.last))
+Base.string(i::IntervalValue{IPv4, T}) where T = string(IPRange{IPv4}(i.first, i.last))

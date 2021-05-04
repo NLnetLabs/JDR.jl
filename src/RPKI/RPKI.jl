@@ -1,9 +1,9 @@
 module RPKI
-using ..JDR.Config: CFG
-using ..Common: Remark, RemarkCounts_t, split_scheme_uri, count_remarks, AutSysNum, IPRange
-using ..Common: remark_missingFile!, remark_loopIssue!, remark_manifestIssue!
-using ..RPKICommon: add_resource!, RPKIObject, RPKINode, Lookup, TmpParseInfo, add_filename!, CER, add_resource, MFT, CRL, ROA, add_missing_filename!, RootCER, get_pubpoint
-using ..ASN1: Node
+using JDR.Config: CFG
+using JDR.Common: Remark, RemarkCounts_t, split_scheme_uri, count_remarks, AutSysNum, IPRange
+using JDR.Common: remark_missingFile!, remark_loopIssue!, remark_manifestIssue!
+using JDR.RPKICommon: add_resource!, RPKIObject, RPKINode, Lookup, TmpParseInfo, add_filename!, CER, add_resource, MFT, CRL, ROA, add_missing_filename!, RootCER, get_pubpoint
+using JDR.ASN1: Node
 
 using IntervalTrees: IntervalValue
 using Sockets: IPAddr

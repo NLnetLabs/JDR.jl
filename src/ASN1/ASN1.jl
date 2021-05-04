@@ -4,7 +4,7 @@ include("ASN.jl")
 using .ASN
 
 # re-exports from ASN:
-export Node, Tag
+export Node, Tag, print_node
 export tagisa, tagvalue, tagtype, tag_OID, tag_OIDs, tagis_contextspecific, childcount
 export containAttributeTypeAndValue
 export get_extensions, check_extensions

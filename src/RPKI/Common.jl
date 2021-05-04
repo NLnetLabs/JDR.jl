@@ -1,11 +1,12 @@
 module RPKICommon
 
 
-using ..JDR: CFG
-using ..JDR.Common
-using ..ASN1.ASN
-using ..ASN1.DER
-using Dates
+using JDR.Config: CFG
+using JDR.Common: Remark, RemarkCounts_t, AutSysNum, AsIdsOrRanges, IPRange, split_scheme_uri
+using JDR.ASN1: Node, print_node
+using JDR.ASN1.DER: parse_file_recursive
+
+using Dates: DateTime, TimePeriod
 using IntervalTrees
 using Sockets
 
@@ -41,7 +42,7 @@ function Base.show(io::IO, obj::RPKIObject{T}) where T
 end
 
 function print_ASN1(o::RPKIObject{T}; max_lines=0) where T
-    ASN.print_node(o.tree; traverse=true, max_lines)
+    print_node(o.tree; traverse=true, max_lines)
 end
 
 
@@ -109,7 +110,7 @@ function Base.show(io::IO, node::RPKINode)
     end
 end
 
-function Base.show(io::IO, m::MIME"text/html", node::RPKINode) 
+function Base.show(io::IO, ::MIME"text/html", node::RPKINode) 
     path = root_to(node) 
     print(io, "<ul>")
     for p in path[1:end-1]
@@ -123,7 +124,7 @@ function Base.show(io::IO, m::MIME"text/html", node::RPKINode)
     end
     print(io, "<li>RPKINode [$(nameof(typeof(node.obj).parameters[1]))] <b>$(node.obj.filename)</b></li>")
     print(io, "<ul><li>$(length(node.children)) child nodes</li></ul>")
-    for _ in length(path)
+    for _ in 1:length(path)
         print(io, "</ul>")
     end
 end
@@ -171,18 +172,18 @@ mutable struct TmpParseInfo
     stripTree::Bool
     subjectKeyIdentifier::Vector{UInt8}
     signerIdentifier::Vector{UInt8}
-    eContent::Union{Nothing,ASN.Node}
-    signedAttrs::Union{Nothing,ASN.Node}
+    eContent::Union{Nothing,Node}
+    signedAttrs::Union{Nothing,Node}
     saHash::String
 
-    caCert::Union{Nothing,ASN.Node}
+    caCert::Union{Nothing,Node}
     issuer::Vector{String} # stack
 
-    eeCert::Union{Nothing,ASN.Node}
-    ee_rsaExponent::Union{Nothing,ASN.Node}
-    ee_rsaModulus::Union{Nothing,ASN.Node}
+    eeCert::Union{Nothing,Node}
+    ee_rsaExponent::Union{Nothing,Node}
+    ee_rsaModulus::Union{Nothing,Node}
 
-    eeSig::Union{Nothing,ASN.Node}
+    eeSig::Union{Nothing,Node}
     #certStack::Vector{RPKI.CER} # to replace all the other separate fields here
     certStack::Vector{Any} # TODO rearrange include/modules so we can actually use type RPKI.CER here
 
@@ -323,7 +324,7 @@ Base.show(io::IO, crl::CRL) = print(io, crl.this_update, " -> ", crl.next_update
 
 
 function RPKIObject(filename::String)::RPKIObject
-    tree = DER.parse_file_recursive(filename)
+    tree = parse_file_recursive(filename)
     ext = lowercase(filename[end-3:end])
     if      ext == ".cer" RPKIObject{CER}(filename, tree)
     elseif  ext == ".mft" RPKIObject{MFT}(filename, tree)
@@ -332,7 +333,7 @@ function RPKIObject(filename::String)::RPKIObject
     end
 end
 function RPKIObject{T}(filename::String)::RPKIObject{T} where {T}
-    tree = DER.parse_file_recursive(filename)
+    tree = parse_file_recursive(filename)
     RPKIObject{T}(filename, tree)
 end
 

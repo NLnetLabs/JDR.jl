@@ -15,7 +15,8 @@ export Tag,
     istag,
     iscontextspecific,
     value,
-    constructed
+    constructed,
+    print_node
 
 
 @enum Tagnumber begin
@@ -305,7 +306,7 @@ function append!(p::Node, c::Node) :: Node
 end
 
 import JDR.Common.count_remarks # import so we can extend it
-function count_remarks(tree::Node) :: RemarkCounts_t
+function Common.count_remarks(tree::Node) :: RemarkCounts_t
     cnts = RemarkCounts()
     for n in iter(tree)
         if !isnothing(n.remarks)

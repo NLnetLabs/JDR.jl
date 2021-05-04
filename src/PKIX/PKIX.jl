@@ -8,7 +8,7 @@ using SHA
 using IntervalTrees
 using Sockets
 
-macro check(name, block)
+macro depr_check(name, block)
     fnname = esc(Symbol("check_ASN1_$(name)"))
     :(
       esc(

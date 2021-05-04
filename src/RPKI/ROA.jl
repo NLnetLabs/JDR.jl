@@ -1,17 +1,18 @@
 module Roa
 
-using ...ASN1
-using ...Common: IPRange, check_coverage
-using ...PKIX.CMS: check_ASN1_contentType, check_ASN1_content # from macros
-#using ...RPKI
-using ...RPKICommon: ROA, RPKIObject, TmpParseInfo
-#
+using JDR.ASN1: ASN1, check_contextspecific, childcount, check_tag, value, bitstring_to_v6range
+using JDR.ASN1: bitstring_to_v4range, to_bigint
+using JDR.Common: IPRange, check_coverage, prefixlen, remark_ASN1Error!, remark_resourceIssue!
+using JDR.Common: remark_validityIssue!
+using JDR.PKIX.CMS: check_ASN1_contentType, check_ASN1_content # from macros
+using JDR.RPKICommon: ROA, RPKIObject, TmpParseInfo
+
+using IntervalTrees: Interval, IntervalValue
 using SHA: sha256
 using Sockets: IPv6, IPv4
-using IntervalTrees: Interval, IntervalValue
 
-import ...PKIX.@check
-import ...RPKI # to extend check_ASN1, check_cert, add_resource!, check_resources
+import JDR.RPKI # to extend check_ASN1, check_cert, add_resource!, check_resources
+include("../ASN1/macro_check.jl")
 
 
 function Base.show(io::IO, roa::ROA)
@@ -169,18 +170,17 @@ function RPKI.check_cert(o::RPKIObject{ROA}, tpi::TmpParseInfo)
     # TODO
 end
 
-import .RPKI.add_resource!
-function add_resource!(roa::ROA, minaddr::IPv6, maxaddr::IPv6)
-	push!(roa.resources_v6, IntervalValue(minaddr, maxaddr, VRP[]))
-end
-function add_resource!(roa::ROA, minaddr::IPv4, maxaddr::IPv4)
-	push!(roa.resources_v4, IntervalValue(minaddr, maxaddr, VRP[]))
-end
-add_resource!(roa::ROA, ipr::IPRange{IPv6}) = push!(roa.resources_v6, Interval(ipr))
-add_resource!(roa::ROA, ipr::IPRange{IPv4}) = push!(roa.resources_v4, Interval(ipr))
+#import .RPKI.add_resource!
+#function RPKI.add_resource!(roa::ROA, minaddr::IPv6, maxaddr::IPv6)
+#	push!(roa.resources_v6, IntervalValue(minaddr, maxaddr, VRP[]))
+#end
+#function RPKI.add_resource!(roa::ROA, minaddr::IPv4, maxaddr::IPv4)
+#	push!(roa.resources_v4, IntervalValue(minaddr, maxaddr, VRP[]))
+#end
+RPKI.add_resource!(roa::ROA, ipr::IPRange{IPv6}) = push!(roa.resources_v6, Interval(ipr))
+RPKI.add_resource!(roa::ROA, ipr::IPRange{IPv4}) = push!(roa.resources_v4, Interval(ipr))
 
-import .RPKI:check_resources
-function check_resources(o::RPKIObject{ROA}, tpi::TmpParseInfo)
+function RPKI.check_resources(o::RPKIObject{ROA}, tpi::TmpParseInfo)
     # TODO: check out intersect(t1::IntervalTree, t2::IntervalTree) and find any
     # underclaims?
     o.object.resources_valid = true

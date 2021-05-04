@@ -1,10 +1,10 @@
 module Cer
 
-using ...Common: IPRange, covered, check_coverage, remark_validityIssue!, remark_resourceIssue!
-using ...RPKI:RPKIObject, CER, TmpParseInfo
-using ...RPKICommon: RPKINode
-using ...ASN1: childcount, to_bigint
-using ...PKIX.X509
+using JDR.Common: IPRange, covered, check_coverage, remark_validityIssue!, remark_resourceIssue!
+using JDR.RPKI:RPKIObject, CER, TmpParseInfo
+using JDR.RPKICommon: RPKINode
+using JDR.ASN1: childcount, to_bigint
+using JDR.PKIX.X509
 using SHA: sha256
 using IntervalTrees: IntervalValue
 using Sockets: IPv6, IPv4
@@ -78,9 +78,9 @@ function RPKI.check_resources(o::RPKIObject{CER}, tpi::TmpParseInfo)
         if !covered(o.object.ASNs , tpi.certStack[end-1].ASNs)
             _covered = false
             # not covered, so check for inherited ASNs in parent certificates
-            for parent in reverse(tpi.certStack[1:end-2])
-                if !parent.inherit_ASNs
-                    if !covered(o.object.ASNs, parent.ASNs)
+            for parent_cer in reverse(tpi.certStack[1:end-2])
+                if !parent_cer.inherit_ASNs
+                    if !covered(o.object.ASNs, parent_cer.ASNs)
                         @warn "illegal ASNs for $(o.filename)"
                         remark_validityIssue!(o, "illegal ASNs")
                         o.object.resources_valid = false

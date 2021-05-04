@@ -4,7 +4,11 @@ using ...JDR.RPKICommon
 using ...ASN1
 using ..X509
 
-import ...PKIX.@check
+using SHA: sha256
+
+#import ...PKIX.@check
+#include(normpath(joinpath(@__FILE__, "../ASN1/macro_check.jl")))
+include("../ASN1/macro_check.jl")
 
 @check "contentType" begin
     check_OID(node, @oid("1.2.840.113549.1.7.2"))

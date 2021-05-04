@@ -1,15 +1,16 @@
 module Mft
-using ...ASN1: ASN1, check_tag, childcount, to_bigint, check_contextspecific, check_OID
-using ...Common: @oid, remark_ASN1Error!, remark_manifestIssue!, remark_validityIssue!
-using ...RPKI: MFT
-using ...RPKICommon: RPKIObject, TmpParseInfo
-using SHA: sha256
-using ...PKIX.CMS: check_ASN1_contentType, check_ASN1_content # from macros
+using JDR.ASN1: ASN1, check_tag, childcount, to_bigint, check_contextspecific, check_OID
+using JDR.Common: @oid, remark_ASN1Error!, remark_manifestIssue!, remark_validityIssue!
+using JDR.RPKI: MFT
+using JDR.RPKICommon: RPKIObject, TmpParseInfo
+using JDR.PKIX.CMS: check_ASN1_contentType, check_ASN1_content # from macros
 
 using Dates: DateTime, @dateformat_str
+using SHA: sha256
 
-import ...RPKI # to extend check_ASN1, check_cert
-import ...PKIX.@check # ASN1 check macro
+import JDR.RPKI # to extend check_ASN1, check_cert
+include("../ASN1/macro_check.jl")
+
 
 function Base.show(io::IO, mft::MFT)
     print(io, "  num of files: ", length(mft.files), '\n')

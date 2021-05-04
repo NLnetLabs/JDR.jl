@@ -5,7 +5,9 @@ using ...ASN1
 using IntervalTrees
 using Sockets
 
-import ...PKIX.@check
+#import ...PKIX.@check
+include("../ASN1/macro_check.jl")
+#include(normpath(joinpath(@__FILE__, "../ASN1/macro_check.jl")))
 
 const MANDATORY_EXTENSIONS = Vector{Pair{Vector{UInt8}, String}}([
                                                     @oid("2.5.29.14") => "subjectKeyIdentifier",

@@ -21,6 +21,7 @@ export check_contextspecific,
     check_value,
     check_OID,
     check_attribute
+export Tagnumber
 
 
 export DER

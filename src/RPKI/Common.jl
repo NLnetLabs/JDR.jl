@@ -1,9 +1,10 @@
 module RPKICommon
 
 
-using ..JDR
+using ..JDR: CFG
 using ..JDR.Common
 using ..ASN1.ASN
+using ..ASN1.DER
 using Dates
 using IntervalTrees
 using Sockets
@@ -15,7 +16,9 @@ export
     # methods
     add_resource!, root_to, iterate, print_ASN1
 
-mutable struct RPKIObject{T}
+abstract type RPKIFile end
+
+mutable struct RPKIObject{T<:RPKIFile}
     filename::String
     tree::Union{Nothing, Node}
     object::T
@@ -24,6 +27,7 @@ mutable struct RPKIObject{T}
     sig_valid::Union{Nothing, Bool}
     cms_digest_valid::Union{Nothing, Bool}
 end
+
 
 function add_resource!(::T, ::U, ::U) where {T,U} end
 function add_resource!(t::T, u::U) where {T,U} 
@@ -41,7 +45,7 @@ function print_ASN1(o::RPKIObject{T}; max_lines=0) where T
 end
 
 
-function RPKIObject{T}(filename::String, tree::Node) where T 
+function RPKIObject{T}(filename::String, tree::Node) where {T<:RPKIFile}
     RPKIObject{T}(filename, tree, T(), nothing, nothing, nothing, nothing)
 end
 
@@ -59,9 +63,11 @@ mutable struct RPKINode
     remark_counts_children::Union{Nothing, RemarkCounts_t}
 end
 
-RPKINode() = RPKINode(nothing, RPKINode[], nothing, nothing, RemarkCounts(), RemarkCounts())
-RPKINode(o::RPKIObject) = RPKINode(nothing, RPKINode[], nothing, o, RemarkCounts(), RemarkCounts())
-RPKINode(s::String) = RPKINode(nothing, RPKINode[], nothing, s, RemarkCounts(), RemarkCounts())
+RPKINode() = RPKINode(nothing, RPKINode[], nothing, nothing, nothing, nothing)
+RPKINode(o::RPKIObject) = RPKINode(nothing, RPKINode[], nothing, o, nothing, nothing)
+#RPKINode() = RPKINode(nothing, RPKINode[], nothing, nothing, RemarkCounts(), RemarkCounts())
+#RPKINode(o::RPKIObject) = RPKINode(nothing, RPKINode[], nothing, o, RemarkCounts(), RemarkCounts())
+##RPKINode(s::String) = RPKINode(nothing, RPKINode[], nothing, s, RemarkCounts(), RemarkCounts()) # DEPR
 
 import Base: iterate
 Base.IteratorSize(::RPKINode) = Base.SizeUnknown()
@@ -187,7 +193,7 @@ mutable struct TmpParseInfo
     # to verify CMS digest in MFT/ROAs:
     cms_message_digest::String
 end
-TmpParseInfo(;repodir=JDR.CFG["rpki"]["rsyncrepo"],lookup=Lookup(),nicenames::Bool=true,stripTree=false) = TmpParseInfo(repodir, lookup, nicenames, stripTree,
+TmpParseInfo(;repodir=CFG["rpki"]["rsyncrepo"],lookup=Lookup(),nicenames::Bool=true,stripTree=false) = TmpParseInfo(repodir, lookup, nicenames, stripTree,
                                                     [],
                                                     [],
                                                     nothing,
@@ -209,7 +215,7 @@ TmpParseInfo(;repodir=JDR.CFG["rpki"]["rsyncrepo"],lookup=Lookup(),nicenames::Bo
 
 
 
-struct RootCER
+struct RootCER <: RPKIFile
     resources_v6::IntervalTree{IPv6, IntervalValue{IPv6, Vector{RPKINode}}}
     resources_v4::IntervalTree{IPv4, IntervalValue{IPv4, Vector{RPKINode}}}
 end
@@ -229,7 +235,7 @@ Base.convert(::Type{SerialNumber}, i::Integer) = SerialNumber(i)
 Base.string(s::SerialNumber) = uppercase(string(s.serial, base=16))
 
 const LinkedResources{T<:IPAddr} = IntervalMap{T, Vector{RPKINode}}
-Base.@kwdef mutable struct CER 
+Base.@kwdef mutable struct CER <: RPKIFile
     serial::SerialNumber = 0
     notBefore::Union{Nothing, DateTime} = nothing
     notAfter::Union{Nothing, DateTime} = nothing
@@ -267,7 +273,7 @@ end
 
 
 
-mutable struct MFT
+mutable struct MFT <: RPKIFile
     files::Vector{String}
     loops::Union{Nothing, Vector{String}}
     missing_files::Union{Nothing, Vector{String}}
@@ -291,7 +297,7 @@ struct VRPS
 end
 VRPS() = VRPS(_VRPS{IPv6}(), _VRPS{IPv4}())
 
-mutable struct ROA
+mutable struct ROA <: RPKIFile
     asid::Integer
     vrp_tree::VRPS
     resources_valid::Union{Nothing,Bool}
@@ -305,12 +311,29 @@ ROA() = ROA(0, VRPS(),
            )
 
 
-mutable struct CRL 
+mutable struct CRL <: RPKIFile
     revoked_serials::Vector{SerialNumber} # TODO also include Revocation Date for each serial
     this_update::Union{Nothing, DateTime}
     next_update::Union{Nothing, DateTime}
 end
 CRL() = CRL([], nothing, nothing)
 Base.show(io::IO, crl::CRL) = print(io, crl.this_update, " -> ", crl.next_update, "\n", crl.revoked_serials)
+
+
+
+
+function RPKIObject(filename::String)::RPKIObject
+    tree = DER.parse_file_recursive(filename)
+    ext = lowercase(filename[end-3:end])
+    if      ext == ".cer" RPKIObject{CER}(filename, tree)
+    elseif  ext == ".mft" RPKIObject{MFT}(filename, tree)
+    elseif  ext == ".roa" RPKIObject{ROA}(filename, tree)
+    elseif  ext == ".crl" RPKIObject{CRL}(filename, tree)
+    end
+end
+function RPKIObject{T}(filename::String)::RPKIObject{T} where {T}
+    tree = DER.parse_file_recursive(filename)
+    RPKIObject{T}(filename, tree)
+end
 
 end # module

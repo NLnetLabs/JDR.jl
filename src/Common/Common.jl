@@ -1,6 +1,8 @@
 module Common
-using IntervalTrees
-using Sockets
+
+using IntervalTrees: AbstractInterval, IntervalTree, IntervalValue
+using Sockets: IPAddr, IPv6, IPv4
+
 
 export split_scheme_uri, split_rrdp_path
 export Remark, RemarkLevel, RemarkType, RemarkCounts, RemarkCounts_t, count_remarks
@@ -75,7 +77,7 @@ function count_remarks(o::T) :: Union{Nothing, RemarkCounts_t} where {T<:Any}
 end
 
 import Base.+
-function +(c1::Union{Nothing, RemarkCounts_t}, c2::Union{RemarkCounts_t}) :: Union{RemarkCounts_t}
+function +(c1::Union{Nothing, RemarkCounts_t}, c2::Union{Nothing, RemarkCounts_t}) :: Union{Nothing, RemarkCounts_t}
     if isnothing(c1) 
         if isnothing(c2)
             nothing

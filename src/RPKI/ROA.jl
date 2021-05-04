@@ -1,16 +1,17 @@
 module Roa
-using SHA
 
-using ...Common
-using ...PKIX.CMS
-using ...RPKI
-using ...RPKICommon
 using ...ASN1
-
-using Sockets
-using IntervalTrees
+using ...Common: IPRange, check_coverage
+using ...PKIX.CMS: check_ASN1_contentType, check_ASN1_content # from macros
+#using ...RPKI
+using ...RPKICommon: ROA, RPKIObject, TmpParseInfo
+#
+using SHA: sha256
+using Sockets: IPv6, IPv4
+using IntervalTrees: Interval, IntervalValue
 
 import ...PKIX.@check
+import ...RPKI # to extend check_ASN1, check_cert, add_resource!, check_resources
 
 
 function Base.show(io::IO, roa::ROA)
@@ -125,8 +126,7 @@ end
     (@__MODULE__).check_ASN1_ipAddrBlocks(o, node[offset+2], tpi)
 end
 
-import .RPKI:check_ASN1
-function check_ASN1(o::RPKIObject{ROA}, tpi::TmpParseInfo) :: RPKIObject{ROA}
+function RPKI.check_ASN1(o::RPKIObject{ROA}, tpi::TmpParseInfo) :: RPKIObject{ROA}
     cmsobject = o.tree
     # CMS, RFC5652:
     #       ContentInfo ::= SEQUENCE {
@@ -136,16 +136,16 @@ function check_ASN1(o::RPKIObject{ROA}, tpi::TmpParseInfo) :: RPKIObject{ROA}
     check_tag(cmsobject, ASN1.SEQUENCE)
     childcount(cmsobject, 2)
 
-    CMS.check_ASN1_contentType(o, cmsobject[1], tpi)
-    CMS.check_ASN1_content(o, cmsobject[2], tpi)
+    # from CMS.jl:
+    check_ASN1_contentType(o, cmsobject[1], tpi)
+    check_ASN1_content(o, cmsobject[2], tpi)
 
     check_ASN1_routeOriginAttestation(o, tpi.eContent, tpi)
 
     o
 end
 
-import .RPKI:check_cert
-function check_cert(o::RPKIObject{ROA}, tpi::TmpParseInfo)
+function RPKI.check_cert(o::RPKIObject{ROA}, tpi::TmpParseInfo)
     # hash tpi.eeCert
     @assert !isnothing(tpi.eeCert)
     tbs_raw = @view o.tree.buf.data[tpi.eeCert.tag.offset_in_file:tpi.eeCert.tag.offset_in_file + tpi.eeCert.tag.len + 4 - 1]
@@ -236,14 +236,14 @@ function check_resources(o::RPKIObject{ROA}, tpi::TmpParseInfo)
     # attempt with new vrp_tree
 
     # IPv6:
-    Common.check_coverage(o.object.resources_v6, o.object.vrp_tree.resources_v6) do invalid
+    check_coverage(o.object.resources_v6, o.object.vrp_tree.resources_v6) do invalid
         @warn "illegal IPv6 VRP $(IPRange(invalid.first, invalid.last)) not covered by EE on $(o.filename)"
         remark_resourceIssue!(o, "Illegal IPv6 VRP $(IPRange(invalid.first, invalid.last))")
         o.object.resources_valid = false
     end
 
     # IPv4:
-    Common.check_coverage(o.object.resources_v4, o.object.vrp_tree.resources_v4) do invalid
+    check_coverage(o.object.resources_v4, o.object.vrp_tree.resources_v4) do invalid
         @warn "illegal IPv4 VRP $(IPRange(invalid.first, invalid.last)) not covered by EE on $(o.filename)"
         remark_resourceIssue!(o, "Illegal IPv4 VRP $(IPRange(invalid.first, invalid.last))")
         o.object.resources_valid = false

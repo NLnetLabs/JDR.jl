@@ -1,6 +1,8 @@
 module Config
 using TOML
 
+export CFG
+
 const LOCAL_CONF_FN = "JDR.toml"
 global CFG = Dict()
 

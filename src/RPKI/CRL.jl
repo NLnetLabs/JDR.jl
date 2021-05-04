@@ -1,17 +1,18 @@
 module Crl
 
-using ...Common
-using ...RPKI
-using ...ASN1
+using ...Common: @oid
+#using ...RPKI
+using ...ASN1: Node, childcount, to_bigint
+#
+using ...RPKICommon: CRL, RPKIObject, TmpParseInfo
+using ...PKIX.X509: check_ASN1_signatureAlgorithm, check_ASN1_signatureValue # from macros
 
-using ...RPKICommon
-using ...PKIX
-
-using Dates
-using SHA
+#using Dates
+using SHA: sha256
 
 import ...PKIX.@check
 
+import ...RPKI # to extend check_ASN1, check_cert
 
 @check "version" begin
     check_value(node, ASN1.INTEGER, 0x1)
@@ -148,8 +149,7 @@ end
 end
 
 
-import .RPKI:check_ASN1
-function check_ASN1(o::RPKIObject{CRL}, tpi::TmpParseInfo) :: RPKIObject{CRL}
+function RPKI.check_ASN1(o::RPKIObject{CRL}, tpi::TmpParseInfo) :: RPKIObject{CRL}
 	# CertificateList  ::=  SEQUENCE  {
 	#  tbsCertList          TBSCertList,
 	#  signatureAlgorithm   AlgorithmIdentifier,
@@ -158,14 +158,14 @@ function check_ASN1(o::RPKIObject{CRL}, tpi::TmpParseInfo) :: RPKIObject{CRL}
     childcount(o.tree, 3)
 
     check_ASN1_tbsCertList(o, o.tree.children[1], tpi)
-    X509.check_ASN1_signatureAlgorithm(o, o.tree.children[2], tpi)
-    X509.check_ASN1_signatureValue(o, o.tree.children[3], tpi)
+    # from X509.jl:
+    check_ASN1_signatureAlgorithm(o, o.tree.children[2], tpi)
+    check_ASN1_signatureValue(o, o.tree.children[3], tpi)
 
     o
 end
 
-import .RPKI:check_cert
-function check_cert(o::RPKIObject{CRL}, tpi::TmpParseInfo) :: RPKI.RPKIObject{CRL}
+function RPKI.check_cert(o::RPKIObject{CRL}, tpi::TmpParseInfo) :: RPKI.RPKIObject{CRL}
     sig = o.tree.children[3]
     signature = to_bigint(@view sig.tag.value[2:end])
     v = powermod(signature, tpi.certStack[end].rsa_exp, tpi.certStack[end].rsa_modulus)

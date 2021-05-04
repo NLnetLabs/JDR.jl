@@ -1,6 +1,3 @@
-using IntervalTrees: IntervalValue
-using Sockets: IPv6, IPv4
-
 ####################
 # IPRange
 ####################

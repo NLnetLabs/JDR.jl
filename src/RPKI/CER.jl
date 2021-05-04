@@ -1,16 +1,21 @@
 module Cer
 
-using ...JDR.Common
-using ...RPKI
-using ...RPKICommon
-using ...ASN1
+using ...Common: IPRange, covered, check_coverage, remark_validityIssue!, remark_resourceIssue!
+using ...RPKI:RPKIObject, CER, TmpParseInfo
+using ...RPKICommon: RPKINode
+using ...ASN1: childcount, to_bigint
 using ...PKIX.X509
-using SHA
-using IntervalTrees
-using Sockets
+using SHA: sha256
+using IntervalTrees: IntervalValue
+using Sockets: IPv6, IPv4
 
-import .RPKI:check_ASN1
-function check_ASN1(o::RPKIObject{CER}, tpi::TmpParseInfo=TmpParseInfo()) :: RPKIObject{CER}
+import ..RPKI # to extend check_ASN1, check_cert, add_resource!, check_resources
+
+"""
+    check_ASN1(o::RPKIObject{CER})
+Validate the ASN1 structure of `o.tree`
+"""
+function RPKI.check_ASN1(o::RPKIObject{CER}, tpi::TmpParseInfo=TmpParseInfo()) :: RPKIObject{CER}
     # The certificate should consist of three parts: (RFC5280)
 	# Certificate  ::=  SEQUENCE  {
 	#      tbsCertificate       TBSCertificate,
@@ -23,17 +28,10 @@ function check_ASN1(o::RPKIObject{CER}, tpi::TmpParseInfo=TmpParseInfo()) :: RPK
     X509.check_ASN1_tbsCertificate(o, tbsCertificate, tpi)
     X509.check_ASN1_signatureAlgorithm(o, o.tree.children[2], tpi)
     X509.check_ASN1_signatureValue(o, o.tree.children[3], tpi)
-    
     o
 end
 
-function check(o::RPKIObject{CER}, tpi::TmpParseInfo=TmpParseInfo())
-    @warn "DEPRECATED CER.check(), use CER.check_ASN1()" maxlog=3
-    check_ASN1(o, tpi)
-end
-
-import .RPKI:check_cert
-function check_cert(o::RPKIObject{CER}, tpi::TmpParseInfo) :: RPKI.RPKIObject{CER}
+function RPKI.check_cert(o::RPKIObject{CER}, tpi::TmpParseInfo) :: RPKIObject{CER}
     if !o.object.selfsigned && tpi.certStack[end-1].subject != o.object.issuer
         @error "subject != issuer for child cert $(o.filename)"
         remark_validityIssue!(o, "subject != issuer for child cert")
@@ -63,20 +61,18 @@ function check_cert(o::RPKIObject{CER}, tpi::TmpParseInfo) :: RPKI.RPKIObject{CE
     o
 end
 
-import .RPKI.add_resource!
-function add_resource!(cer::CER, minaddr::IPv6, maxaddr::IPv6)
+function RPKI.add_resource!(cer::CER, minaddr::IPv6, maxaddr::IPv6)
 	push!(cer.resources_v6, IntervalValue(minaddr, maxaddr, RPKINode[]))
 end
-function add_resource!(cer::CER, minaddr::IPv4, maxaddr::IPv4)
+function RPKI.add_resource!(cer::CER, minaddr::IPv4, maxaddr::IPv4)
 	push!(cer.resources_v4, IntervalValue(minaddr, maxaddr, RPKINode[]))
 end
 
-add_resource!(cer::CER, ipr::IPRange{IPv6}) = push!(cer.resources_v6, IntervalValue(ipr, RPKINode[]))
-add_resource!(cer::CER, ipr::IPRange{IPv4}) = push!(cer.resources_v4, IntervalValue(ipr, RPKINode[]))
+RPKI.add_resource!(cer::CER, ipr::IPRange{IPv6}) = push!(cer.resources_v6, IntervalValue(ipr, RPKINode[]))
+RPKI.add_resource!(cer::CER, ipr::IPRange{IPv4}) = push!(cer.resources_v4, IntervalValue(ipr, RPKINode[]))
 
 
-import .RPKI:check_resources
-function check_resources(o::RPKIObject{CER}, tpi::TmpParseInfo)
+function RPKI.check_resources(o::RPKIObject{CER}, tpi::TmpParseInfo)
     o.object.resources_valid = true
     if !o.object.selfsigned
         if !covered(o.object.ASNs , tpi.certStack[end-1].ASNs)
@@ -137,14 +133,14 @@ function check_resources(o::RPKIObject{CER}, tpi::TmpParseInfo)
         end
         
         # IPv6:
-		Common.check_coverage(tpi.certStack[end-certStackOffset_v6].resources_v6, o.object.resources_v6) do invalid
+		check_coverage(tpi.certStack[end-certStackOffset_v6].resources_v6, o.object.resources_v6) do invalid
             @warn "illegal IP resource $(IPRange(invalid.first, invalid.last)) on $(o.filename)"
             remark_resourceIssue!(o, "Illegal IPv6 resource $(IPRange(invalid.first, invalid.last))")
             o.object.resources_valid = false
         end
 
         # IPv4:
-        Common.check_coverage(tpi.certStack[end-certStackOffset_v4].resources_v4, o.object.resources_v4) do invalid
+        check_coverage(tpi.certStack[end-certStackOffset_v4].resources_v4, o.object.resources_v4) do invalid
             @warn "illegal IP resource $(IPRange(invalid.first, invalid.last)) on $(o.filename)"
             remark_resourceIssue!(o, "Illegal IPv4 resource $(IPRange(invalid.first, invalid.last))")
             o.object.resources_valid = false

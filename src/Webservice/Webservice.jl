@@ -439,7 +439,13 @@ function JSONHandler(req::HTTP.Request)
         lock!(read_lock(rwlock))
         if eof(body)
             # no request body
-            response_body, meta = HTTP.Handlers.handle(ROUTER, req)
+            res = HTTP.Handlers.handle(ROUTER, req)
+            if res isa HTTP.Response # default 404 handler
+                @warn "[$(now(UTC))] request to non-existing endpoint $(req.target)"
+                return res
+            else
+                response_body, meta = res
+            end
         else
             # there's a body, so pass it on to the handler we dispatch to
             response_body, meta = handle(ROUTER, req, JSON3.read(body))

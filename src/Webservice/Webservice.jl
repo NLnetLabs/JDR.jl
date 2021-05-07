@@ -306,6 +306,7 @@ function bgp_prefix(req::HTTP.Request)
             res[prefix] = Set{Dict}()
         end
         push!(res[prefix],  Dict(
+                        "origin" => m[2].value.asn,
                         "roa" => m[1].value.obj.filename,
                         "repo" => RPKICommon.get_pubpoint(m[1].value),
                         "vrps" => vrps,
@@ -329,7 +330,7 @@ function bgp(req::HTTP.Request)
     try
         asid = AutSysNum(asid)
     catch
-        return []
+        return [], Metadata(0)
     end
 
 

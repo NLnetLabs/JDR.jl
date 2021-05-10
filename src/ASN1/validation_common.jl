@@ -1,19 +1,3 @@
-using Sockets
-export tagvalue, tagisa, tag_OID, tag_OIDs, childcount, containAttributeTypeAndValue
-export tagis_contextspecific, check_extensions, get_extensions
-export to_bigint
-export bitstring_to_v4range, bitstring_to_v6range
-export bitstrings_to_v4range, bitstrings_to_v6range
-
-
-export istag
-
-export check_contextspecific,
-    check_tag,
-    check_value,
-    check_OID,
-    check_attribute
-
 # TODO implement optional custom remark::String
 #function tagisa(node::Node, t::Type)
 function check_tag(node::Node, tagnum::Tagnumber)

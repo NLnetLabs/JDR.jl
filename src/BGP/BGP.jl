@@ -1,9 +1,12 @@
 module BGP
 
-using JDR.Common
+using JDR.RPKICommon: AutSysNum, IPRange
 
-using IntervalTrees
-using Sockets
+using IntervalTrees: IntervalTree, IntervalValue, Interval, intersect
+using Sockets: IPAddr
+
+
+import JDR.RPKICommon: search
 
 const MIN_NO_PEERS=Int(20)
 const RISTree{T} = IntervalTree{T, IntervalValue{T, AutSysNum}} where {T<:IPAddr}

@@ -1,4 +1,5 @@
 module Config
+
 using TOML
 
 export CFG

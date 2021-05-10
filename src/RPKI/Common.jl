@@ -6,16 +6,19 @@ using JDR.Common: Remark, RemarkCounts_t, AutSysNum, AsIdsOrRanges, IPRange, spl
 using JDR.ASN1: Node, print_node
 using JDR.ASN1.DER: parse_file_recursive
 
-using Dates: DateTime, TimePeriod
+using Dates: DateTime, TimePeriod, Hour, now, UTC
 using IntervalTrees
 using Sockets
 
-export
-    # structs
-    RPKIObject, RPKINode, TmpParseInfo, Lookup,
-    RootCER, CER, MFT, ROA, CRL,
-    # methods
-    add_resource!, root_to, iterate, print_ASN1
+# for Lookup.jl:
+using StatsBase
+using Query
+
+export RPKIObject, RPKINode, TmpParseInfo, Lookup, RPKIFile, RootCER, CER, MFT, ROA, CRL
+export add_resource!, root_to, iterate, print_ASN1
+
+# from Lookup.jl:
+export search, new_since, add_filename!, add_missing_filename!, add_resource, get_pubpoint
 
 abstract type RPKIFile end
 

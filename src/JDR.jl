@@ -1,27 +1,20 @@
 module JDR
 
 include("Config.jl")
-import .Config.CFG
+using .Config
+export CFG
 
 include("Common/Common.jl")
-using .Common
-export IPRange
+#using .Common
 
 include("ASN1/ASN1.jl")
 include("RPKI/Common.jl")
 include("PKIX/PKIX.jl")
-
-
-export RPKI
-
-export search, IPRange, AutSysNum# reexport from Lookup / Common
 include("RPKI/RPKI.jl")
-using .RPKI
-export print_ASN1
-
 include("BGP/BGP.jl")
 
+include("interface.jl")
 
-#include("interface.jl")
+#include("Webservice/Webservice.jl")
 
 end # module

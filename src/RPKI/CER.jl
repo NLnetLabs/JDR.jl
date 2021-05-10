@@ -4,7 +4,7 @@ using JDR.Common: IPRange, covered, check_coverage, remark_validityIssue!, remar
 using JDR.RPKI:RPKIObject, CER, TmpParseInfo
 using JDR.RPKICommon: RPKINode
 using JDR.ASN1: childcount, to_bigint
-using JDR.PKIX.X509
+using JDR.PKIX.X509: X509
 using SHA: sha256
 using IntervalTrees: IntervalValue
 using Sockets: IPv6, IPv4

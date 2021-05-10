@@ -5,7 +5,7 @@ using JDR.ASN1: bitstring_to_v4range, to_bigint
 using JDR.Common: IPRange, check_coverage, prefixlen, remark_ASN1Error!, remark_resourceIssue!
 using JDR.Common: remark_validityIssue!
 using JDR.PKIX.CMS: check_ASN1_contentType, check_ASN1_content # from macros
-using JDR.RPKICommon: ROA, RPKIObject, TmpParseInfo
+using JDR.RPKICommon: ROA, RPKIObject, RPKIFile, TmpParseInfo
 
 using IntervalTrees: Interval, IntervalValue
 using SHA: sha256

@@ -1,23 +1,15 @@
 module RPKI
-using JDR.Config: CFG
+using JDR: CFG
 using JDR.Common: Remark, RemarkCounts_t, split_scheme_uri, count_remarks, AutSysNum, IPRange
 using JDR.Common: remark_missingFile!, remark_loopIssue!, remark_manifestIssue!
-using JDR.RPKICommon: add_resource!, RPKIObject, RPKINode, Lookup, TmpParseInfo, add_filename!, CER, add_resource, MFT, CRL, ROA, add_missing_filename!, RootCER, get_pubpoint
+using JDR.RPKICommon: add_resource!, RPKIObject, RPKINode, Lookup, TmpParseInfo, add_filename!
+using JDR.RPKICommon: CER, add_resource, MFT, CRL, ROA, add_missing_filename!, RootCER, get_pubpoint
 using JDR.ASN1: Node
 
 using IntervalTrees: IntervalValue
 using Sockets: IPAddr
 
-export
-    # structs
-    # methods
-    process_tas#, check_ASN1
-
-export RPKIObject
-#export search, RPKINode, RPKIObject # reexport from RPKI.Common
-#export retrieve_all, RootCER, CER, MFT, CRL, ROA
-#export TmpParseInfo
-#export print_ASN1
+export process_tas
 
 """
     check_ASN1
@@ -29,13 +21,9 @@ function check_cert end
 function check_resources end
 
 include("CER.jl")
-#using .Cer
 include("MFT.jl")
-#using .Mft
 include("ROA.jl")
-#using .Roa
 include("CRL.jl")
-#using .Crl
 
 
 #function RPKIObject(filename::String)::RPKIObject

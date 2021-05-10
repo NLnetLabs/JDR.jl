@@ -1,5 +1,12 @@
 module Webservice
-using HTTP
+using JDR.Config: CFG, generate_config
+using JDR.RPKI#: process_tas, link_resources!
+using JDR.BGP: RISTree, ris_from_file, search
+using JDR.Common: AutSysNum, AutSysNumRange, IPRange, RemarkCounts_t, Remark, RemarkLevel, RemarkType
+using JDR.Common: split_scheme_uri
+#using JDR.RPKICommon: RPKINode, Lookup, search, CER, MFT, CRL, ROA
+
+using HTTP#: Router, HTTP.Request, @register
 using Dates
 
 using JSON3
@@ -7,29 +14,22 @@ using StructTypes
 
 using Atlas
 
-#using IPNets
 using FileWatching
 using ThreadPools
 using Query
 
 using ReadWriteLocks
-
-using JDR
-using JDR.BGP
-using JDR.Common
-using JDR.RPKICommon
 include("JSONHelpers.jl")
 include("CleanLogger.jl")
-
 
 const ROUTER = HTTP.Router()
 const APIV = "/api/v1"
 
 mutable struct State
-    tree::RPKI.RPKINode
-    lookup::RPKI.Lookup
-    RISv6::BGP.RISTree{IPv6}
-    RISv4::BGP.RISTree{IPv4}
+    tree::RPKINode
+    lookup::Lookup
+    RISv6::RISTree{IPv6}
+    RISv4::RISTree{IPv4}
     AtlasStatus::Dict
     last_update::DateTime
     last_update_serial::Int64
@@ -44,10 +44,10 @@ Metadata(n::Int) = Metadata(n, nothing)
 StructTypes.StructType(::Type{Metadata}) = StructTypes.Struct()
 StructTypes.omitempties(::Type{Metadata}) = (:results_shown,)
 
-const STATE = State(RPKI.RPKINode(),
-                    RPKI.Lookup(),
-                    BGP.RISTree{IPv6}(),
-                    BGP.RISTree{IPv4}(),
+const STATE = State(RPKINode(),
+                    Lookup(),
+                    RISTree{IPv6}(),
+                    RISTree{IPv4}(),
                     Dict(),
                     now(UTC),
                     0
@@ -65,7 +65,7 @@ const rwlock = ReadWriteLock()
 function asn(req::HTTP.Request)
     # /api/v1/asn/10, get 10
     asid = HTTP.URIs.splitpath(req.target)[4] 
-    res = RPKI.search(STATE.lookup, RPKI.AutSysNum(asid))
+    res = search(STATE.lookup, AutSysNum(asid))
 
     @info "ASN search on '$(asid)': $(length(res)) result(s)"
     if length(HTTP.URIs.splitpath(req.target)) > 4 && 
@@ -95,7 +95,7 @@ function prefix(req::HTTP.Request)
 
          
     include_more_specific = true
-    res = RPKI.search(STATE.lookup, iprange, include_more_specific)
+    res = search(STATE.lookup, iprange, include_more_specific)
 
     if length(res) > PREFIX_RESULT_MAX
         @warn "more than $(PREFIX_RESULT_MAX) results ($(length(res))) for /prefix search on '$(iprange)', limiting .."
@@ -120,7 +120,7 @@ function filename(req::HTTP.Request)
     # /api/v1/filename/somefilename, get and unescape filename
     filename = HTTP.URIs.splitpath(req.target)[4]
     filename = strip(HTTP.URIs.unescapeuri(filename))
-    res = RPKI.search(STATE.lookup, filename)
+    res = search(STATE.lookup, filename)
     if length(res) > FILENAME_RESULT_MAX
         @warn "more than $(FILENAME_RESULT_MAX) results ($(length(res))) for /filename search on '$(filename)', limiting .."
         meta = Metadata(length(res), FILENAME_RESULT_MAX)
@@ -148,7 +148,7 @@ function object(req::HTTP.Request)
     # /api/v1/object/escaped_filename, get and unescape filename
     object = HTTP.URIs.splitpath(req.target)[4] 
     object = HTTP.URIs.unescapeuri(object)
-    res = RPKI.search(STATE.lookup, object)
+    res = search(STATE.lookup, object)
     if isempty(res)
         @warn "no results, returning empty array"
         return [], Metadata(0)
@@ -160,17 +160,17 @@ function object(req::HTTP.Request)
     ObjectDetails(first(res).second.obj, first(res).second.remark_counts_me), Metadata(length(res))
 end
 
-function pubpoints(req::HTTP.Request)
+function pubpoints(::HTTP.Request)
     # /api/v1/pubpoints
     to_vue_pubpoints(STATE.tree), Metadata(1)
 end
 
-function ppstatus(req::HTTP.Request)
+function ppstatus(::HTTP.Request)
     # /api/v1/ppstatus
     STATE.AtlasStatus, Metadata(1)
 end
 
-function uris(req::HTTP.Request)
+function uris(::HTTP.Request)
     STATE.lookup.pubpoints |>
     @map(_.second[2]) |> # get all Set(RPKINode)s
         @map(
@@ -185,7 +185,7 @@ function uris(req::HTTP.Request)
         collect, Metadata(1)
 end
 
-function repostats(req::HTTP.Request)
+function repostats(::HTTP.Request)
     # /api/v1/repostats, 
     #repo = HTTP.URIs.splitpath(req.target)[4] 
     #repo = HTTP.URIs.unescapeuri(repo)
@@ -224,16 +224,18 @@ function newsince(req::HTTP.Request)
     end
     filtertype = if length(splitted) >= 5
         if uppercase(splitted[5]) == "CER"
-            RPKI.CER
+            CER
         elseif uppercase(splitted[5]) == "MFT"
-            RPKI.MFT
+            MFT
         elseif uppercase(splitted[5]) == "CRL"
-            RPKI.CRL
+            CRL
+        elseif uppercase(splitted[5]) == "ROA"
+            ROA
         else
-            RPKI.CER
+            CER
         end
     end
-    res = RPKI.new_since(STATE.tree, timeperiod) |>
+    res = new_since(STATE.tree, timeperiod) |>
         @filter(isnothing(filtertype) || _.obj.object isa filtertype) .|>
         get_vue_leaf_node |>
         unique
@@ -245,14 +247,14 @@ function bgp(req::HTTP.Request)
     # /api/v1/bgp/asn
     asid = HTTP.URIs.splitpath(req.target)[4] 
     try
-        asid = RPKI.AutSysNum(asid)
+        asid = AutSysNum(asid)
     catch
-        return []
+        return [], Metadata(0)
     end
 
 
-    risv4 = JDR.BGP.search(STATE.RISv4, asid)
-    risv6 = JDR.BGP.search(STATE.RISv6, asid)
+    risv4 = search(STATE.RISv4, asid)
+    risv6 = search(STATE.RISv6, asid)
     prefixes = map(e-> string(IPRange(e.first, e.last)), risv4) |> unique
     prefixes6 = map(e-> string(IPRange(e.first, e.last)), risv6) |> unique
 
@@ -262,8 +264,8 @@ function bgp(req::HTTP.Request)
         res[p] = nothing
     end
 
-    matches4 = intersect(STATE.lookup.resources_v4, risv4) |> @filter(first(_).value.obj.object isa JDR.RPKI.ROA) |> unique |> collect
-    matches6 = intersect(STATE.lookup.resources_v6, risv6) |> @filter(first(_).value.obj.object isa JDR.RPKI.ROA) |> unique |> collect
+    matches4 = intersect(STATE.lookup.resources_v4, risv4) |> @filter(first(_).value.obj.object isa RPKI.ROA) |> unique |> collect
+    matches6 = intersect(STATE.lookup.resources_v6, risv6) |> @filter(first(_).value.obj.object isa RPKI.ROA) |> unique |> collect
 
     for m in vcat(matches6, matches4)
         bgp_pfx = IPRange(m[2].first, m[2].last)
@@ -300,7 +302,7 @@ function bgp(req::HTTP.Request)
         end
         push!(res[prefix],  Dict(
                         "roa" => m[1].value.obj.filename,
-                        "repo" => JDR.RPKICommon.get_pubpoint(m[1].value),
+                        "repo" => RPKICommon.get_pubpoint(m[1].value),
                         "vrps" => vrps,
                         "asid" => roa.asid,
                        )
@@ -345,13 +347,13 @@ function update()
     global rwlock
     @info "update() on thread $(Threads.threadid())"
 
-    @time (tree, lookup) = RPKI.retrieve_all(JDR.CFG["rpki"]["tals"]; stripTree=true, nicenames=false)
+    @time (tree, lookup) = process_tas(CFG["rpki"]["tals"]; stripTree=true, nicenames=false)
     RPKI.link_resources!.(tree.children)
 
     new_RISv6 = new_RISv4 = nothing
     try
-        new_RISv4 = JDR.BGP.ris_from_file(IPv4, "riswhoisdump.IPv4")
-        new_RISv6 = JDR.BGP.ris_from_file(IPv6, "riswhoisdump.IPv6")
+        new_RISv4 = ris_from_file(IPv4, "riswhoisdump.IPv4")
+        new_RISv6 = ris_from_file(IPv6, "riswhoisdump.IPv6")
     catch
         @error "failed to parse RIS whois dumps"
     end

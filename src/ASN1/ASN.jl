@@ -1,22 +1,14 @@
 module ASN
-using ...JDR.Common
-using Dates
 
-#export Tag, AbstractTag, Node, AbstractNode
-#export value, print_node, append!, iter, lazy_iter
-#export child, getindex, tagtype
-#
-#export  Unimplemented, InvalidTag, SEQUENCE, SET, RESERVED_ENC, OCTETSTRING, BOOLEAN,
-#        BITSTRING, PRINTABLESTRING, UTF8STRING, CONTEXT_SPECIFIC, INTEGER, NULL, UTCTIME, GENTIME, OID, IA5STRING
+using JDR.Common: IPRange, Remark, RemarkCounts, RemarkCounts_t, remark_ASN1Issue!, oid_to_str
 
-export Tag,
-    Tagnumber,
-    Node,
-    istag,
-    iscontextspecific,
-    value,
-    constructed,
-    print_node
+using Dates: DateTime, Year, year, @dateformat_str
+using Sockets: IPv6, IPv4
+
+export Tag, Tagnumber, InvalidTag, Node, istag, iscontextspecific, value, constructed, print_node
+# from validation_common:
+export check_tag, check_OID, check_value, childcount, check_contextspecific, check_extensions, check_attribute
+export get_extensions, to_bigint, bitstring_to_v6range, bitstrings_to_v6range, bitstring_to_v4range, bitstrings_to_v4range
 
 
 @enum Tagnumber begin
@@ -305,8 +297,8 @@ function append!(p::Node, c::Node) :: Node
     p
 end
 
-import JDR.Common.count_remarks # import so we can extend it
-function Common.count_remarks(tree::Node) :: RemarkCounts_t
+import JDR.Common: count_remarks # import so we can extend it
+function count_remarks(tree::Node) :: RemarkCounts_t
     cnts = RemarkCounts()
     for n in iter(tree)
         if !isnothing(n.remarks)

@@ -3,12 +3,15 @@ module Common
 using IntervalTrees: AbstractInterval, IntervalTree, IntervalValue
 using Sockets: IPAddr, IPv6, IPv4
 
+export AutSysNum, AutSysNumRange, AsIdsOrRanges, covered
 
 export split_scheme_uri, split_rrdp_path
 export Remark, RemarkLevel, RemarkType, RemarkCounts, RemarkCounts_t, count_remarks
 export remark_encodingIssue!, remark_ASN1Error!, remark_ASN1Issue!, remark_manifestIssue!, remark_missingFile!, remark_validityIssue!, remark_resourceIssue!, remark_loopIssue!
 export @oid, oid_to_str
 
+# from IPRange.jl
+export IPRange, prefixlen
 
 function split_scheme_uri(uri::String) :: Tuple{String, String}
     m = match(r"(rsync|https)://([^/]+)/(.*)", uri)
@@ -171,7 +174,6 @@ end
 # AutSysNum and related
 ##############################
 
-export AutSysNum, AutSysNumRange, AsIdsOrRanges, covered
 
 struct AutSysNum
     asn::UInt32
@@ -223,7 +225,6 @@ end
 # Prefix / IntervalTree related
 ##############################
 
-export IPRange, prefixlen
 include("IPRange.jl")
 
 """

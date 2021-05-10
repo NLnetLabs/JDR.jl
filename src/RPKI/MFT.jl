@@ -2,7 +2,7 @@ module Mft
 using JDR.ASN1: ASN1, check_tag, childcount, to_bigint, check_contextspecific, check_OID
 using JDR.Common: @oid, remark_ASN1Error!, remark_manifestIssue!, remark_validityIssue!
 using JDR.RPKI: MFT
-using JDR.RPKICommon: RPKIObject, TmpParseInfo
+using JDR.RPKICommon: RPKIObject, RPKIFile, TmpParseInfo
 using JDR.PKIX.CMS: check_ASN1_contentType, check_ASN1_content # from macros
 
 using Dates: DateTime, @dateformat_str

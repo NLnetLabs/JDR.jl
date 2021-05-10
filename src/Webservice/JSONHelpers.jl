@@ -4,7 +4,7 @@ using JDR.RPKICommon
 using Sockets
 using IntervalTrees # for IP prefixes on certificates
 
-details_url(filename::String) = JDR.CFG["webservice"]["domain"] * "/api/v1/object/" * HTTP.escapeuri(filename)
+details_url(filename::String) = CFG["webservice"]["domain"] * "/api/v1/object/" * HTTP.escapeuri(filename)
 details_url(n::RPKINode) = details_url(n.obj.filename)
 details_url(o::RPKIObject{T}) where T = details_url(o.filename)
 

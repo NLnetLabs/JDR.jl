@@ -1,21 +1,28 @@
 module RPKICommon
 
 
-using ..JDR
-using ..JDR.Common
-using ..ASN1.ASN
-using Dates
+using JDR.Config: CFG
+using JDR.Common: Remark, RemarkCounts_t, AutSysNum, AsIdsOrRanges, IPRange, split_scheme_uri
+using JDR.ASN1: Node, print_node
+using JDR.ASN1.DER: parse_file_recursive
+
+using Dates: DateTime, TimePeriod, Hour, now, UTC
 using IntervalTrees
 using Sockets
 
-export
-    # structs
-    RPKIObject, RPKINode, TmpParseInfo, Lookup,
-    RootCER, CER, MFT, ROA, CRL,
-    # methods
-    add_resource!, root_to, iterate, print_ASN1
+# for Lookup.jl:
+using StatsBase
+using Query
 
-mutable struct RPKIObject{T}
+export RPKIObject, RPKINode, TmpParseInfo, Lookup, RPKIFile, RootCER, CER, MFT, ROA, CRL
+export add_resource!, root_to, iterate, print_ASN1
+
+# from Lookup.jl:
+export search, new_since, add_filename!, add_missing_filename!, add_resource, get_pubpoint
+
+abstract type RPKIFile end
+
+mutable struct RPKIObject{T<:RPKIFile}
     filename::String
     tree::Union{Nothing, Node}
     object::T
@@ -24,6 +31,7 @@ mutable struct RPKIObject{T}
     sig_valid::Union{Nothing, Bool}
     cms_digest_valid::Union{Nothing, Bool}
 end
+
 
 function add_resource!(::T, ::U, ::U) where {T,U} end
 function add_resource!(t::T, u::U) where {T,U} 
@@ -37,11 +45,11 @@ function Base.show(io::IO, obj::RPKIObject{T}) where T
 end
 
 function print_ASN1(o::RPKIObject{T}; max_lines=0) where T
-    ASN.print_node(o.tree; traverse=true, max_lines)
+    print_node(o.tree; traverse=true, max_lines)
 end
 
 
-function RPKIObject{T}(filename::String, tree::Node) where T 
+function RPKIObject{T}(filename::String, tree::Node) where {T<:RPKIFile}
     RPKIObject{T}(filename, tree, T(), nothing, nothing, nothing, nothing)
 end
 
@@ -59,9 +67,11 @@ mutable struct RPKINode
     remark_counts_children::Union{Nothing, RemarkCounts_t}
 end
 
-RPKINode() = RPKINode(nothing, RPKINode[], nothing, nothing, RemarkCounts(), RemarkCounts())
-RPKINode(o::RPKIObject) = RPKINode(nothing, RPKINode[], nothing, o, RemarkCounts(), RemarkCounts())
-RPKINode(s::String) = RPKINode(nothing, RPKINode[], nothing, s, RemarkCounts(), RemarkCounts())
+RPKINode() = RPKINode(nothing, RPKINode[], nothing, nothing, nothing, nothing)
+RPKINode(o::RPKIObject) = RPKINode(nothing, RPKINode[], nothing, o, nothing, nothing)
+#RPKINode() = RPKINode(nothing, RPKINode[], nothing, nothing, RemarkCounts(), RemarkCounts())
+#RPKINode(o::RPKIObject) = RPKINode(nothing, RPKINode[], nothing, o, RemarkCounts(), RemarkCounts())
+##RPKINode(s::String) = RPKINode(nothing, RPKINode[], nothing, s, RemarkCounts(), RemarkCounts()) # DEPR
 
 import Base: iterate
 Base.IteratorSize(::RPKINode) = Base.SizeUnknown()
@@ -103,7 +113,7 @@ function Base.show(io::IO, node::RPKINode)
     end
 end
 
-function Base.show(io::IO, m::MIME"text/html", node::RPKINode) 
+function Base.show(io::IO, ::MIME"text/html", node::RPKINode) 
     path = root_to(node) 
     print(io, "<ul>")
     for p in path[1:end-1]
@@ -117,7 +127,7 @@ function Base.show(io::IO, m::MIME"text/html", node::RPKINode)
     end
     print(io, "<li>RPKINode [$(nameof(typeof(node.obj).parameters[1]))] <b>$(node.obj.filename)</b></li>")
     print(io, "<ul><li>$(length(node.children)) child nodes</li></ul>")
-    for _ in length(path)
+    for _ in 1:length(path)
         print(io, "</ul>")
     end
 end
@@ -165,18 +175,18 @@ mutable struct TmpParseInfo
     stripTree::Bool
     subjectKeyIdentifier::Vector{UInt8}
     signerIdentifier::Vector{UInt8}
-    eContent::Union{Nothing,ASN.Node}
-    signedAttrs::Union{Nothing,ASN.Node}
+    eContent::Union{Nothing,Node}
+    signedAttrs::Union{Nothing,Node}
     saHash::String
 
-    caCert::Union{Nothing,ASN.Node}
+    caCert::Union{Nothing,Node}
     issuer::Vector{String} # stack
 
-    eeCert::Union{Nothing,ASN.Node}
-    ee_rsaExponent::Union{Nothing,ASN.Node}
-    ee_rsaModulus::Union{Nothing,ASN.Node}
+    eeCert::Union{Nothing,Node}
+    ee_rsaExponent::Union{Nothing,Node}
+    ee_rsaModulus::Union{Nothing,Node}
 
-    eeSig::Union{Nothing,ASN.Node}
+    eeSig::Union{Nothing,Node}
     #certStack::Vector{RPKI.CER} # to replace all the other separate fields here
     certStack::Vector{Any} # TODO rearrange include/modules so we can actually use type RPKI.CER here
 
@@ -187,7 +197,7 @@ mutable struct TmpParseInfo
     # to verify CMS digest in MFT/ROAs:
     cms_message_digest::String
 end
-TmpParseInfo(;repodir=JDR.CFG["rpki"]["rsyncrepo"],lookup=Lookup(),nicenames::Bool=true,stripTree=false) = TmpParseInfo(repodir, lookup, nicenames, stripTree,
+TmpParseInfo(;repodir=CFG["rpki"]["rsyncrepo"],lookup=Lookup(),nicenames::Bool=true,stripTree=false) = TmpParseInfo(repodir, lookup, nicenames, stripTree,
                                                     [],
                                                     [],
                                                     nothing,
@@ -209,7 +219,7 @@ TmpParseInfo(;repodir=JDR.CFG["rpki"]["rsyncrepo"],lookup=Lookup(),nicenames::Bo
 
 
 
-struct RootCER
+struct RootCER <: RPKIFile
     resources_v6::IntervalTree{IPv6, IntervalValue{IPv6, Vector{RPKINode}}}
     resources_v4::IntervalTree{IPv4, IntervalValue{IPv4, Vector{RPKINode}}}
 end
@@ -229,7 +239,7 @@ Base.convert(::Type{SerialNumber}, i::Integer) = SerialNumber(i)
 Base.string(s::SerialNumber) = uppercase(string(s.serial, base=16))
 
 const LinkedResources{T<:IPAddr} = IntervalMap{T, Vector{RPKINode}}
-Base.@kwdef mutable struct CER 
+Base.@kwdef mutable struct CER <: RPKIFile
     serial::SerialNumber = 0
     notBefore::Union{Nothing, DateTime} = nothing
     notAfter::Union{Nothing, DateTime} = nothing
@@ -267,7 +277,7 @@ end
 
 
 
-mutable struct MFT
+mutable struct MFT <: RPKIFile
     files::Vector{String}
     loops::Union{Nothing, Vector{String}}
     missing_files::Union{Nothing, Vector{String}}
@@ -291,7 +301,7 @@ struct VRPS
 end
 VRPS() = VRPS(_VRPS{IPv6}(), _VRPS{IPv4}())
 
-mutable struct ROA
+mutable struct ROA <: RPKIFile
     asid::Integer
     vrp_tree::VRPS
     resources_valid::Union{Nothing,Bool}
@@ -305,12 +315,29 @@ ROA() = ROA(0, VRPS(),
            )
 
 
-mutable struct CRL 
+mutable struct CRL <: RPKIFile
     revoked_serials::Vector{SerialNumber} # TODO also include Revocation Date for each serial
     this_update::Union{Nothing, DateTime}
     next_update::Union{Nothing, DateTime}
 end
 CRL() = CRL([], nothing, nothing)
 Base.show(io::IO, crl::CRL) = print(io, crl.this_update, " -> ", crl.next_update, "\n", crl.revoked_serials)
+
+
+
+
+function RPKIObject(filename::String)::RPKIObject
+    tree = parse_file_recursive(filename)
+    ext = lowercase(filename[end-3:end])
+    if      ext == ".cer" RPKIObject{CER}(filename, tree)
+    elseif  ext == ".mft" RPKIObject{MFT}(filename, tree)
+    elseif  ext == ".roa" RPKIObject{ROA}(filename, tree)
+    elseif  ext == ".crl" RPKIObject{CRL}(filename, tree)
+    end
+end
+function RPKIObject{T}(filename::String)::RPKIObject{T} where {T}
+    tree = parse_file_recursive(filename)
+    RPKIObject{T}(filename, tree)
+end
 
 end # module

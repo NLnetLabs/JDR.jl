@@ -1,5 +1,4 @@
 module Webservice
-using JDR
 using JDR.Config: CFG, generate_config
 using JDR.RPKI#: process_tas, link_resources!
 using JDR.BGP: RISTree, ris_from_file, search
@@ -428,7 +427,7 @@ function update()
     global rwlock
     @info "update() on thread $(Threads.threadid())"
 
-    @time (tree, lookup) = JDR.RPKI.retrieve_all(CFG["rpki"]["tals"]; stripTree=true, nicenames=false)
+    @time (tree, lookup) = process_tas(CFG["rpki"]["tals"]; stripTree=true, nicenames=false)
     RPKI.link_resources!.(tree.children)
 
     new_RISv6 = new_RISv4 = nothing
@@ -591,9 +590,8 @@ end
 serverhandle = nothing
 using Sockets
 function start()
-    #JDR.Config.generate_config()
     init_logger()
-    #@debug "Active configuration:", JDR.CFG
+    @debug "Active configuration:", CFG
     Atlas.set_api_key(CFG["webservice"]["atlas_api_key"])
     global serverhandle
     _init()

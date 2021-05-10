@@ -1,13 +1,11 @@
 module BGP
 
-using JDR.Common
+using JDR.RPKICommon: AutSysNum, IPRange
 
 using IntervalTrees: IntervalTree, IntervalValue, Interval, intersect
 using Sockets: IPAddr
 
-using JDR.RPKICommon: AutSysNum, IPRange
 import JDR.RPKICommon: search
-
 
 const MIN_NO_PEERS=Int(20)
 const RISTree{T} = IntervalTree{T, IntervalValue{T, AutSysNum}} where {T<:IPAddr}
@@ -33,8 +31,18 @@ function ris_from_file(t::Type{T}, fn::String) :: RISTree{T} where {T<:IPAddr}
 end
 
 
-function search(ris::RISTree, asn::AutSysNum) :: RISTree 
-    filter(e -> e.value == asn , collect(typeof(first(ris)), ris)) |> RISTree
+function search(ris::RISTree{T}, asn::AutSysNum) :: RISTree{T} where {T<:IPAddr}
+    filter(e -> e.value == asn , collect(IntervalValue{T, AutSysNum}, ris)) |> RISTree
+end
+
+function search(ris::RISTree{T}, ipr::IPRange{T}, include_more_specific::Bool=false) :: RISTree{T}  where {T<:IPAddr}
+    q1, q2 = ipr.first, ipr.last
+    matches = intersect(ris, Interval(q1, q2)) |> collect
+    matches = filter(m -> m.first != zero(T) , matches) 
+    if !include_more_specific
+        matches = filter(m -> m.first <= q1 <= q2 <= m.last , matches)
+    end
+    matches |> unique |> RISTree
 end
 
 function search(ris::RISTree{T}, ipr::IPRange{T}, include_more_specific::Bool=false) :: RISTree  where {T<:IPAddr}

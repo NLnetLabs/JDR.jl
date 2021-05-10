@@ -1,12 +1,3 @@
-using StatsBase
-using Query
-
-export search
-export new_since
-export add_filename!, add_missing_filename!, add_resource
-export get_pubpoint
-
-
 Base.@kwdef struct Lookup
     ASNs::Dict{AutSysNum}{Vector{RPKINode}} = Dict()
     filenames::Dict{String}{RPKINode} = Dict()

@@ -1,14 +1,16 @@
 module Mft
-using ...ASN1
-using ...RPKI
-using ...RPKICommon
-using SHA
-using ...PKIX.CMS
-using ..JDR.Common
+using JDR.ASN1: ASN1, check_tag, childcount, to_bigint, check_contextspecific, check_OID
+using JDR.Common: @oid, remark_ASN1Error!, remark_manifestIssue!, remark_validityIssue!
+using JDR.RPKI: MFT
+using JDR.RPKICommon: RPKIObject, RPKIFile, TmpParseInfo
+using JDR.PKIX.CMS: check_ASN1_contentType, check_ASN1_content # from macros
 
-using Dates
+using Dates: DateTime, @dateformat_str
+using SHA: sha256
 
-import ...PKIX.@check
+import JDR.RPKI # to extend check_ASN1, check_cert
+include("../ASN1/macro_check.jl")
+
 
 function Base.show(io::IO, mft::MFT)
     print(io, "  num of files: ", length(mft.files), '\n')
@@ -38,11 +40,11 @@ import Base.length
 length(::Nothing) = 0 #used in childcount from validation_common.jl
 
 @check "version" begin
-    tagis_contextspecific(node, 0x00)
+    check_contextspecific(node, 0x00)
     # EXPLICIT tagging, so the version node be in a child
     childcount(node, 1)
     check_tag(node[1], ASN1.INTEGER)
-    if value(node[1].tag) == 0
+    if ASN1.value(node[1].tag) == 0
         #info!(node[1], "version explicitly set to 0 while that is the default")
     end
 end
@@ -130,9 +132,7 @@ end
     (@__MODULE__).check_ASN1_fileList(o, node[offset+5], tpi)
 end
 
-import .RPKI:check_ASN1
-function check_ASN1(o::RPKIObject{MFT}, tpi::TmpParseInfo) :: RPKIObject{MFT}
-    #@debug "check_ASN1 in MFT called"
+function RPKI.check_ASN1(o::RPKIObject{MFT}, tpi::TmpParseInfo) :: RPKIObject{MFT}
     cmsobject = o.tree
     # CMS, RFC5652:
     #       ContentInfo ::= SEQUENCE {
@@ -142,16 +142,16 @@ function check_ASN1(o::RPKIObject{MFT}, tpi::TmpParseInfo) :: RPKIObject{MFT}
     check_tag(cmsobject, ASN1.SEQUENCE)
     childcount(cmsobject, 2)
 
-    CMS.check_ASN1_contentType(o, cmsobject[1], tpi)
-    CMS.check_ASN1_content(o, cmsobject[2], tpi)
+    # from CMS.jl:
+    check_ASN1_contentType(o, cmsobject[1], tpi)
+    check_ASN1_content(o, cmsobject[2], tpi)
 
     check_ASN1_manifest(o, tpi.eContent, tpi)
 
     o
 end
 
-import .RPKI:check_cert
-function check_cert(o::RPKIObject{MFT}, tpi::TmpParseInfo)
+function RPKI.check_cert(o::RPKIObject{MFT}, tpi::TmpParseInfo)
     # hash tpi.eeCert
     @assert !isnothing(tpi.eeCert)
     tbs_raw = @view o.tree.buf.data[tpi.eeCert.tag.offset_in_file:tpi.eeCert.tag.offset_in_file + tpi.eeCert.tag.len + 4 - 1]

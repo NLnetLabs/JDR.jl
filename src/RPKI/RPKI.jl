@@ -1,47 +1,44 @@
 module RPKI
-using ..JDR
-using ..JDR.Common
-using ..JDR.RPKICommon
-using ..ASN1
+using JDR: CFG
+using JDR.Common: Remark, RemarkCounts_t, split_scheme_uri, count_remarks, AutSysNum, IPRange
+using JDR.Common: remark_missingFile!, remark_loopIssue!, remark_manifestIssue!
+using JDR.RPKICommon: add_resource!, RPKIObject, RPKINode, Lookup, TmpParseInfo, add_filename!
+using JDR.RPKICommon: CER, add_resource, MFT, CRL, ROA, add_missing_filename!, RootCER, get_pubpoint
+using JDR.ASN1: Node
 
-using Sockets
-using Dates
-using SHA
-using IntervalTrees
+using IntervalTrees: IntervalValue
+using Sockets: IPAddr
 
+export process_tas
 
-export search, RPKINode, RPKIObject # reexport from RPKI.Common
-export retrieve_all, RootCER, CER, MFT, CRL, ROA
-export TmpParseInfo
-export print_ASN1
+"""
+    check_ASN1
 
+Validate ASN1 structure of an [`RPKIObject`](@ref). Method definitions in [CER.jl](@ref) etc.
+"""
 function check_ASN1 end
 function check_cert end
 function check_resources end
 
 include("CER.jl")
-using .Cer
 include("MFT.jl")
-using .Mft
 include("ROA.jl")
-using .Roa
 include("CRL.jl")
-using .Crl
 
 
-function RPKIObject(filename::String)::RPKIObject
-    tree = DER.parse_file_recursive(filename)
-    ext = lowercase(filename[end-3:end])
-    if      ext == ".cer" RPKIObject{CER}(filename, tree)
-    elseif  ext == ".mft" RPKIObject{MFT}(filename, tree)
-    elseif  ext == ".roa" RPKIObject{ROA}(filename, tree)
-    elseif  ext == ".crl" RPKIObject{CRL}(filename, tree)
-    end
-end
-function RPKIObject{T}(filename::String)::RPKIObject{T} where T
-    tree = DER.parse_file_recursive(filename)
-    RPKIObject{T}(filename, tree)
-end
+#function RPKIObject(filename::String)::RPKIObject
+#    tree = DER.parse_file_recursive(filename)
+#    ext = lowercase(filename[end-3:end])
+#    if      ext == ".cer" RPKIObject{CER}(filename, tree)
+#    elseif  ext == ".mft" RPKIObject{MFT}(filename, tree)
+#    elseif  ext == ".roa" RPKIObject{ROA}(filename, tree)
+#    elseif  ext == ".crl" RPKIObject{CRL}(filename, tree)
+#    end
+#end
+#function RPKIObject{T}(filename::String)::RPKIObject{T} where {T}
+#    tree = DER.parse_file_recursive(filename)
+#    RPKIObject{T}(filename, tree)
+#end
 
 
 function add(p::RPKINode, c::RPKINode)#, o::RPKIObject)
@@ -162,7 +159,7 @@ function process_mft(mft_fn::String, lookup::Lookup, tpi::TmpParseInfo, cer_node
 
     for f in mft_obj.object.files
         if !isfile(joinpath(mft_dir, f))
-            @warn "[$(RPKICommon.get_pubpoint(cer_node))] Missing file: $(f)"
+            @warn "[$(get_pubpoint(cer_node))] Missing file: $(f)"
             Mft.add_missing_file(mft_obj.object, f)
             add_missing_filename!(lookup, joinpath(mft_dir, f), mft_node)
             remark_missingFile!(mft_obj, "Listed in manifest but missing on file system: $(f)")
@@ -343,7 +340,7 @@ function process_cer(cer_fn::String, lookup::Lookup, tpi::TmpParseInfo) :: RPKIN
     #TODO: should we still process through the directory, even though there was
     #no manifest?
     if !isfile(mft_fn)
-        @error "[$(RPKICommon.get_pubpoint(cer_node))] manifest $(basename(mft_fn)) not found"
+        @error "[$(get_pubpoint(cer_node))] manifest $(basename(mft_fn)) not found"
         add_missing_filename!(lookup, mft_fn, cer_node)
         remark_missingFile!(cer_obj, "Manifest file $(basename(mft_fn)) not in repo")
     else
@@ -434,14 +431,24 @@ function _glue_rootnode(tree::RPKINode) :: RPKINode
     tree
 end
 
-function retrieve_all(tal_urls=JDR.CFG["rpki"]["tals"]; stripTree::Bool=false, nicenames=true) :: Tuple{RPKINode, Lookup}
+#function retrieve_all(tal_urls=JDR.CFG["rpki"]["tals"]; stripTree::Bool=false, nicenames=true) :: Tuple{RPKINode, Lookup}
+
+"""
+    process_tas([tal_urls::Dict]; strip_tree::Bool, nicenames::Bool)
+
+Process all trust anchors configured in `JDR.toml`.
+
+Returns the tree and a lookup struct as `Tuple{RPKINode, Lookup}`.
+
+"""
+function process_tas(tal_urls=CFG["rpki"]["tals"]; stripTree::Bool=false, nicenames=true) :: Tuple{RPKINode, Lookup}
     branches = RPKINode[]
     lookup = Lookup()
 
     for (rir, rsync_url) in collect(tal_urls)
         root = RPKINode()
         (hostname, cer_fn) = split_scheme_uri(rsync_url)  
-        rir_dir = joinpath(JDR.CFG["rpki"]["rsyncrepo"], hostname)
+        rir_dir = joinpath(CFG["rpki"]["rsyncrepo"], hostname)
 
         # For now, we rely on Routinator for the actual fetching
         # We do however construct all the paths and mimic the entire procedure

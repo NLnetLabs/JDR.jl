@@ -1,16 +1,18 @@
 module Roa
-using SHA
 
-using ...Common
-using ...PKIX.CMS
-using ...RPKI
-using ...RPKICommon
-using ...ASN1
+using JDR.ASN1: ASN1, check_contextspecific, childcount, check_tag, value, bitstring_to_v6range
+using JDR.ASN1: bitstring_to_v4range, to_bigint
+using JDR.Common: IPRange, check_coverage, prefixlen, remark_ASN1Error!, remark_resourceIssue!
+using JDR.Common: remark_validityIssue!
+using JDR.PKIX.CMS: check_ASN1_contentType, check_ASN1_content # from macros
+using JDR.RPKICommon: ROA, RPKIObject, RPKIFile, TmpParseInfo
 
-using Sockets
-using IntervalTrees
+using IntervalTrees: Interval, IntervalValue
+using SHA: sha256
+using Sockets: IPv6, IPv4
 
-import ...PKIX.@check
+import JDR.RPKI # to extend check_ASN1, check_cert, add_resource!, check_resources
+include("../ASN1/macro_check.jl")
 
 
 function Base.show(io::IO, roa::ROA)
@@ -41,7 +43,7 @@ end
 @check "ROAIPAddress" begin
     check_tag(node, ASN1.SEQUENCE)
     check_tag(node[1], ASN1.BITSTRING)
-    node[1].nicename = "address"
+    tpi.setNicenames && (node[1].nicename = "address")
 
     prefix = if tpi.afi == 1
         #bitstring_to_ipv4net(node[1].tag.value)
@@ -58,7 +60,7 @@ end
     # optional maxLength:
     if length(node.children) == 2
         check_tag(node[2], ASN1.INTEGER)
-        node[2].nicename = "maxLength"
+        tpi.setNicenames && (node[2].nicename = "maxLength")
         #@assert node[2].tag.len == 1
         if node[2].tag.value[1] == maxlength
             #remark_ASN1Issue!(node[2], "redundant maxLength")
@@ -88,14 +90,16 @@ end
 
         addresses = node[2]
         check_tag(addresses, ASN1.SEQUENCE)
-        addresses.nicename = "addresses"
+        tpi.setNicenames && (addresses.nicename = "addresses")
         if length(addresses.children) == 0
             remark_ASN1Error!(addresses, "there should be at least one ROAIPAddress here")
         end
-        if tpi.afi == 1 # IPv4
-            node[1].nicename = "addressFamily: IPv4"
-        else
-            node[1].nicename = "addressFamily: IPv6"
+        if tpi.setNicenames
+            if tpi.afi == 1 # IPv4
+                node[1].nicename = "addressFamily: IPv4"
+            else
+                node[1].nicename = "addressFamily: IPv6"
+            end
         end
         for roa_ipaddress in addresses.children
             (@__MODULE__).check_ASN1_ROAIPAddress(o, roa_ipaddress, tpi)
@@ -125,8 +129,7 @@ end
     (@__MODULE__).check_ASN1_ipAddrBlocks(o, node[offset+2], tpi)
 end
 
-import .RPKI:check_ASN1
-function check_ASN1(o::RPKIObject{ROA}, tpi::TmpParseInfo) :: RPKIObject{ROA}
+function RPKI.check_ASN1(o::RPKIObject{ROA}, tpi::TmpParseInfo) :: RPKIObject{ROA}
     cmsobject = o.tree
     # CMS, RFC5652:
     #       ContentInfo ::= SEQUENCE {
@@ -136,16 +139,16 @@ function check_ASN1(o::RPKIObject{ROA}, tpi::TmpParseInfo) :: RPKIObject{ROA}
     check_tag(cmsobject, ASN1.SEQUENCE)
     childcount(cmsobject, 2)
 
-    CMS.check_ASN1_contentType(o, cmsobject[1], tpi)
-    CMS.check_ASN1_content(o, cmsobject[2], tpi)
+    # from CMS.jl:
+    check_ASN1_contentType(o, cmsobject[1], tpi)
+    check_ASN1_content(o, cmsobject[2], tpi)
 
     check_ASN1_routeOriginAttestation(o, tpi.eContent, tpi)
 
     o
 end
 
-import .RPKI:check_cert
-function check_cert(o::RPKIObject{ROA}, tpi::TmpParseInfo)
+function RPKI.check_cert(o::RPKIObject{ROA}, tpi::TmpParseInfo)
     # hash tpi.eeCert
     @assert !isnothing(tpi.eeCert)
     tbs_raw = @view o.tree.buf.data[tpi.eeCert.tag.offset_in_file:tpi.eeCert.tag.offset_in_file + tpi.eeCert.tag.len + 4 - 1]
@@ -169,18 +172,17 @@ function check_cert(o::RPKIObject{ROA}, tpi::TmpParseInfo)
     # TODO
 end
 
-import .RPKI.add_resource!
-function add_resource!(roa::ROA, minaddr::IPv6, maxaddr::IPv6)
-	push!(roa.resources_v6, IntervalValue(minaddr, maxaddr, VRP[]))
-end
-function add_resource!(roa::ROA, minaddr::IPv4, maxaddr::IPv4)
-	push!(roa.resources_v4, IntervalValue(minaddr, maxaddr, VRP[]))
-end
-add_resource!(roa::ROA, ipr::IPRange{IPv6}) = push!(roa.resources_v6, Interval(ipr))
-add_resource!(roa::ROA, ipr::IPRange{IPv4}) = push!(roa.resources_v4, Interval(ipr))
+#import .RPKI.add_resource!
+#function RPKI.add_resource!(roa::ROA, minaddr::IPv6, maxaddr::IPv6)
+#	push!(roa.resources_v6, IntervalValue(minaddr, maxaddr, VRP[]))
+#end
+#function RPKI.add_resource!(roa::ROA, minaddr::IPv4, maxaddr::IPv4)
+#	push!(roa.resources_v4, IntervalValue(minaddr, maxaddr, VRP[]))
+#end
+RPKI.add_resource!(roa::ROA, ipr::IPRange{IPv6}) = push!(roa.resources_v6, Interval(ipr))
+RPKI.add_resource!(roa::ROA, ipr::IPRange{IPv4}) = push!(roa.resources_v4, Interval(ipr))
 
-import .RPKI:check_resources
-function check_resources(o::RPKIObject{ROA}, tpi::TmpParseInfo)
+function RPKI.check_resources(o::RPKIObject{ROA}, tpi::TmpParseInfo)
     # TODO: check out intersect(t1::IntervalTree, t2::IntervalTree) and find any
     # underclaims?
     o.object.resources_valid = true
@@ -236,14 +238,14 @@ function check_resources(o::RPKIObject{ROA}, tpi::TmpParseInfo)
     # attempt with new vrp_tree
 
     # IPv6:
-    Common.check_coverage(o.object.resources_v6, o.object.vrp_tree.resources_v6) do invalid
+    check_coverage(o.object.resources_v6, o.object.vrp_tree.resources_v6) do invalid
         @warn "illegal IPv6 VRP $(IPRange(invalid.first, invalid.last)) not covered by EE on $(o.filename)"
         remark_resourceIssue!(o, "Illegal IPv6 VRP $(IPRange(invalid.first, invalid.last))")
         o.object.resources_valid = false
     end
 
     # IPv4:
-    Common.check_coverage(o.object.resources_v4, o.object.vrp_tree.resources_v4) do invalid
+    check_coverage(o.object.resources_v4, o.object.vrp_tree.resources_v4) do invalid
         @warn "illegal IPv4 VRP $(IPRange(invalid.first, invalid.last)) not covered by EE on $(o.filename)"
         remark_resourceIssue!(o, "Illegal IPv4 VRP $(IPRange(invalid.first, invalid.last))")
         o.object.resources_valid = false

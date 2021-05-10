@@ -1,10 +1,16 @@
 module CMS
-using ...JDR.Common
-using ...JDR.RPKICommon
-using ...ASN1
-using ..X509
+using JDR.Common: @oid, oid_to_str, remark_ASN1Issue!, remark_ASN1Error!, remark_encodingIssue!, remark_validityIssue!
+using JDR.RPKICommon: RPKIObject, ROA, MFT, TmpParseInfo
+using JDR.ASN1: check_tag, check_OID, check_value, childcount, check_contextspecific
+using JDR.ASN1: istag, to_bigint
+using JDR.ASN1: ASN1 # for ASN1 tags
+using JDR.ASN1.DER: Buf, parse_append!, parse_replace_children!
+using JDR.RPKICommon: RPKIFile # for macro_check
+using ..X509: X509 # to check TbsCert
 
-import ...PKIX.@check
+using SHA: sha256
+
+include("../ASN1/macro_check.jl")
 
 @check "contentType" begin
     check_OID(node, @oid("1.2.840.113549.1.7.2"))
@@ -44,16 +50,16 @@ end
     # in case of BER, the 'first' OCTETSTRING has indef length
     if ! node[1].tag.len_indef
         tpi.cms_message_digest = bytes2hex(sha256(node[1].tag.value))
-        DER.parse_append!(DER.Buf(node[1].tag.value), node[1])
+        parse_append!(Buf(node[1].tag.value), node[1])
     else
         # already parsed, but can we spot the chunked OCTETSTRING case?
         if length(node[1].children) > 1
             remark_encodingIssue!(node[1], "fragmented OCTETSTRING, CER instead of DER?")
             #@debug "found multiple children in node[1]"
             concatted = collect(Iterators.flatten([n.tag.value for n in node[1].children]))
-            buf = DER.Buf(concatted)
+            buf = Buf(concatted)
             tpi.cms_message_digest = bytes2hex(sha256(concatted))
-            DER.parse_replace_children!(buf, node[1])
+            parse_replace_children!(buf, node[1])
         else
             tpi.cms_message_digest = ""
         end
@@ -66,13 +72,13 @@ end
     eContent = if istag(node[1,1].tag, ASN1.OCTETSTRING)
         remark_encodingIssue!(node[1,1], "nested OCTETSTRING, BER instead of DER")
         # we need to do a second pass on this then
-        DER.parse_append!(DER.Buf(node[1,1].tag.value), node[1,1])
+        parse_append!(Buf(node[1,1].tag.value), node[1,1])
         node[1,1,1]
     elseif istag(node[1,1].tag, ASN1.SEQUENCE)
         node[1,1]
     else
-        @error("unexpected tag $(tagtype(node[1,1])) in $(o.filename)")
-        remark_ASN1Error!(node[1,1], "unexpected tag $(tagtype(node[1,1]))")
+        @error("unexpected tag $(node[1,1].tag.number) in $(o.filename)")
+        remark_ASN1Error!(node[1,1], "unexpected tag $(node[1,1].tag.number)")
         return
     end
     tpi.eContent = eContent

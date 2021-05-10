@@ -1,21 +1,14 @@
 module ASN
-using ...JDR.Common
-using Dates
 
-#export Tag, AbstractTag, Node, AbstractNode
-#export value, print_node, append!, iter, lazy_iter
-#export child, getindex, tagtype
-#
-#export  Unimplemented, InvalidTag, SEQUENCE, SET, RESERVED_ENC, OCTETSTRING, BOOLEAN,
-#        BITSTRING, PRINTABLESTRING, UTF8STRING, CONTEXT_SPECIFIC, INTEGER, NULL, UTCTIME, GENTIME, OID, IA5STRING
+using JDR.Common: IPRange, Remark, RemarkCounts, RemarkCounts_t, remark_ASN1Issue!, oid_to_str
 
-export Tag,
-    Tagnumber,
-    Node,
-    istag,
-    iscontextspecific,
-    value,
-    constructed
+using Dates: DateTime, Year, year, @dateformat_str
+using Sockets: IPv6, IPv4
+
+export Tag, Tagnumber, InvalidTag, Node, istag, iscontextspecific, value, constructed, print_node
+# from validation_common:
+export check_tag, check_OID, check_value, childcount, check_contextspecific, check_extensions, check_attribute
+export get_extensions, to_bigint, bitstring_to_v6range, bitstrings_to_v6range, bitstring_to_v4range, bitstrings_to_v4range
 
 
 @enum Tagnumber begin
@@ -45,7 +38,7 @@ IA5STRING
 UTCTIME
 GENTIME
 Unimplemented = 998
-InvalidTag = 999
+Invalid = 999
 end
 
 
@@ -75,7 +68,7 @@ export RESERVED_ENC,
     UTCTIME,
     GENTIME,
     Unimplemented,
-    InvalidTag
+    Invalid
 
 # FIXME macro/eval this export
 #for t in instances(Tagnumber)
@@ -100,6 +93,8 @@ istag(t::Tag, tn::Tagnumber) = t.number == tn
 class(t::Tag) = t.class_constructed >> 6 # bit 8-7
 constructed(t::Tag) = t.class_constructed & 0x20 == 0x20 # bit 6
 iscontextspecific(t::Tag) = class(t) == 0x02
+
+InvalidTag() = Tag(0, Invalid, 0, false, 0, nothing, 0)
 
 
 function value(t::Tag; force_reinterpret=false)
@@ -304,7 +299,7 @@ function append!(p::Node, c::Node) :: Node
     p
 end
 
-import JDR.Common.count_remarks # import so we can extend it
+import JDR.Common: count_remarks # import so we can extend it
 function count_remarks(tree::Node) :: RemarkCounts_t
     cnts = RemarkCounts()
     for n in iter(tree)
@@ -322,12 +317,11 @@ Node(t::Tag) = Node(nothing, t, false, nothing, nothing, nothing, nothing)
 function child(node::Node, indices...) :: Node
     current = node
     for i in indices
-        try
-        current = current.children[i]
-        catch e
-            #@warn "invalid child $(i) in $(indices), $(stacktrace()[4])"
-            throw("invalid child $(i) in $(indices), $(stacktrace()[4])")
+        if i > length(current.children)
+            @error "trying to access non-existing ASN1 node"
+            break
         end
+        current = current.children[i]
     end
     current
 end

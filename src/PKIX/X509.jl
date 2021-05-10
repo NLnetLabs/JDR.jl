@@ -1,11 +1,13 @@
 module X509
-using ...JDR.Common
-using ...JDR.RPKICommon
-using ...ASN1 
-using IntervalTrees
-using Sockets
+using JDR.Common: @oid, AutSysNum, AutSysNumRange, oid_to_str, remark_ASN1Error!, remark_ASN1Issue!
+using JDR.RPKICommon: RPKIFile, RPKIObject, TmpParseInfo, CER, MFT, ROA, add_resource!
+using JDR.ASN1: ASN1, check_tag, check_contextspecific, childcount, istag, check_value
+using JDR.ASN1: check_OID, check_attribute, check_extensions, get_extensions
+using JDR.ASN1: bitstring_to_v6range, bitstrings_to_v6range
+using JDR.ASN1: bitstring_to_v4range, bitstrings_to_v4range, to_bigint
+using JDR.ASN1.DER: DER
 
-import ...PKIX.@check
+include("../ASN1/macro_check.jl")
 
 const MANDATORY_EXTENSIONS = Vector{Pair{Vector{UInt8}, String}}([
                                                     @oid("2.5.29.14") => "subjectKeyIdentifier",
@@ -36,21 +38,21 @@ const MANDATORY_EXTENSIONS = Vector{Pair{Vector{UInt8}, String}}([
 
         #now check for the MUST-be presents:
         if access_description[1].tag.value == @oid "1.3.6.1.5.5.7.48.5"
-            access_description[1].nicename = "caRepository"
+            tpi.setNicenames && (access_description[1].nicename = "caRepository")
             carepo_present = true
             if o.object isa CER
                 o.object.pubpoint = String(copy(access_description[2].tag.value))
             end
         end
         if access_description[1].tag.value == @oid "1.3.6.1.5.5.7.48.10"
-            access_description[1].nicename = "rpkiManifest"
+            tpi.setNicenames && (access_description[1].nicename = "rpkiManifest")
             manifest_present = true
             if o.object isa CER
                 o.object.manifest = String(copy(access_description[2].tag.value))
             end
         end
         if access_description[1].tag.value == @oid "1.3.6.1.5.5.7.48.13"
-            access_description[1].nicename = "rpkiNotify"
+            tpi.setNicenames && (access_description[1].nicename = "rpkiNotify")
             if o.object isa CER
                 o.object.rrdp_notify = String(copy(access_description[2].tag.value))
             end
@@ -279,7 +281,7 @@ end
     end
 end
 
-function check_ASN1_extension(oid::Vector{UInt8}, o::RPKIObject{T}, node::Node, tpi::TmpParseInfo) where T
+function check_ASN1_extension(oid::Vector{UInt8}, o::RPKIObject{T}, node::ASN1.Node, tpi::TmpParseInfo) where T
     if oid == @oid("1.3.6.1.5.5.7.1.11")
         check_ASN1_subjectInfoAccess(o, node, tpi)
     elseif oid == @oid("1.3.6.1.5.5.7.1.7")

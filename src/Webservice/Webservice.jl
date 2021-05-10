@@ -459,7 +459,7 @@ function update()
 
     try
         @info "updating repository status based on RIPE Atlas measurements"
-        #update_repostatus()
+        update_repostatus()
     catch e
         @error "Something went wrong while trying to fetch RIPE Atlas measurements"
         @error e

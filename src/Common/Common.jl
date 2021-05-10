@@ -33,8 +33,6 @@ end
 @enum RemarkLevel DBG INFO WARN ERR
 @enum RemarkType EncodingIssue ASN1Issue ManifestIssue MissingFile ValidityIssue ResourceIssue LoopIssue
 
-remarkTID = 0
-resetRemarkTID() = global remarkTID = 0
 struct Remark
     lvl::RemarkLevel
     type::Union{Nothing, RemarkType}

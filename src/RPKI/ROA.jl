@@ -43,7 +43,7 @@ end
 @check "ROAIPAddress" begin
     check_tag(node, ASN1.SEQUENCE)
     check_tag(node[1], ASN1.BITSTRING)
-    node[1].nicename = "address"
+    tpi.setNicenames && (node[1].nicename = "address")
 
     prefix = if tpi.afi == 1
         #bitstring_to_ipv4net(node[1].tag.value)
@@ -60,7 +60,7 @@ end
     # optional maxLength:
     if length(node.children) == 2
         check_tag(node[2], ASN1.INTEGER)
-        node[2].nicename = "maxLength"
+        tpi.setNicenames && (node[2].nicename = "maxLength")
         #@assert node[2].tag.len == 1
         if node[2].tag.value[1] == maxlength
             #remark_ASN1Issue!(node[2], "redundant maxLength")
@@ -90,14 +90,16 @@ end
 
         addresses = node[2]
         check_tag(addresses, ASN1.SEQUENCE)
-        addresses.nicename = "addresses"
+        tpi.setNicenames && (addresses.nicename = "addresses")
         if length(addresses.children) == 0
             remark_ASN1Error!(addresses, "there should be at least one ROAIPAddress here")
         end
-        if tpi.afi == 1 # IPv4
-            node[1].nicename = "addressFamily: IPv4"
-        else
-            node[1].nicename = "addressFamily: IPv6"
+        if tpi.setNicenames
+            if tpi.afi == 1 # IPv4
+                node[1].nicename = "addressFamily: IPv4"
+            else
+                node[1].nicename = "addressFamily: IPv6"
+            end
         end
         for roa_ipaddress in addresses.children
             (@__MODULE__).check_ASN1_ROAIPAddress(o, roa_ipaddress, tpi)

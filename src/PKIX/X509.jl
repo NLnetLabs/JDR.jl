@@ -38,21 +38,21 @@ const MANDATORY_EXTENSIONS = Vector{Pair{Vector{UInt8}, String}}([
 
         #now check for the MUST-be presents:
         if access_description[1].tag.value == @oid "1.3.6.1.5.5.7.48.5"
-            access_description[1].nicename = "caRepository"
+            tpi.setNicenames && (access_description[1].nicename = "caRepository")
             carepo_present = true
             if o.object isa CER
                 o.object.pubpoint = String(copy(access_description[2].tag.value))
             end
         end
         if access_description[1].tag.value == @oid "1.3.6.1.5.5.7.48.10"
-            access_description[1].nicename = "rpkiManifest"
+            tpi.setNicenames && (access_description[1].nicename = "rpkiManifest")
             manifest_present = true
             if o.object isa CER
                 o.object.manifest = String(copy(access_description[2].tag.value))
             end
         end
         if access_description[1].tag.value == @oid "1.3.6.1.5.5.7.48.13"
-            access_description[1].nicename = "rpkiNotify"
+            tpi.setNicenames && (access_description[1].nicename = "rpkiNotify")
             if o.object isa CER
                 o.object.rrdp_notify = String(copy(access_description[2].tag.value))
             end

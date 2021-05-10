@@ -518,7 +518,7 @@ function start()
 
     @info "starting webservice on CPU 1 out of $(Threads.nthreads()) available"
 
-    serverhandle = Sockets.listen(IPv6("::1"), JDR.CFG["webservice"]["port"])
+    serverhandle = Sockets.listen(IPv6("::1"), CFG["webservice"]["port"])
     ThreadPools.@tspawnat 1 begin
         try
             HTTP.serve(JSONHandler, server=serverhandle)

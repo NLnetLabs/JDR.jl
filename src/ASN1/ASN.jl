@@ -317,12 +317,11 @@ Node(t::Tag) = Node(nothing, t, false, nothing, nothing, nothing, nothing)
 function child(node::Node, indices...) :: Node
     current = node
     for i in indices
-        try
-        current = current.children[i]
-        catch e
-            #@warn "invalid child $(i) in $(indices), $(stacktrace()[4])"
-            throw("invalid child $(i) in $(indices), $(stacktrace()[4])")
+        if i > length(current.children)
+            @error "trying to access non-existing ASN1 node"
+            break
         end
+        current = current.children[i]
     end
     current
 end

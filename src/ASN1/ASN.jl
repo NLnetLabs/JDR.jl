@@ -101,22 +101,19 @@ function value(t::Tag; force_reinterpret=false)
     if istag(t, BOOLEAN)
         # FIXME DER has stricter constraints for TRUE
         # all bits should be 1 for true
-        t.value[1] != 0  
+        if t.value[1] != 0 
+            if t.value[1] != 0xff
+                @warn "DER encoded boolean must be 0xff for TRUE"
+            end
+            return true
+        end
+        return false
     elseif istag(t, INTEGER)
         if t.len <= 8
             reinterpret(Int64, resize!(reverse(t.value), 8))[1]
         else
             parse(BigInt, bytes2hex(t.value), base=16)
         end
-
-
-        #if t.len > 5 && !force_reinterpret
-        #    "$(t.len * 8)bit integer" #FIXME not accurate, perhaps the lenbytes itself cause that
-        #elseif t.len <= 8
-        #    reinterpret(Int64, resize!(reverse(t.value), 8))[1]
-        #else
-        #    parse(BigInt, bytes2hex(t.value), base=16)
-        #end
     elseif istag(t, PRINTABLESTRING) || istag(t, IA5STRING) || istag(t, UTF8STRING)
         String(copy(t.value))
 
@@ -152,136 +149,9 @@ function Base.show(io::IO, t::Tag)
     print(io, " (", t.len, ')' )
 end
 
-##
-## TMP commented out, first get DER.parse_recursive working
-##
-#=
-function Base.show(io::IO, t::Tag{T}) where {T<:AbstractTag}
-    print(io, "[$(bitstring(t.class)[7:8])] ")
-    len = if t.len == 0x80
-        len = "indef."
-    else
-        t.len
-    end
-    print(io, "$(nameof(T)): $(value(t)) ($(len))")
-end
-function Base.show(io::IO, ::MIME"text/plain", ts::Array{Tag{T},1}) where {T<:AbstractTag}
-    error("oh so now this show() is triggered?")
-    for t in ts
-        print(io, "___[$(bitstring(t.class)[7:8])] ")
-        print(io, "$(nameof(T)): $(value(t)) ($(t.len))")
-        print(io, "\n")
-    end
-end
-Base.show(io::IO, t::Tag{CONTEXT_SPECIFIC})     = print(io, "CONTEXT-SPECIFIC [$(t.number)]")
-Base.show(io::IO, t::Tag{Unimplemented})    = print(io, "Unimplemented tag $(t.number) ($(t.len))")
-Base.show(io::IO, t::Tag{NULL}) where {T}   = print(io, "NULL")
-function Base.show(io::IO, t::Tag{BITSTRING})
-    print(io, "BITSTRING: ")
-    if t.constructed
-        print(io, "(constr.) ")
-    else
-        print(io, "(prim.) $(value(t))")
-    end
-    print(io, " ($(t.len))")
-end
-value(t::Tag{T}) where {T} = "**RAW**: $(t.value)"
-
-value(t::Tag{RESERVED_ENC}) = ""
-value(t::Tag{SEQUENCE}) = ""
-value(t::Tag{SET}) = ""
-# FIXME DER is stricter for BOOLEANs than this
-# all bits should be 1 for true
-value(t::Tag{BOOLEAN}) = t.value[1] != 0 
-value(t::Tag{PRINTABLESTRING}) = String(copy(t.value))
-
-#value(t::Tag{UTCTIME}) = String(copy(t.value))
-#value(t::Tag{GENTIME}) = String(copy(t.value))
-value(t::Tag{GENTIME}) = DateTime(String(copy(t.value)), dateformat"yyyymmddHHMMSSZ")
-function value(t::Tag{UTCTIME}) 
-    ts = DateTime(String(copy(t.value)), dateformat"yymmddHHMMSSZ")
-    if year(ts) < 50
-        ts += Year(2000)
-    else
-        ts += Year(1900)
-    end
-    ts
-end
-
-
-value(t::Tag{UTF8STRING}) = String(copy(t.value))
-value(t::Tag{IA5STRING}) = String(copy(t.value))
-function value(t::Tag{INTEGER}; force_reinterpret=false) where {T}
-    if t.len > 5 && !force_reinterpret
-        "$(t.len * 8)bit integer" #FIXME not accurate, perhaps the lenbytes itself cause that
-    elseif t.len <= 8
-        reinterpret(Int64, resize!(reverse(t.value), 8))[1]
-    else
-        parse(BigInt, bytes2hex(t.value), base=16)
-    end
-end
-
-function value(t::Tag{BITSTRING}) where {T} 
-    if t.len > 10
-        "*blob*"
-    elseif t.len >= 2
-        bitstring(t.value[2] >> t.value[1])
-    else
-        "*empty*"
-    end
-end
-
-function value(t::Tag{OCTETSTRING}) where {T} 
-    if t.constructed 
-        return nothing
-    elseif t.len <= 8
-        return t.value
-    end
-    return "*blob*"
-end
-
-
-function value(t::Tag{OID}) 
-    if t.class == 0x02 # context specific TODO find documentation for this
-        return String(copy(t.value))
-    end
-
-    buf = IOBuffer(t.value) 
-    subids = Array{Int32,1}([0]) # 
-    while !eof(buf)
-        subid = 0
-        byte = read(buf, 1)[1]
-        while byte & 0x80 == 0x80 # first bit is 1
-            subid = (subid << 7) | (byte & 0x7f) # take the last 7 bits
-            byte = read(buf, 1)[1]
-        end
-        subid = (subid << 7) | (byte & 0x7f) # take the last 7 bits
-        push!(subids, subid) #reinterpret(Int32, resize!(reverse(subid), 4)))
-    end
-    # get the first two sub identifiers:
-    if subids[2] >= 120
-        subids[1] = 3
-        subids[2] %= 120
-    elseif subids[2] >= 80
-        subids[1] = 2
-        subids[2] %= 80
-    elseif subids[2] >= 40
-        subids[1] = 1
-        subids[2] %= 40
-    else
-        # is this possible?
-        # x=0, y = subid[2] 
-        # so actually we do not need to do anything
-    end
-
-    join(subids, ".")
-end
-=#
-
 mutable struct Node
-    #parent::Union{Nothing, Node}
     children:: Union{Nothing, Vector{Node}}
-    tag::Tag #FIXME make this a DER.AbstractTag and benchmark
+    tag::Tag
     validated::Bool
 	remarks::Union{Nothing, Vector{Remark}}
     nicename::Union{Nothing, String}
@@ -295,7 +165,6 @@ function append!(p::Node, c::Node) :: Node
     else
         push!(p.children, c)
     end
-    #c.parent = p
     p
 end
 
@@ -397,103 +266,9 @@ function iter(tree::Node, res::Vector{Node}=Vector{Node}([])) :: Vector{Node}
     res
 end
 
-#function tagtype(n::Node) :: DataType
-#    typeof(n.tag).parameters[1]
-#end
-#function tagtype(t::Tag{<:AbstractTag}) :: DataType
-#    typeof(t).parameters[1]
-#end
-
-
-
 ####################
 # validation helpers
 ####################
-# TODO are these used?
-
-#=
-function iter(tree::Node, res::Vector{Node}=Vector{Node}([])) :: Vector{Node}
-    Base.push!(res, tree)
-    if !isnothing(tree.children)
-        for c in tree.children
-            iter(c, res)
-        end
-    end
-    res
-end
-
-lazy_iter(tree::Node) = Channel(ctype=Node) do c
-    put!(c, tree)
-        if !isnothing(tree.children)
-            for child in tree.children
-                lazy_iter(child, c)
-            end
-        end
-end
-function contains(tree::Node, tagtype::Type{T}, v::Any) where {T<:AbstractTag}
-    found = false
-    for node in iter(tree)
-        if node.tag isa Tag{tagtype} && value(node.tag) == v
-            found = true
-            break
-        end
-    end
-    found
-end
-
-# Set of Pairs (tagtype, value)
-function contains_set(tree::Node, tags::Set{Pair{Type{T} where {T<:AbstractTag}, Any}})
-    for node in iter(tree)
-        for (tagtype, v) in tags
-            if (node.tag isa Tag{tagtype} && tagtype == ASN.OID)
-                if node.tag.value == v
-                    delete!(tags, tagtype => v)
-                    break
-                end
-            elseif (node.tag isa Tag{tagtype} && value(node.tag) == v)
-                delete!(tags, tagtype => v)
-                break
-            end
-        end
-    end
-    isempty(tags)
-end
-
-function contains_in_order(tree::Node, tags::Vector{Pair{Type{T} where {T<:AbstractTag}, Any}})
-    for node in iter(tree)#,
-        (tagtype, v) = first(tags)
-        if ((node.tag isa Tag{tagtype} == Tag{ASN.OID} && node.tag.value == v)
-            || (node.tag isa Tag{tagtype} && value(node.tag) == v))
-            popfirst!(tags)
-            if isempty(tags) break end
-        end
-    end
-    isempty(tags)
-end
-
-
-lazy_iter(tree::Node, chan::Channel{Node}) = begin
-    put!(chan, tree)
-    if !isnothing(tree.children)
-        for child in tree.children
-            lazy_iter(child, chan)
-        end
-    end
-end
-
-
-function lazy_contains(tree::Node, tagtype::Type{T}, v::Any) where {T<:AbstractTag}
-    found = false
-    for node in lazy_iter(tree)
-        if node.tag isa Tag{tagtype} && value(node.tag) == v
-            found = true
-            break
-        end
-    end
-    found
-end
-
-=#
 
 include("validation_common.jl")
 

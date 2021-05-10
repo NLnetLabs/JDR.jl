@@ -502,10 +502,9 @@ end
 serverhandle = nothing
 using Sockets
 function start()
-    JDR.Config.generate_config()
     init_logger()
-    @debug "Active configuration:", JDR.CFG
-    Atlas.set_api_key(JDR.CFG["webservice"]["atlas_api_key"])
+    @debug "Active configuration:", CFG
+    Atlas.set_api_key(CFG["webservice"]["atlas_api_key"])
     global serverhandle
     _init()
 

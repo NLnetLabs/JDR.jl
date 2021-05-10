@@ -1,8 +1,7 @@
 # TODO implement optional custom remark::String
-#function tagisa(node::Node, t::Type)
 function check_tag(node::Node, tagnum::Tagnumber)
     if !(istag(node.tag, tagnum))
-        remark_ASN1Issue!(node, "expected this to be a $(nameof(t))")
+        remark_ASN1Issue!(node, "expected this to be a $(tagnum)")
         false
     else
         node.validated = true
@@ -32,17 +31,6 @@ function check_contextspecific(node::Node, tagnum::Union{Nothing, UInt8}=nothing
 end
 
 
-function tagisa(node::Node, ts::Vector{DataType})
-    for t in ts
-        if node.tag isa Tag{t}
-            node.validated = true
-            return
-        end
-    end
-    remark_ASN1Issue!(node, "unexpected type $(nameof(typeof(node.tag).parameters[1]))")
-end
-
-#function tagvalue(node::Node, t::Type, v::Any)
 function check_value(node::Node, t::Tagnumber, v::Any)
     istag(node.tag, t)
     if !(ASN.value(node.tag) == v)
@@ -124,7 +112,7 @@ function check_attribute(node::Node, oid::Vector{UInt8}, expected_type::Tagnumbe
     # in case of IMPLICITly tagged context-specific SETs, the first part of the
     # following @assert condition fails
 
-    @assert istag(node.tag, ASN.SET) || istag(node.tag, CONTEXT_SPECIFIC)
+    @assert istag(node.tag, ASN.SET) || check_contextspecific(node.tag)
 
     for c in node.children # every c in a SEQUENCE
         @assert istag(c.tag, ASN.SEQUENCE)

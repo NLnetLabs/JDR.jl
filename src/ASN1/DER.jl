@@ -44,12 +44,12 @@ Base.showerror(io::IO, e::NotImplementedYetError) = print(io, "Not Yet Implement
 
 
 
-function next!(buf::Buf, offset::Int=1) 
+function next!(buf::Buf, offset::Int=1) :: Tag
     _ptr_start = buf.iob.ptr
     offset_in_file = buf.iob.ptr + offset - 1
     first_byte = lookahead(buf)
 
-    tagclass    = first_byte  >> 6; # bit 8-7
+    #tagclass    = first_byte  >> 6; # bit 8-7
     constructed = first_byte & 0x20 == 0x20 # bit 6
     tagnumber   = first_byte & 0x1f # bit 5-0
     if tagnumber == 31
@@ -77,7 +77,7 @@ function next!(buf::Buf, offset::Int=1)
         # Reserved:
         if lenbyte == 0xff
             @warn "Reserved Length in tag?"
-            return Tag{InvalidTag}()
+            return InvalidTag()
         end
 
         # Definite long
@@ -91,11 +91,9 @@ function next!(buf::Buf, offset::Int=1)
 
     end
     # check for cases where we are parsing something that is not a (valid) tag
-    if len < 0
-        return Tag{InvalidTag}() # FIXME refactor into new Tag
-    elseif len > (buf.iob.size - buf.iob.ptr + 1) 
-        #@warn "length $(len) goes beyond end of buffer $(buf.iob.size) - $(buf.iob.ptr), returning InvalidTag"
-        return Tag{InvalidTag}()
+    if len < 0 || len > (buf.iob.size - buf.iob.ptr + 1) 
+        @warn "length $(len) goes beyond end of buffer $(buf.iob.size) - $(buf.iob.ptr)"
+        return InvalidTag()
     end
 
     _header_len = buf.iob.ptr - _ptr_start 
@@ -141,7 +139,7 @@ function _parse!(tag::ASN.Tag, buf::Buf, indef_stack::Stack) :: ASN.Node
             while !empty(indef_stack)
                 #@debug "inner $(indef_stack) > $(my_indef_stack_level)?"
                 subtag = DER.next!(buf)
-                if !(istag(subtag, ASN.Unimplemented) || istag(subtag, ASN.InvalidTag))
+                if !(istag(subtag, ASN.Unimplemented) || istag(subtag, ASN.Invalid))
                     if istag(subtag, ASN.RESERVED_ENC) && subtag.len == 0
                         pop(indef_stack)
                         break
@@ -165,7 +163,7 @@ function _parse!(tag::ASN.Tag, buf::Buf, indef_stack::Stack) :: ASN.Node
                     pop(indef_stack)
                     #@debug "double NULL in lower while, -- == $(indef_stack)"
                     break
-                elseif !(istag(subtag, ASN.Unimplemented) || istag(subtag, ASN.InvalidTag))
+                elseif !(istag(subtag, ASN.Unimplemented) || istag(subtag, ASN.Invalid))
                     #@debug "in lower while, appending subtag $(subtag) to $(me)"
                     #@debug "my value is $(me.tag.value)"
                     ASN.append!(me, _parse!(subtag, buf, indef_stack))

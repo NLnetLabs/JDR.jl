@@ -38,7 +38,7 @@ IA5STRING
 UTCTIME
 GENTIME
 Unimplemented = 998
-InvalidTag = 999
+Invalid = 999
 end
 
 
@@ -68,7 +68,7 @@ export RESERVED_ENC,
     UTCTIME,
     GENTIME,
     Unimplemented,
-    InvalidTag
+    Invalid
 
 # FIXME macro/eval this export
 #for t in instances(Tagnumber)
@@ -93,6 +93,8 @@ istag(t::Tag, tn::Tagnumber) = t.number == tn
 class(t::Tag) = t.class_constructed >> 6 # bit 8-7
 constructed(t::Tag) = t.class_constructed & 0x20 == 0x20 # bit 6
 iscontextspecific(t::Tag) = class(t) == 0x02
+
+InvalidTag() = Tag(0, Invalid, 0, false, 0, nothing, 0)
 
 
 function value(t::Tag; force_reinterpret=false)

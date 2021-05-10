@@ -48,4 +48,10 @@ using JDR.Common
     @test ipr.first == IPv4("1.2.0.0")
     @test ipr.last == IPv4("1.2.255.255")
 
+
+    # Base.show / string()
+    ipr = IPRange("::/0")
+    @test string(ipr) == "::/0"
+    ipr = IPRange("0.0.0.0/0")
+    @test string(ipr) == "0.0.0.0/0"
 end

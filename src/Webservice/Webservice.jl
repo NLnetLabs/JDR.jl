@@ -4,10 +4,8 @@ using JDR.RPKI#: process_tas, link_resources!
 using JDR.BGP: RISTree, ris_from_file, search
 using JDR.Common: AutSysNum, AutSysNumRange, IPRange, RemarkCounts_t, Remark, RemarkLevel, RemarkType
 using JDR.Common: split_scheme_uri
-#using JDR.RPKICommon: RPKINode, Lookup, search, CER, MFT, CRL, ROA
 
 using HTTP#: Router, HTTP.Request, @register
-using Dates
 
 using JSON3
 using StructTypes
@@ -17,6 +15,12 @@ using Atlas
 using FileWatching
 using ThreadPools
 using Query
+
+# for CleanLogger.jl:
+using Logging: Logging
+using LoggingExtras: MinLevelLogger, TeeLogger, TransformerLogger
+using Dates: Dates, DateTime, now, UTC
+
 
 using ReadWriteLocks
 include("JSONHelpers.jl")
@@ -455,7 +459,7 @@ function update()
 
     try
         @info "updating repository status based on RIPE Atlas measurements"
-        update_repostatus()
+        #update_repostatus()
     catch e
         @error "Something went wrong while trying to fetch RIPE Atlas measurements"
         @error e
@@ -601,7 +605,8 @@ function start()
         touch(WATCH_FN)
     end
 
-    ThreadPools.@tspawnat 2 updater()
+    update()
+    #ThreadPools.@tspawnat 2 updater()
 
     @info "starting webservice on CPU 1 out of $(Threads.nthreads()) available"
 

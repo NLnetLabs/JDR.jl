@@ -100,10 +100,10 @@ StructTypes.StructType(::Type{<:ObjectDetails}) = StructTypes.Struct()
 
 struct ObjectSlim{T}
     filename::String
-    details_url::String # this is only for ease of development
+    depr_details_url::String # this is only for ease of development
     object::T # FIXME force this to be a SlimCER or SlimMFT etc
     objecttype::String
-    remarks::Union{Nothing, Vector{RPKI.Remark}}
+    depr_remarks::Union{Nothing, Vector{RPKI.Remark}}
     remark_counts_me::Union{Nothing, RemarkCounts_t}
     remark_counts_children::Union{Nothing, RemarkCounts_t}
 end
@@ -137,12 +137,12 @@ StructTypes.StructType(::Type{ASN1.Tag}) = StructTypes.StringType()
 
 # Slim copy of RPKI.CER, with empty prefixes and ASNs Vectors
 struct SlimCER 
-    pubpoint::String
+    depr_pubpoint::String
     manifest::String
-    rrdp_notify::String
-    inherit_v6_prefixes::Union{Nothing,Bool}
-    inherit_v4_prefixes::Union{Nothing,Bool}
-    inherit_ASNs::Union{Nothing, Bool}
+    depr_rrdp_notify::String
+    depr_inherit_v6_prefixes::Union{Nothing,Bool}
+    depr_inherit_v4_prefixes::Union{Nothing,Bool}
+    depr_inherit_ASNs::Union{Nothing, Bool}
 end
 SlimCER(cer::RPKI.CER) = begin
     SlimCER(cer.pubpoint, cer.manifest, cer.rrdp_notify,

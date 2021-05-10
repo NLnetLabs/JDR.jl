@@ -1,7 +1,3 @@
-using Logging
-using LoggingExtras
-using Dates;
-
 const date_format = "yyyy-mm-dd HH:MM:SS"
 
 timestamp_logger(logger) = TransformerLogger(logger) do log
@@ -49,7 +45,7 @@ function init_logger()
     if !(global_logger() isa TeeLogger)
         JDRlogger = TeeLogger(
                               global_logger(),
-                              timestamp_logger(MinLevelLogger(CleanLogger(JDR.CFG["webservice"]["logfile"]), Logging.Warn)),
+                              timestamp_logger(MinLevelLogger(CleanLogger(CFG["webservice"]["logfile"]), Logging.Warn)),
                              );
         global_logger(JDRlogger)
     end

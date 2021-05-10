@@ -12,8 +12,13 @@
 #lacnic     = "rsync://repository.lacnic.net/rpki/lacnic/rta-lacnic-rpki.cer"
 #ripe       = "rsync://rpki.ripe.net/ta/ripe-ncc-ta.cer"
 
+
+#ripetest   = "rsync://localcert.ripe.net/ta/ripe-ncc-pilot.cer"
+#apnictest  = "rsync://rpki-testbed.apnic.net/repository/apnic-rpki-root-iana-origin-test.cer"
+#apnic_as0  = "rsync://rpki-as0.apnic.net/repository/APNIC-AS0-AP/apnic-rpki-root-as0-origin.cer"
+krilltest  = "rsync://testbed.rpki.nlnetlabs.nl/ta/ta.cer"
 [webservice]
 port = 8081
 domain = "http://localhost:8081" # NB: no trailing slash here
-atlas_api_key = ""
+atlas_api_key = "84d31224-db05-422c-b5d0-0b886b73f87d"
 logfile = "/tmp/jdr.log"

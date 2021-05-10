@@ -84,6 +84,7 @@ end
 @check "cRLNumber" begin
 end
 
+#FIXME this is never called
 function check_ASN1_extension(oid::Vector{UInt8}, o::RPKIObject{T}, node::Node, tpi::TmpParseInfo) where T
     if oid == @oid("2.5.29.35")
         check_ASN1_authorityKeyIdentifier(o, node, tpi)

@@ -605,8 +605,7 @@ function start()
         touch(WATCH_FN)
     end
 
-    update()
-    #ThreadPools.@tspawnat 2 updater()
+    ThreadPools.@tspawnat 2 updater()
 
     @info "starting webservice on CPU 1 out of $(Threads.nthreads()) available"
 

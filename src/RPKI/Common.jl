@@ -14,14 +14,20 @@ using Sockets
 using StatsBase
 using Query
 
-export RPKIObject, RPKINode, TmpParseInfo, Lookup, RPKIFile, RootCER, CER, MFT, ROA, CRL
-export add_resource!, root_to, iterate, print_ASN1
+export RPKIObject, RPKINode, TmpParseInfo, Lookup, RPKIFile, RootCER, CER, MFT, ROA, CRL, vrps
+export add_resource!, get_object, root_to, iterate, print_ASN1
 
 # from Lookup.jl:
 export search, new_since, add_filename!, add_missing_filename!, add_resource, get_pubpoint
 
 abstract type RPKIFile end
 
+"""
+    RPKIObject{T<:RPKIFile}
+
+Contains an `object` T (i.e. a `CER`, `MFT`, `CRL` or `ROA`), decoded from `filename` into an
+annotated ASN1 tree in `tree`. Any warnings or errors for this object are stored in `remarks`.
+"""
 mutable struct RPKIObject{T<:RPKIFile}
     filename::String
     tree::Union{Nothing, Node}
@@ -57,6 +63,14 @@ end
 # - can (do we need to) we further optimize/parametrize RPKINode on .obj?
 # - should children and/or siblings be a Union{nothing, Vector} to reduce
 # allocations?
+
+"""
+    RPKINode
+
+Represents a file in the RPKI, with pointers to its `parent`, `children` and possible `siblings`.
+
+The `obj` points to the `RPKIObject{T}` of this RPKINode, e.g. a `RPKIObject{CER}`.
+"""
 mutable struct RPKINode
     parent::Union{Nothing, RPKINode}
     children::Vector{RPKINode}
@@ -72,6 +86,9 @@ RPKINode(o::RPKIObject) = RPKINode(nothing, RPKINode[], nothing, o, nothing, not
 #RPKINode() = RPKINode(nothing, RPKINode[], nothing, nothing, RemarkCounts(), RemarkCounts())
 #RPKINode(o::RPKIObject) = RPKINode(nothing, RPKINode[], nothing, o, RemarkCounts(), RemarkCounts())
 ##RPKINode(s::String) = RPKINode(nothing, RPKINode[], nothing, s, RemarkCounts(), RemarkCounts()) # DEPR
+
+get_object(n::RPKINode) = n.obj.object
+get_object(o::RPKIObject) = o.object
 
 import Base: iterate
 Base.IteratorSize(::RPKINode) = Base.SizeUnknown()
@@ -313,6 +330,25 @@ ROA() = ROA(0, VRPS(),
             IntervalTree{IPv6, Interval{IPv6}}(),
             IntervalTree{IPv4, Interval{IPv4}}(),
            )
+
+struct VRP{T<:IPAddr}
+    ipr::IPRange{T}
+    maxlen::Union{Nothing, Int}
+end
+
+function vrps_v4(r::ROA)
+    [VRP{IPv4}(IPRange(e.first, e.last), e.value) for e in r.vrp_tree.resources_v4]
+end
+function vrps_v6(r::ROA)
+    [VRP{IPv6}(IPRange(e.first, e.last), e.value) for e in r.vrp_tree.resources_v6]
+end
+function vrps(r::ROA)
+    vcat(vrps_v6(r), vrps_v4(r))
+end
+
+function Base.show(io::IO, vrp::VRP)
+    print(io, IPRange(vrp.ipr.first, vrp.ipr.last), "-", vrp.maxlen)
+end
 
 
 mutable struct CRL <: RPKIFile

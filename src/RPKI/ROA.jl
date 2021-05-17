@@ -9,7 +9,7 @@ using JDR.RPKICommon: ROA, RPKIObject, RPKIFile, TmpParseInfo
 
 using IntervalTrees: Interval, IntervalValue
 using SHA: sha256
-using Sockets: IPv6, IPv4
+using Sockets: IPAddr, IPv6, IPv4
 
 import JDR.RPKI # to extend check_ASN1, check_cert, add_resource!, check_resources
 include("../ASN1/macro_check.jl")

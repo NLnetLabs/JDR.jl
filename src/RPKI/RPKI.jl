@@ -9,7 +9,7 @@ using JDR.ASN1: Node
 using IntervalTrees: IntervalValue
 using Sockets: IPAddr
 
-export process_tas
+export process_tas, process_ta, process_cer, link_resources!
 
 """
     check_ASN1
@@ -367,48 +367,19 @@ function process_cer(cer_fn::String, lookup::Lookup, tpi::TmpParseInfo) :: RPKIN
 end
 
 
-function _merge_RIRs(a::RPKINode, b::RPKINode) :: RPKINode
-    # check the first RPKINode begin "root", i.e. no attached .obj
-    @assert isnothing(a.obj)
-    @assert isnothing(b.obj)
-    @assert length(b.children) == 1
-
-    push!(a.children, b.children[1]) 
-    a
-end
-
-function _merge_lookups(a::Lookup, b::Lookup) ::Lookup
-    for property in propertynames(a)
-        #TODO prefix_tree_ is replaced with :resources_v IntervalTree
-        if property == :prefix_tree_v6 || property == :prefix_tree_v4
-            continue
-        end
-        if getproperty(a, property) isa Vector
-            append!(getproperty(a, property), getproperty(b, property))
-        else
-            #mergewith!(Base.append!, getproperty(a, property), getproperty(b, property))
-            merge!(getproperty(a, property), getproperty(b, property))
-        end
-    end
-    #mergewith!(append!, a.filenames, b.filenames)
-    a
-end
-
 # processes all the data on disk under a single TA
 # based on a specific TA-path and repodir?
 # based on config, thus only needing a TA Symbol name as input?
-function process_ta(ta_cer_fn::String, repodir::String; stripTree::Bool=false, nicenames=true) :: Tuple{RPKINode, Lookup}
+function process_ta(ta_cer_fn::String; repodir::String=CFG["rpki"]["rsyncrepo"], lookup=Lookup(), stripTree::Bool=false, nicenames=true) :: Tuple{RPKINode, Lookup}
     @debug "process_tal for $(basename(ta_cer_fn)) with repodir $(repodir)"
-    @assert isfile(ta_cer_fn)
-    @assert isdir(repodir)
+    @assert isfile(ta_cer_fn) "Can not open file $(ta_cer_fn)"
+    @assert isdir(repodir) "Can not find directory $(repodir)"
 
     # get rsync url from tal
     #
-    lookup = Lookup()
-    root = RPKINode()
-    #(hostname, cer_fn) = split_scheme_uri(rsync_url)  
+    rir_root = RPKINode()
     try
-        add(root, process_cer(ta_cer_fn, lookup, TmpParseInfo(;repodir,lookup,stripTree,nicenames)))
+        rir_root = process_cer(ta_cer_fn, lookup, TmpParseInfo(;repodir,lookup,stripTree,nicenames))
     catch e
         @error "error while processing $(ta_cer_fn)"
         @error e
@@ -419,19 +390,19 @@ function process_ta(ta_cer_fn::String, repodir::String; stripTree::Bool=false, n
     # 'fetch' cer from TAL ?
     # check TA signature (new)
     # process first cer, using repodir
-    return root, lookup
+    return rir_root, lookup
 end
 
-function _glue_rootnode(tree::RPKINode) :: RPKINode
-    @assert isnothing(tree.obj) "Root node already glued?"
-    rootobj = RPKIObject{RootCER}()
-    push!(rootobj.object.resources_v6, IntervalValue(IPRange("::/0"), [e for e in tree.children]))
-    push!(rootobj.object.resources_v4, IntervalValue(IPRange("0.0.0.0/0"), [e for e in tree.children]))
-    tree.obj = rootobj
-    tree
-end
+# TODO still needed?
+#function _glue_rootnode(tree::RPKINode) :: RPKINode
+#    @assert isnothing(tree.obj) "Root node already glued?"
+#    rootobj = RPKIObject{RootCER}()
+#    push!(rootobj.object.resources_v6, IntervalValue(IPRange("::/0"), [e for e in tree.children]))
+#    push!(rootobj.object.resources_v4, IntervalValue(IPRange("0.0.0.0/0"), [e for e in tree.children]))
+#    tree.obj = rootobj
+#    tree
+#end
 
-#function retrieve_all(tal_urls=JDR.CFG["rpki"]["tals"]; stripTree::Bool=false, nicenames=true) :: Tuple{RPKINode, Lookup}
 
 """
     process_tas([tal_urls::Dict]; strip_tree::Bool, nicenames::Bool)
@@ -441,54 +412,38 @@ Process all trust anchors configured in `JDR.toml`.
 Returns the tree and a lookup struct as `Tuple{RPKINode, Lookup}`.
 
 """
-function process_tas(tal_urls=CFG["rpki"]["tals"]; stripTree::Bool=false, nicenames=true) :: Tuple{RPKINode, Lookup}
-    branches = RPKINode[]
+function process_tas(tal_urls=CFG["rpki"]["tals"]; stripTree::Bool=false, nicenames=true) :: Union{Nothing, Tuple{RPKINode, Lookup}}
+    if isempty(tal_urls)
+        @warn "No TALs configured, please create/edit JDR.toml and run
+
+            JDR.Config.generate_config()
+
+        "
+        return nothing
+    end
+
     lookup = Lookup()
+    rpki_root = RPKINode()
+    rpki_root.obj = RPKIObject{RootCER}()
 
     for (rir, rsync_url) in collect(tal_urls)
-        root = RPKINode()
         (hostname, cer_fn) = split_scheme_uri(rsync_url)  
         rir_dir = joinpath(CFG["rpki"]["rsyncrepo"], hostname)
-
-        # For now, we rely on Routinator for the actual fetching
-        # We do however construct all the paths and mimic the entire procedure
         if !isdir(rir_dir)
-            @error "repo dir not found: $(rir_dir)"
-            @assert isdir(rir_dir)
+            @error "repo dir for $(rir) not found: $(rir_dir)"
+            continue
         end
-
-        # 'rsync' the .cer from the TAL
-        ta_cer = joinpath(rir_dir, cer_fn)
-        @info "Processing $(rir) on thread $(Threads.threadid())"
-        @debug ta_cer
-        @assert isfile(ta_cer)
-
-        # start recursing
-        try
-            add(root, process_cer(ta_cer, lookup, TmpParseInfo(;lookup,stripTree,nicenames)))
-        catch e
-            # TODO: what is a proper way to record the error, but continue with
-            # the rest of the repo?
-            # maybe a 'hard error counter' per RIR/pubpoint ?
-            # also revisit the try/catches in process_cer()
-            
-            @error "error while processing $(ta_cer)"
-            @error e
-            display(stacktrace(catch_backtrace()))
-
-            rethrow(e)
-        end
-        @info "pushing branch for $(rir) from thread $(Threads.threadid())"
-        push!(branches, root)
-        root = nothing
+        ta_cer_fn = joinpath(rir_dir, cer_fn)
+        @info "Processing $(rir)"
+        (rir_root, _) = process_ta(ta_cer_fn; lookup, stripTree, nicenames)
+        add(rpki_root, rir_root)
         GC.gc()
     end
-    GC.gc()
-
-    (reduce(_merge_RIRs, branches) |> _glue_rootnode, lookup)
+    rpki_root, lookup
 end
 
-function _pubpoints!(pp_tree::RPKINode, tree::RPKINode, current_pp::String)
+#TODO remove?
+function _depr_pubpoints!(pp_tree::RPKINode, tree::RPKINode, current_pp::String)
 
     if isempty(tree.children)
         #@debug "isempty tree.children"
@@ -534,7 +489,8 @@ function _pubpoints!(pp_tree::RPKINode, tree::RPKINode, current_pp::String)
     end
 end
 
-function pubpoints(tree::RPKINode) :: RPKINode
+#TODO remove?
+function depr_pubpoints(tree::RPKINode) :: RPKINode
     pp_tree = RPKINode(nothing, [], "root")
     for c in tree.children
         if ! isnothing(c.obj) && c.obj isa RPKIObject{CER}

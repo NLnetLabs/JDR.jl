@@ -1,0 +1,45 @@
+using JDR.BGP
+
+using Sockets
+using JDR.Common: IPRange
+
+dumpv4 = testdata_fn("riswhoisdump.IPv4")
+dumpv6 = testdata_fn("riswhoisdump.IPv6")
+
+@testset "create IntervalTree from riswhois dump" begin
+
+    risv4 = BGP.ris_from_file(IPv4, dumpv4)
+    risv6 = BGP.ris_from_file(IPv6, dumpv6)
+    @show length(risv4)
+    @show length(risv6)
+
+    @show as8587 = BGP.search(risv4, AutSysNum(8587))
+end
+
+@testset "search for prefix" begin
+    risv4 = BGP.ris_from_file(IPv4, dumpv4)
+    risv6 = BGP.ris_from_file(IPv6, dumpv6)
+    @show length(risv4)
+    @show length(risv6)
+
+    @show BGP.search(risv4, IPRange("130.89.0.0/15"))
+    @show BGP.search(risv4, IPRange("130.89.0.0/15"), true)
+end
+
+@testset "overlap BGP/VRPs" begin
+    JDR.Config.generate_config()
+    (tree, lookup) = JDR.RPKI.retrieve_all(; stripTree=true, nicenames=false);
+
+    # determine type of this IntervalTree so we can create a new one after
+    # filtering
+    iv_t = typeof(first(lookup.resources_v4))
+    t = iv_t.parameters[1]
+    #filter out 0/0
+    vrps_v4 = collect(iv_t, lookup.resources_v4 |> @filter(!(_.first == t("0") && _.last == t(typemax(UInt32)))))
+    vrps_v4 = IntervalTree{t, iv_t}(vrps_v4)
+
+    risv4 = BGP.ris_from_file(IPv4, dumpv4)
+    matches = intersect(vrps_v4, risv4) |> collect
+    @show length(matches)
+end
+

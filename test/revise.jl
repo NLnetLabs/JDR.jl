@@ -3,6 +3,13 @@ using JDR
 using Test
 using Glob
 
+ROUTINATOR_DIR = "/home/luuk/.rpki-cache/repository/rsync/"
+TESTDATA = joinpath(dirname(pathof(JDR)), "..", "test", "testdata")
+
+
+# some helpers:
+testdata_fn(filename::String) = joinpath(dirname(pathof(JDR)), "..", "test", "testdata", filename)
+
 function all_rpki_files(dir, exts=["cer", "mft", "crl", "roa"])
     all_files = []
     for d in walkdir(dir), ext in exts
@@ -17,7 +24,7 @@ trigger = function (path)
     println(path)
     sleep(0.1)
     revise()
-    runtests(@__DIR__, skip=["runtests.jl"])
+    runtests(@__DIR__, skip=["revise.jl"])
 end
 
 watch(trigger, @__DIR__, sources=[pathof(JDR)])

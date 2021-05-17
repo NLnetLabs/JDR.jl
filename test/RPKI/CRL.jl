@@ -1,12 +1,13 @@
-@testset "Object checks: *.cer" begin
-    all_files = all_rpki_files(ROUTINATOR_DIR, ["cer"])
-    @debug "got $(length(all_files)) .cer files to check"
+@skip @testset "Object checks: *.crl" begin
+    all_files = all_rpki_files(ROUTINATOR_DIR, ["crl"])
+    @debug "got $(length(all_files)) .crl files to check"
     @time begin
     for (i, file) in enumerate(all_files)
         try
             #@debug file
             r = RPKI.RPKIObject(file)
-            #@debug typeof(r)
+            @debug typeof(r)
+            throw("stop")
             o = RPKI.check(r)
             #print(o.object.prefixes)
             print("\r$(i) parsed")

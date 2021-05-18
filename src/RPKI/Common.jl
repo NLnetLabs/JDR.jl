@@ -14,7 +14,7 @@ using Sockets
 using StatsBase
 using Query
 
-export RPKIObject, RPKINode, TmpParseInfo, Lookup, RPKIFile, RootCER, CER, MFT, ROA, CRL, vrps
+export RPKIObject, RPKINode, TmpParseInfo, Lookup, RPKIFile, RootCER, CER, MFT, ROA, CRL, vrps, vrps_v4, vrps_v6
 export add_resource!, get_object, root_to, iterate, print_ASN1
 
 # from Lookup.jl:

@@ -7,4 +7,4 @@ export RootCER, CER, MFT, CRL, ROA, VRP
 export get_object, get_pubpoint, new_since, print_ASN1, search, vrps, vrps_v6, vrps_v4
 
 using .Common
-export AutSysNum, IPRange
+export AutSysNum, IPRange, prefixlen

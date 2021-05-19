@@ -367,9 +367,24 @@ function process_cer(cer_fn::String, lookup::Lookup, tpi::TmpParseInfo) :: RPKIN
 end
 
 
-# processes all the data on disk under a single TA
-# based on a specific TA-path and repodir?
-# based on config, thus only needing a TA Symbol name as input?
+"""
+	process_ta(ta_cer_fn::String; kw...)
+
+Takes a first cerficate to parse and processes all related descending files.
+Called by [`process_tas`](@ref).
+
+
+Optional keyword arguments:
+
+ - `repodir::String` -- defaults to `CFG["rpki"]["rsyncrepo"]`, i.e. the `JDR.toml` config file.
+    Useful for processing data that is stored in a non-default directory structure, for
+    example when the TA certificate is stored in a different directory than the RPKI files.
+ - `lookup` -- defaults to an empty `Lookup()`
+ - `stripTree::Bool` -- drop the ASN.1 tree from objects after validation, defaults to `false`
+ - `nicenames::Bool` -- enrich the ASN.1 tree with human-readable fieldnames, defaults to `true`
+
+Returns `Tuple{`[`RPKINode`](@ref)`,`[`Lookup`](@ref)`}`
+"""
 function process_ta(ta_cer_fn::String; repodir::String=CFG["rpki"]["rsyncrepo"], lookup=Lookup(), stripTree::Bool=false, nicenames=true) :: Tuple{RPKINode, Lookup}
     @debug "process_tal for $(basename(ta_cer_fn)) with repodir $(repodir)"
     @assert isfile(ta_cer_fn) "Can not open file $(ta_cer_fn)"
@@ -405,11 +420,26 @@ end
 
 
 """
-    process_tas([tal_urls::Dict]; strip_tree::Bool, nicenames::Bool)
+    process_tas([tal_urls::Dict]; kw...)
 
-Process all trust anchors configured in `JDR.toml`.
+Process all trust anchors configured in `JDR.toml`. This is likely the most common way to
+start doing anything using `JDR.jl`:
 
-Returns the tree and a lookup struct as `Tuple{RPKINode, Lookup}`.
+```julia
+using JDR;
+(tree, lookup) = process_tas()
+```
+
+Optionally, a `Dict` of similar form can be passed directly to specify trust anchors not in
+the configuration file, or a subset of those that are specified.
+
+Optional keyword arguments:
+
+ - `repodir::String` -- defaults to `CFG["rpki"]["rsyncrepo"]`, i.e. the `JDR.toml` config file. 
+ - `stripTree::Bool` -- drop the ASN.1 tree from objects after validation, defaults to `false`
+ - `nicenames::Bool` -- enrich the ASN.1 tree with human-readable fieldnames, defaults to `true`
+
+Returns `Tuple{`[`RPKINode`](@ref)`,`[`Lookup`](@ref)`}`
 
 """
 function process_tas(tal_urls=CFG["rpki"]["tals"]; stripTree::Bool=false, nicenames=true) :: Union{Nothing, Tuple{RPKINode, Lookup}}

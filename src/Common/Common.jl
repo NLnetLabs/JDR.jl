@@ -173,6 +173,13 @@ end
 ##############################
 
 
+"""
+Wrapper for `asn::UInt32`. Can be constructed directly via any Integer, or be
+parsed from a String: 
+
+    AutSysNum(s::AbstractString) 
+
+"""
 struct AutSysNum
     asn::UInt32
 end

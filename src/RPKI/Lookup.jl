@@ -1,3 +1,22 @@
+"""
+    Lookup
+
+Provides mappings/shortcuts to RPKINodes of particular interest.
+
+Fields:
+
+ - `ASNs::Dict{AutSysNum}{Vector{RPKINode}}`
+ - `filenames::Dict{String}{RPKINode}`
+ - `missing_files::Dict{String}{RPKINode}`
+ - `resources_v6::IntervalTree{IPv6,IntervalValue{IPv6,RPKINode}}`
+ - `resources_v4::IntervalTree{IPv4,IntervalValue{IPv4,RPKINode}}`
+ - `pubpoints::Dict{String}{Pair{Int,Set{RPKINode}}}`
+ - `too_specific::Vector{RPKINode}`
+ - `invalid_signatures::Vector{RPKIObject{T} where T}`
+ - `invalid_certs::Vector{RPKINode}`
+ - `valid_certs::Vector{RPKINode}`
+
+"""
 Base.@kwdef struct Lookup
     ASNs::Dict{AutSysNum}{Vector{RPKINode}} = Dict()
     filenames::Dict{String}{RPKINode} = Dict()
@@ -29,10 +48,18 @@ function add_missing_filename!(l::Lookup, fn::String, node::RPKINode)
     l.missing_files[fn] = node
 end
 
+"""
+    search(l::Lookup, asn::AutSysNum)
+Search for RPKINode's related to a [`AutSysNum`](@ref)
+"""
 function search(l::Lookup, asn::AutSysNum) :: Vector{RPKINode}
     get(l.ASNs, asn, AutSysNum[])
 end
 
+"""
+    search(l::Lookup, filename::AbstractString) 
+Search for RPKINode's related to `filename`
+"""
 function search(l::Lookup, filename::AbstractString) :: Dict{String}{RPKINode}
     filter(fn->occursin(filename, first(fn)), l.filenames)
 end
@@ -52,8 +79,13 @@ end
 # Helpers 
 ##############################
 
+"""
+    get_pubpoint(node::RPKINode) :: String
+
+Get the domain name of the publication point for the file represented by this `RPKINode`.
+"""
 function get_pubpoint(node::RPKINode) :: String
-    if isnothing(node.obj)
+    if node.obj.object isa RootCER
         return "root"
     end
     return if node.obj.object isa CER
@@ -93,6 +125,15 @@ function remarks_per_repo(tree::RPKINode) :: Dict{String}{Vector{Pair{Remark, RP
    res 
 end
 
+"""
+    new_since(tree::RPKINode, tp::TimePeriod=Hour(1)) :: Vector{RPKINode}
+
+Find files published in the last `tp`, defaulting to one hour.
+
+For CER objects, this is based on `.notBefore`.
+For MFT and CRL, this is based on `.this_update`.
+
+"""
 function new_since(tree::RPKINode, tp::TimePeriod=Hour(1)) :: Vector{RPKINode}
     tree |>
     @filter(!isnothing(_.obj)) |>
@@ -103,11 +144,10 @@ function new_since(tree::RPKINode, tp::TimePeriod=Hour(1)) :: Vector{RPKINode}
 end
 
 """
-    search(tree, ipr)
-
+    search(tree::RPKINode, ipr::IPRange{T}, include_more_specific::Bool=false) 
 
 Find RPKINodes holding CERs or ROAs containing resources queried for. ROAs are
-matched if the ipr matches resources on the EE, or in the VRPs.
+matched if the `ipr` matches resources on the EE, or in the VRPs.
 
 """
 function search(tree::RPKINode, ipr::IPRange{T}, include_more_specific::Bool=false) :: Vector{RPKINode} where {T<:IPAddr} 
@@ -229,16 +269,15 @@ function search(l::Lookup, q1::T, q2::T, include_more_specific::Bool) :: Vector{
     map(e->e.value, matches) |> unique
 end
 
-
+""" Wrapper for id::String """
 struct IssuerSubject
     id::String
 end
 export IssuerSubject
+
 """
     search(tree::RPKINode, id::IssuerSubject)
-
 Search certificates containing this issuer/subject ID
-
 """
 function search(tree::RPKINode, issuer_subject::IssuerSubject) :: Vector{RPKINode}
     tree |>

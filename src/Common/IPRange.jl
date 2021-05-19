@@ -5,7 +5,7 @@
 """
     IPRange{T<:IPAddr}
 
-Describes an IP prefix or range by only storing the first and last
+Describes an IP prefix or range by only storing the `first` and `last`
 `Sockets.IPAddr`.
 """
 struct IPRange{T} <: AbstractRange{T}
@@ -26,10 +26,28 @@ Base.step(r::IPRange) = 1
 Base.:+(a::IPv4, i::Integer) = IPv4(a.host + i)
 Base.:+(a::IPv6, i::Integer) = IPv6(a.host + i)
 
+"""
+    IPRange(a::{IPv6}, prefixlen::Int)
+    IPRange(a::{IPv4}, prefixlen::Int)
+
+Create IPRange{IPv6/IPv4} from address and prefixlen
+
+    IPRange(s::AbstractString)
+
+Create an IPRange from the string representation, i.e.
+
+```julia-repl
+IPRange("1.2.3.0/24")
+1.2.3.0/24
+julia> IPRange("2001:db8::/32")
+2001:db8::/32
+```
+"""
 function IPRange(a::IPv4, prefixlen::Int)
     _a = IPv4(a.host >> (32-prefixlen) << (32-prefixlen))
     IPRange(_a, IPv4(a.host | typemax(UInt32) >> prefixlen))
 end
+
 function IPRange(a::IPv6, prefixlen::Int)
     _a = IPv6(a.host >> (128-prefixlen) << (128-prefixlen))
     IPRange(_a, IPv6(a.host | typemax(UInt128) >> prefixlen))
@@ -72,6 +90,12 @@ function Base.show(io::IO, r::IPRange{IPv6})
     end
 end
 
+"""
+    prefixlen(r::IPRange{IPv6})
+    prefixlen(r::IPRange{IPv4})
+
+Returns the prefix length of an [`IPRange`](@ref).
+"""
 prefixlen(r::IPRange{IPv6}) :: Int =  128 - trunc(Int, log2(length(r)))
 prefixlen(r::IPRange{IPv4}) :: Int =  32 - trunc(Int, log2(length(r)))
 

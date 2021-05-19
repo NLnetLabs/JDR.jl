@@ -20,6 +20,17 @@ export add_resource!, get_object, root_to, iterate, print_ASN1
 # from Lookup.jl:
 export search, new_since, add_filename!, add_missing_filename!, add_resource, get_pubpoint
 
+""" Abstract type to parameterize [`RPKIObject`](@ref)
+```julia-repl
+julia> subtypes(RPKIFile)
+5-element Vector{Any}:
+ CER
+ CRL
+ MFT
+ ROA
+ RootCER
+```
+"""
 abstract type RPKIFile end
 
 """
@@ -27,6 +38,15 @@ abstract type RPKIFile end
 
 Contains an `object` T (i.e. a `CER`, `MFT`, `CRL` or `ROA`), decoded from `filename` into an
 annotated ASN1 tree in `tree`. Any warnings or errors for this object are stored in `remarks`.
+
+Fields:
+ - `filename::String`
+ - `tree::Union{Nothing, Node}` -- ASN1.Node
+ - `object::T`
+ - `remarks::Union{Nothing, Vector{Remark}}`
+ - `remarks_tree::Union{Nothing, Vector{Remark}}`
+ - `sig_valid::Union{Nothing, Bool}`
+ - `cms_digest_valid::Union{Nothing, Bool}`
 """
 mutable struct RPKIObject{T<:RPKIFile}
     filename::String
@@ -50,10 +70,6 @@ function Base.show(io::IO, obj::RPKIObject{T}) where T
     print(io, obj.object)
 end
 
-function print_ASN1(o::RPKIObject{T}; max_lines=0) where T
-    print_node(o.tree; traverse=true, max_lines)
-end
-
 
 function RPKIObject{T}(filename::String, tree::Node) where {T<:RPKIFile}
     RPKIObject{T}(filename, tree, T(), nothing, nothing, nothing, nothing)
@@ -70,6 +86,15 @@ end
 Represents a file in the RPKI, with pointers to its `parent`, `children` and possible `siblings`.
 
 The `obj` points to the `RPKIObject{T}` of this RPKINode, e.g. a `RPKIObject{CER}`.
+
+Fields:
+ - `parent::Union{Nothing, RPKINode}`
+ - `children::Vector{RPKINode}`
+ - `siblings::Union{Nothing, Vector{RPKINode}}`
+ - `obj::Union{Nothing, RPKIObject}`
+ - `remark_counts_me::Union{Nothing, RemarkCounts_t}`
+ - `remark_counts_children::Union{Nothing, RemarkCounts_t}`
+
 """
 mutable struct RPKINode
     parent::Union{Nothing, RPKINode}
@@ -87,6 +112,12 @@ RPKINode(o::RPKIObject) = RPKINode(nothing, RPKINode[], nothing, o, nothing, not
 #RPKINode(o::RPKIObject) = RPKINode(nothing, RPKINode[], nothing, o, RemarkCounts(), RemarkCounts())
 ##RPKINode(s::String) = RPKINode(nothing, RPKINode[], nothing, s, RemarkCounts(), RemarkCounts()) # DEPR
 
+"""
+    get_object(n::RPKINode)
+    get_object(o::RPKIObject)
+    
+Returns the wrapped object (CER, MFT, CRL, ROA) for an RPKINode or RPKIObject.
+"""
 get_object(n::RPKINode) = n.obj.object
 get_object(o::RPKIObject) = o.object
 
@@ -236,6 +267,12 @@ TmpParseInfo(;repodir=CFG["rpki"]["rsyncrepo"],lookup=Lookup(),nicenames::Bool=t
 
 
 
+"""
+	RootCER <: RPKIFile
+
+Synthetic, 'empty certificate' to act as the single entry point to the RPKINode graph, with
+all the RIR trust anchor certificates being its children.
+"""
 struct RootCER <: RPKIFile
     resources_v6::IntervalTree{IPv6, IntervalValue{IPv6, Vector{RPKINode}}}
     resources_v4::IntervalTree{IPv4, IntervalValue{IPv4, Vector{RPKINode}}}
@@ -249,6 +286,7 @@ struct ASIdentifiers
     ranges::Vector{OrdinalRange{AutSysNum}}
 end
 
+""" Simple wrapper for `serial::Integer` """
 struct SerialNumber
     serial::Integer
 end
@@ -256,6 +294,28 @@ Base.convert(::Type{SerialNumber}, i::Integer) = SerialNumber(i)
 Base.string(s::SerialNumber) = uppercase(string(s.serial, base=16))
 
 const LinkedResources{T<:IPAddr} = IntervalMap{T, Vector{RPKINode}}
+"""
+	CER <: RPKIFile
+
+Represents a decoded certificate (.cer) file.
+
+Fields:
+
+Extracted from decoded file:
+ - `serial`  -- Serial number on this certificate
+ - `notBefore`/`notAfter` -- DateTime fields
+ - `pubpoint` -- String
+ - `manifest` -- String
+ - `rrdp_notify` -- String
+ - `selfsigned` -- Bool or Nothing
+ - `issuer` -- String
+ - `subject` -- String
+
+Set after validation: 
+ - `validsig` -- Bool or Nothing
+ - `resources_valid` -- Bool or Nothing
+
+"""
 Base.@kwdef mutable struct CER <: RPKIFile
     serial::SerialNumber = 0
     notBefore::Union{Nothing, DateTime} = nothing
@@ -293,7 +353,20 @@ function Base.show(io::IO, cer::CER)
 end
 
 
+"""
+	MFT <: RPKIFile
 
+Represents a decoded manifest (.mft) file.
+
+Fields:
+
+Extracted from decoded file:
+ - `files` -- `Vector{String}` containing filenames listed on this manifest
+ - `loops` -- `Vector{String}` or `Nothing` listing the filenames causing a loop
+ - `missing_files` -- `Vector{String}` of filenames listed in the manifest but not found on disk
+ - `this_update`: `DateTime`
+ - `next_update`: `DateTime`
+"""
 mutable struct MFT <: RPKIFile
     files::Vector{String}
     loops::Union{Nothing, Vector{String}}
@@ -305,11 +378,19 @@ MFT() = MFT([], nothing, nothing, nothing, nothing)
 
 
 const _VRPS{T<:IPAddr} = IntervalMap{T, UInt8}
-"""
-    VRPS
 
-    Holds the IPv6 and IPv4 resources listed on this ROA, as an IntervalTree,
-    with Values denoting the maxlength.
+"""
+Holds the IPv6 and IPv4 resources listed on this ROA, as an IntervalTree,
+with Values denoting the maxlength.
+
+
+Fields:
+
+ - `resources_v6::_VRPS{IPv6}`
+ - `resources_v4::_VRPS{IPv4}`
+
+These field are named this way so we can easily to coverage checks between different
+RPKIObject types.  `_VRPS` is an alias for `IntervalMap{T, UInt8}`. 
 
 """
 struct VRPS
@@ -318,8 +399,23 @@ struct VRPS
 end
 VRPS() = VRPS(_VRPS{IPv6}(), _VRPS{IPv4}())
 
+"""
+	ROA <: RPKIFile
+
+Represents a decoded Route Origin Authorization (.roa) file.
+
+Fields:
+
+ - `asid` -- Integer
+ - `vrp_tree` -- [`VRPS`](@ref)
+ - `resources_v6` -- `IntervalTree{IPv6}` of the IPv6 resources in the EE certificate
+ - `resources_v4` -- `IntervalTree{IPv4}` of the IPv4 resources in the EE certificate
+
+After validation:
+ - `resources_valid` -- Bool or Nothing
+"""
 mutable struct ROA <: RPKIFile
-    asid::Integer
+    asid::Integer #TODO use Common.AutSysNum
     vrp_tree::VRPS
     resources_valid::Union{Nothing,Bool}
     resources_v6::Union{Nothing, IntervalTree{IPv6}}
@@ -342,6 +438,13 @@ end
 function vrps_v6(r::ROA)
     [VRP{IPv6}(IPRange(e.first, e.last), e.value) for e in r.vrp_tree.resources_v6]
 end
+"""
+    vrps(r::ROA)
+    vrps_v6(r::ROA)
+    vrps_v4(r::ROA)
+
+Get the VRPs listed on a ROA in a `Vector{VRP}`
+"""
 function vrps(r::ROA)
     vcat(vrps_v6(r), vrps_v4(r))
 end
@@ -350,7 +453,18 @@ function Base.show(io::IO, vrp::VRP)
     print(io, IPRange(vrp.ipr.first, vrp.ipr.last), "-", vrp.maxlen)
 end
 
+"""
+	CRL <: RPKIFile
 
+Represents a decoded Certificate Revocation List (.crl) file.
+
+Fields:
+
+ - `revoked_serials` -- Vector of [`SerialNumber`](@ref)'s
+ - `this_update` -- `DateTime`
+ - `next_update` -- `DateTime`
+
+"""
 mutable struct CRL <: RPKIFile
     revoked_serials::Vector{SerialNumber} # TODO also include Revocation Date for each serial
     this_update::Union{Nothing, DateTime}
@@ -361,7 +475,11 @@ Base.show(io::IO, crl::CRL) = print(io, crl.this_update, " -> ", crl.next_update
 
 
 
+"""
+    RPKIObject(filename::String)::RPKIObject{T}
 
+Parse and return a parameterized RPKIObject, going by the extension of the passed `filename`.
+"""
 function RPKIObject(filename::String)::RPKIObject
     tree = parse_file_recursive(filename)
     ext = lowercase(filename[end-3:end])
@@ -375,5 +493,19 @@ function RPKIObject{T}(filename::String)::RPKIObject{T} where {T}
     tree = parse_file_recursive(filename)
     RPKIObject{T}(filename, tree)
 end
+
+"""
+    print_ASN1(n::RPKINode{T}; max_lines=0)
+    print_ASN1(o::RPKIObject{T}; max_lines=0)
+
+Print the annotated ASN.1 tree structure for 
+"""
+function print_ASN1(n::RPKINode; max_lines=0) where T
+    print_node(n.obj.object.tree; traverse=true, max_lines)
+end
+function print_ASN1(o::RPKIObject{T}; max_lines=0) where T
+    print_node(o.tree; traverse=true, max_lines)
+end
+
 
 end # module

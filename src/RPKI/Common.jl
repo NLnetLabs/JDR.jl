@@ -495,16 +495,24 @@ function RPKIObject{T}(filename::String)::RPKIObject{T} where {T}
 end
 
 """
-    print_ASN1(n::RPKINode{T}; max_lines=0)
+    print_ASN1(n::RPKINode; max_lines=0)
     print_ASN1(o::RPKIObject{T}; max_lines=0)
 
 Print the annotated ASN.1 tree structure for 
 """
 function print_ASN1(n::RPKINode; max_lines=0) where T
-    print_node(n.obj.object.tree; traverse=true, max_lines)
+    if isnothing(n.obj) || isnothing(n.obj.tree)
+        @warn "no ASN.1 tree for this RPKINode, consider (re)running RPKI.check_ASN1"
+    else
+        print_node(n.obj.tree; traverse=true, max_lines)
+    end
 end
 function print_ASN1(o::RPKIObject{T}; max_lines=0) where T
-    print_node(o.tree; traverse=true, max_lines)
+    if isnothing(o.tree)
+        @warn "no ASN.1 tree for this RPKIObject, consider (re)running RPKI.check_ASN1"
+    else
+        print_node(o.tree; traverse=true, max_lines)
+    end
 end
 
 

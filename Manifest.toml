@@ -6,14 +6,6 @@ uuid = "0dad84c5-d112-42e6-8d28-ef12dabb789f"
 [[Artifacts]]
 uuid = "56f22d72-fd6d-98f1-02f0-08ddc0907c33"
 
-[[Atlas]]
-deps = ["HTTP", "JSON2"]
-git-tree-sha1 = "e69eff440b6089cd3f247c2ea86166ea56786c35"
-repo-rev = "master"
-repo-url = "../Atlas.jl"
-uuid = "fffdd0fa-cd2d-464f-a959-2e2d5749a296"
-version = "0.1.0"
-
 [[Base64]]
 uuid = "2a0f44e3-6c83-55bd-87e4-b1978d98bd5f"
 
@@ -372,12 +364,6 @@ deps = ["Printf", "RecipesBase", "Statistics"]
 git-tree-sha1 = "268c910cc49599d6c3cc28d7a22babe7c14cb046"
 uuid = "b189fb0b-2eb5-4ed4-bc0c-d34c51242431"
 version = "2.0.0"
-
-[[TimerOutputs]]
-deps = ["Printf"]
-git-tree-sha1 = "32cdbe6cd2d214c25a0b88f985c9e0092877c236"
-uuid = "a759f4b9-e2f1-59dc-863e-4aeb61b1ea8f"
-version = "0.5.8"
 
 [[URIs]]
 git-tree-sha1 = "97bbe755a53fe859669cd907f2d96aee8d2c1355"

@@ -4,7 +4,6 @@ authors = ["Luuk Hendriks <mail@luukhendriks.eu>"]
 version = "0.1.0"
 
 [deps]
-Atlas = "fffdd0fa-cd2d-464f-a959-2e2d5749a296"
 DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
 Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"
 FileWatching = "7b1f6079-737a-58dc-b8bc-7a2ca5c1b5ee"
@@ -23,14 +22,16 @@ StatsBase = "2913bbd2-ae8a-5f71-8c99-4fb6c76f3a91"
 StructTypes = "856f2bd8-1eba-4b0a-8007-ebc267875bd4"
 TOML = "fa267f1f-6049-4f14-aa54-33bafae1ed76"
 ThreadPools = "b189fb0b-2eb5-4ed4-bc0c-d34c51242431"
-TimerOutputs = "a759f4b9-e2f1-59dc-863e-4aeb61b1ea8f"
 
 [extras]
+Atlas = "fffdd0fa-cd2d-464f-a959-2e2d5749a296"
 Coverage = "a2441757-f6aa-5fb2-8edb-039e3f45d037"
 Jive = "ba5e3d4b-8524-549f-bc71-e76ad9e9deed"
 PProf = "e4faabce-9ead-11e9-39d9-4379958e3056"
 Revise = "295af30f-e4ad-537b-8983-00126c2a3abe"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+TimerOutputs = "a759f4b9-e2f1-59dc-863e-4aeb61b1ea8f"
 
 [targets]
-test = ["Coverage", "Jive", "PProf", "Revise", "Test"]
+test = ["Coverage", "Jive", "PProf", "Revise", "Test", "TimerOutputs"]
+ws = ["Atlas"]

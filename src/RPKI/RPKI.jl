@@ -262,10 +262,10 @@ function link_resources!(cer::RPKINode)
         if child.obj.object isa CER
             link_resources!(child)
         elseif child.obj.object isa ROA
-            @warn "not linking EE -> VRP" maxlog=3
+            #@warn "not linking EE -> VRP" maxlog=3
             
             # now we can get rid of the EE tree, roa.resources_v6/_v4
-            @warn "setting EE resources to nothing" maxlog=3
+            #@warn "setting EE resources to nothing" maxlog=3
             child.obj.object.resources_v6 = nothing
             child.obj.object.resources_v4 = nothing
         end

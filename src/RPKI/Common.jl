@@ -212,57 +212,48 @@ function remarks_below(node::RPKINode) :: Vector{RPKINode}
     collect
 end
 
+"""
+Struct to be passed around during a full run (`process_tas` or `process_ta`), containing
+transient info.
 
-mutable struct TmpParseInfo
-    repodir::String
-    lookup::Lookup
-    setNicenames::Bool
-    stripTree::Bool
-    subjectKeyIdentifier::Vector{UInt8}
-    signerIdentifier::Vector{UInt8}
-    eContent::Union{Nothing,Node}
-    signedAttrs::Union{Nothing,Node}
-    saHash::String
+Fields in this struct are mostly used 'internally' and should not be altered by hand.
+Only the following fields allow for some configuration:
 
-    caCert::Union{Nothing,Node}
-    issuer::Vector{String} # stack
+ - `repodir::String`, defaults to CFG["rpki"]["rsyncrepo"]
+ - `nicenames::Bool`, add fieldnames and human-readable values to ASN1 trees, default `true`
+ - `stripTree::Bool`, remove the ASN.1 tree to reduce memory footprint, default `false`
+ - `lookup::Lookup` , to continue using an existing Lookup struct, default is an empty
+   `Lookup()`. Passing an existing Lookup should be quite rare though.
+"""
+Base.@kwdef mutable struct TmpParseInfo
+    repodir::String = CFG["rpki"]["rsyncrepo"]
+    lookup::Lookup = Lookup()
+    nicenames::Bool = true
+    stripTree::Bool = false
 
-    eeCert::Union{Nothing,Node}
-    ee_rsaExponent::Union{Nothing,Node}
-    ee_rsaModulus::Union{Nothing,Node}
+    subjectKeyIdentifier::Vector{UInt8} = [] # TODO check use
+    signerIdentifier::Vector{UInt8} = [] # TODO check use
+    eContent::Union{Nothing,Node} = nothing
+    signedAttrs::Union{Nothing,Node} = nothing 
+    saHash::String = ""
 
-    eeSig::Union{Nothing,Node}
-    #certStack::Vector{RPKI.CER} # to replace all the other separate fields here
-    certStack::Vector{Any} # TODO rearrange include/modules so we can actually use type RPKI.CER here
+    caCert::Union{Nothing,Node} = nothing
+    issuer::Vector{String} = [] # used as stack
 
-    # used in MFT to check file hashes
-    cwd::String
+    eeCert::Union{Nothing,Node} = nothing
+    ee_rsaExponent::Union{Nothing,Node} = nothing
+    ee_rsaModulus::Union{Nothing,Node} = nothing
+
+    eeSig::Union{Nothing,Node} = nothing
+    certStack::Vector{Any} = [] # TODO rearrange include/modules so we can actually use type RPKI.CER here
+
+    # current working directory, used in MFT to check file hashes
+    cwd::String = ""
     # for ROA:
-    afi::UInt32
+    afi::UInt32 = 0x0
     # to verify CMS digest in MFT/ROAs:
-    cms_message_digest::String
+    cms_message_digest::String = ""
 end
-TmpParseInfo(;repodir=CFG["rpki"]["rsyncrepo"],lookup=Lookup(),nicenames::Bool=true,stripTree=false) = TmpParseInfo(repodir, lookup, nicenames, stripTree,
-                                                    [],
-                                                    [],
-                                                    nothing,
-                                                    nothing,
-                                                    "",
-
-                                                    nothing,
-                                                    [],
-
-                                                    nothing,
-                                                    nothing,
-                                                    nothing,
-                                                    nothing,
-                                                    [],
-                                                    "",
-                                                    0x0,
-                                                    "")
-
-
-
 
 """
 	RootCER <: RPKIFile

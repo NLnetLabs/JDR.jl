@@ -38,21 +38,21 @@ const MANDATORY_EXTENSIONS = Vector{Pair{Vector{UInt8}, String}}([
 
         #now check for the MUST-be presents:
         if access_description[1].tag.value == @oid "1.3.6.1.5.5.7.48.5"
-            tpi.setNicenames && (access_description[1].nicename = "caRepository")
+            tpi.nicenames && (access_description[1].nicename = "caRepository")
             carepo_present = true
             if o.object isa CER
                 o.object.pubpoint = String(copy(access_description[2].tag.value))
             end
         end
         if access_description[1].tag.value == @oid "1.3.6.1.5.5.7.48.10"
-            tpi.setNicenames && (access_description[1].nicename = "rpkiManifest")
+            tpi.nicenames && (access_description[1].nicename = "rpkiManifest")
             manifest_present = true
             if o.object isa CER
                 o.object.manifest = String(copy(access_description[2].tag.value))
             end
         end
         if access_description[1].tag.value == @oid "1.3.6.1.5.5.7.48.13"
-            tpi.setNicenames && (access_description[1].nicename = "rpkiNotify")
+            tpi.nicenames && (access_description[1].nicename = "rpkiNotify")
             if o.object isa CER
                 o.object.rrdp_notify = String(copy(access_description[2].tag.value))
             end
@@ -197,7 +197,7 @@ end
 @check "subjectKeyIdentifier" begin
     # second pass
     DER.parse_append!(DER.Buf(node.tag.value), node)
-    if tpi.setNicenames
+    if tpi.nicenames
         node[1].nicevalue = bytes2hex(node[1].tag.value)
     end
 end
@@ -209,7 +209,7 @@ end
     for c in node[1].children
         check_tag(c, ASN1.SEQUENCE)
         check_tag(c[1], ASN1.OID)
-        if tpi.setNicenames
+        if tpi.nicenames
             c[1].nicevalue = oid_to_str(c[1].tag.value)
         end
     end
@@ -220,7 +220,7 @@ end
     DER.parse_append!(DER.Buf(node.tag.value), node)
     check_tag(node[1], ASN1.SEQUENCE)
     check_tag(node[1,1], ASN1.BOOLEAN)
-    if tpi.setNicenames
+    if tpi.nicenames
         node[1,1].nicename = "cA"
     end
 end
@@ -230,7 +230,7 @@ end
     DER.parse_append!(DER.Buf(node.tag.value), node)
     check_tag(node, ASN1.OCTETSTRING)
     check_tag(node[1], ASN1.BITSTRING)
-    if tpi.setNicenames
+    if tpi.nicenames
         node[1].nicevalue = ASN1.value(node[1].tag)
     end
 end
@@ -248,7 +248,7 @@ end
                 #fullName
                 if c[1,1,1].tag.number == ASN1.Tagnumber(6)
                     # uniformResourceIdentifier
-                    if tpi.setNicenames
+                    if tpi.nicenames
                         c[1,1,1].nicevalue = String(copy(c[1,1,1].tag.value))
                     end
                 end
@@ -265,7 +265,7 @@ end
         # expecting 1.3.6.1.5.5.7.48.2 == id-ad-caIssuers
         check_OID(c[1], @oid("1.3.6.1.5.5.7.48.2"))
         check_contextspecific(c[2])
-        if tpi.setNicenames
+        if tpi.nicenames
             c[2].nicevalue = String(copy(c[2].tag.value))
         end
     end
@@ -276,7 +276,7 @@ end
     DER.parse_append!(DER.Buf(node.tag.value), node)
     check_tag(node[1], ASN1.SEQUENCE)
     check_contextspecific(node[1,1])
-    if tpi.setNicenames
+    if tpi.nicenames
         node[1,1].nicevalue = bytes2hex(node[1,1].tag.value)
     end
 end
@@ -313,7 +313,7 @@ end
     # Version == 0x02? (meaning version 3)
     check_contextspecific(node, 0x00)
     check_value(node[1], ASN1.INTEGER, 0x02)
-    if tpi.setNicenames
+    if tpi.nicenames
         node.nicevalue = string(ASN1.value(node[1].tag))
     end
 end
@@ -324,7 +324,7 @@ end
     if o.object isa CER
         o.object.serial = ASN1.value(node.tag, force_reinterpret=true)
     end
-    if tpi.setNicenames 
+    if tpi.nicenames 
         node.nicevalue = string(ASN1.value(node.tag, force_reinterpret=true))
     end
 end
@@ -334,7 +334,7 @@ end
 
     #tag_OID(node[1], @oid "1.2.840.113549.1.1.11") # sha256WithRSAEncryption
     check_OID(node[1], @oid "1.2.840.113549.1.1.11") # sha256WithRSAEncryption
-    if tpi.setNicenames
+    if tpi.nicenames
         node[1].nicevalue = oid_to_str(node[1].tag.value)
     end
     # here, the parameters MUST be present and MUST be NULL (RFC4055)
@@ -369,7 +369,7 @@ end
             o.object.issuer = ASN1.value(issuer.tag)
             push!(tpi.issuer, ASN1.value(issuer.tag))
         end
-        if tpi.setNicenames
+        if tpi.nicenames
             node.nicevalue = ASN1.value(issuer.tag)
         end
     else
@@ -391,7 +391,7 @@ end
         o.object.notBefore = ASN1.value(node[1].tag)
         o.object.notAfter = ASN1.value(node[2].tag)
     end
-    if tpi.setNicenames
+    if tpi.nicenames
         node[1].nicename = "notBefore"
         node[1].nicevalue = string(ASN1.value(node[1].tag))
         node[2].nicename = "notAfter"
@@ -410,7 +410,7 @@ end
     subject = check_attribute(node[1], @oid("2.5.4.3"), ASN1.PRINTABLESTRING, [ASN1.UTF8STRING])
     #@debug "CER, subject:" ASN1.value(subject.tag)
 
-    if tpi.setNicenames
+    if tpi.nicenames
         node.nicevalue = ASN1.value(subject.tag)
     end
     if o.object isa CER
@@ -424,7 +424,7 @@ end
     # FIXME: RFC6485 is not quite clear on which OID we should expect here..
     check_OID(node[1], @oid "1.2.840.113549.1.1.1")
     check_tag(node[2], ASN1.NULL)
-    if tpi.setNicenames
+    if tpi.nicenames
         node[1].nicevalue = oid_to_str(node[1].tag.value)
     end
 end
@@ -622,7 +622,7 @@ end
     check_tag(node, ASN1.SEQUENCE)
 
     check_OID(node[1], @oid "1.2.840.113549.1.1.11") # sha256WithRSAEncryption
-    if tpi.setNicenames
+    if tpi.nicenames
         node[1].nicevalue = oid_to_str(node[1].tag.value)
     end
     # here, the parameters MUST be present and MUST be NULL (RFC4055)

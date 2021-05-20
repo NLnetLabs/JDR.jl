@@ -23,7 +23,7 @@ end
 @check "digestAlgorithm" begin
     check_tag(node, ASN1.SEQUENCE)
     check_OID(node[1], @oid("2.16.840.1.101.3.4.2.1")) # SHA-256 RFC5754 sec 2.2
-    if tpi.setNicenames
+    if tpi.nicenames
         node[1].nicevalue = oid_to_str(node[1].tag.value)
     end
     # TODO: This field MUST contain the same algorithm identifier as the
@@ -88,12 +88,12 @@ end
     # this can only be either a manifest or a ROA, so:
     if o.object isa MFT
         check_OID(node, @oid("1.2.840.113549.1.9.16.1.26"))
-        if tpi.setNicenames
+        if tpi.nicenames
             node.nicename *= " (MFT)"
         end
     elseif o.object isa ROA
         check_OID(node, @oid("1.2.840.113549.1.9.16.1.24"))
-        if tpi.setNicenames
+        if tpi.nicenames
             node.nicename *= " (ROA)"
         end
     else
@@ -137,12 +137,12 @@ end
     check_tag(node[1], ASN1.OID)
     if o.object isa ROA
         check_OID(node[1], @oid("1.2.840.113549.1.9.16.1.24"))
-        if tpi.setNicenames
+        if tpi.nicenames
             node[1].nicename = "routeOriginAuthz"
         end
     elseif o.object isa MFT
         check_OID(node[1], @oid("1.2.840.113549.1.9.16.1.26"))
-        if tpi.setNicenames
+        if tpi.nicenames
             node[1].nicename = "rpkiManifest"
         end
     end

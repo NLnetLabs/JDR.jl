@@ -25,22 +25,6 @@ include("MFT.jl")
 include("ROA.jl")
 include("CRL.jl")
 
-
-#function RPKIObject(filename::String)::RPKIObject
-#    tree = DER.parse_file_recursive(filename)
-#    ext = lowercase(filename[end-3:end])
-#    if      ext == ".cer" RPKIObject{CER}(filename, tree)
-#    elseif  ext == ".mft" RPKIObject{MFT}(filename, tree)
-#    elseif  ext == ".roa" RPKIObject{ROA}(filename, tree)
-#    elseif  ext == ".crl" RPKIObject{CRL}(filename, tree)
-#    end
-#end
-#function RPKIObject{T}(filename::String)::RPKIObject{T} where {T}
-#    tree = DER.parse_file_recursive(filename)
-#    RPKIObject{T}(filename, tree)
-#end
-
-
 function add(p::RPKINode, c::RPKINode)#, o::RPKIObject)
     c.parent = p
     p.remark_counts_children += c.remark_counts_me + c.remark_counts_children
@@ -408,17 +392,6 @@ function process_ta(ta_cer_fn::String; repodir::String=CFG["rpki"]["rsyncrepo"],
     return rir_root, lookup
 end
 
-# TODO still needed?
-#function _glue_rootnode(tree::RPKINode) :: RPKINode
-#    @assert isnothing(tree.obj) "Root node already glued?"
-#    rootobj = RPKIObject{RootCER}()
-#    push!(rootobj.object.resources_v6, IntervalValue(IPRange("::/0"), [e for e in tree.children]))
-#    push!(rootobj.object.resources_v4, IntervalValue(IPRange("0.0.0.0/0"), [e for e in tree.children]))
-#    tree.obj = rootobj
-#    tree
-#end
-
-
 """
     process_tas([tal_urls::Dict]; kw...)
 
@@ -471,68 +444,6 @@ function process_tas(tal_urls=CFG["rpki"]["tals"]; stripTree::Bool=false, nicena
     end
     rpki_root, lookup
 end
-
-#TODO remove?
-function _depr_pubpoints!(pp_tree::RPKINode, tree::RPKINode, current_pp::String)
-
-    if isempty(tree.children)
-        #@debug "isempty tree.children"
-        return #pp_tree
-    end
-
-    #@debug "tree:", typeof(tree.obj).parameters[1]
-    for c in tree.children
-        if !isnothing(c.obj )
-            #@debug typeof(c.obj).parameters[1]
-        end
-        if c.obj isa RPKIObject{CER}
-            #@debug "found CER child", c.obj
-            #@debug "c.obj.object", c.obj.object
-            this_pp = split_scheme_uri(c.obj.object.pubpoint)[1]
-            if this_pp != current_pp
-                # FIXME check if this_pp exists on the same level
-                if this_pp in [c2.obj for c2 in pp_tree.children]
-                    #@debug "new but duplicate: $(this_pp)"
-                    _pubpoints!(pp_tree, c, this_pp)
-                else
-                    new_pp = RPKINode(nothing, [], this_pp)
-                    _pubpoints!(new_pp, c, this_pp)
-                    add(pp_tree, new_pp)
-                end
-            else
-                #@debug "found same pubpoint as parent: $(this_pp)"
-                #add(pp_tree, _pubpoints(c, this_pp))
-                _pubpoints!(pp_tree, c, current_pp)
-            end
-        elseif c.obj isa RPKIObject{MFT}
-            #@debug "elseif MFT"
-            #add(pp_tree, _pubpoints(c, current_pp))
-            #return _pubpoints(c, current_pp)
-            _pubpoints!(pp_tree, c, current_pp)
-        else
-            #@debug "found non-CER/MFT child:", c.obj
-            #add(pp_tree, _pubpoints(c, current_pp))
-            #return _pubpoints(c, current_pp)
-
-            _pubpoints!(pp_tree, c, current_pp)
-        end
-    end
-end
-
-#TODO remove?
-function depr_pubpoints(tree::RPKINode) :: RPKINode
-    pp_tree = RPKINode(nothing, [], "root")
-    for c in tree.children
-        if ! isnothing(c.obj) && c.obj isa RPKIObject{CER}
-            pp = split_scheme_uri(c.obj.object.pubpoint)[1]
-            subtree = RPKINode(nothing, [], pp)
-            _pubpoints!(subtree, c, pp)
-            add(pp_tree, subtree)
-        end
-    end
-    pp_tree
-end
-
 
 function collect_remarks_from_asn1!(o::RPKIObject{T}, node::Node) where T
     if !isnothing(node.remarks)

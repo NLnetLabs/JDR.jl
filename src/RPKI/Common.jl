@@ -100,7 +100,7 @@ mutable struct RPKINode
     parent::Union{Nothing, RPKINode}
     children::Vector{RPKINode}
     siblings::Union{Nothing, Vector{RPKINode}}
-    obj::Union{Nothing, RPKIObject, String}
+    obj::Union{Nothing, RPKIObject}
     # remark_counts_me could be a wrapper to the obj.remark_counts_me 
     remark_counts_me::Union{Nothing, RemarkCounts_t}
     remark_counts_children::Union{Nothing, RemarkCounts_t}
@@ -108,9 +108,6 @@ end
 
 RPKINode() = RPKINode(nothing, RPKINode[], nothing, nothing, nothing, nothing)
 RPKINode(o::RPKIObject) = RPKINode(nothing, RPKINode[], nothing, o, nothing, nothing)
-#RPKINode() = RPKINode(nothing, RPKINode[], nothing, nothing, RemarkCounts(), RemarkCounts())
-#RPKINode(o::RPKIObject) = RPKINode(nothing, RPKINode[], nothing, o, RemarkCounts(), RemarkCounts())
-##RPKINode(s::String) = RPKINode(nothing, RPKINode[], nothing, s, RemarkCounts(), RemarkCounts()) # DEPR
 
 """
     get_object(n::RPKINode)

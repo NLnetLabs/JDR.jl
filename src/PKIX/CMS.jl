@@ -124,12 +124,13 @@ end
 
 @check "sid" begin
     check_contextspecific(node, 0x00)
-    tpi.signerIdentifier = node.tag.value
+    signerIdentifier = node.tag.value
 
-    #TODO, do we check here on tpi.subjectKeyIdentifier == tpi.signerIdentifier
-    #if node[2].tag.value != tpi.subjectKeyIdentifier
-    #    err!(node[2], "SignerIdentifier does not match SubjectKeyIdentifier")
-    #end
+    if tpi.ee_ski != signerIdentifier
+        @warn "unexpected signerIdentifier in $(o.filename)"
+        remark_ASN1Error!(node, "signerIdentifier mismatch, expected
+                          $(bytes2hex(tpi.ee_ski))")
+    end
 end
 
 @check "sa_contentType" begin

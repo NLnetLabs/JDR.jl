@@ -197,6 +197,11 @@ end
 @check "subjectKeyIdentifier" begin
     # second pass
     DER.parse_append!(DER.Buf(node.tag.value), node)
+    if o.object isa CER
+        o.object.ski = node[1].tag.value
+    elseif o.object isa Union{MFT,ROA}
+        tpi.ee_ski = node[1].tag.value
+    end
     if tpi.nicenames
         node[1].nicevalue = bytes2hex(node[1].tag.value)
     end
@@ -276,6 +281,39 @@ end
     DER.parse_append!(DER.Buf(node.tag.value), node)
     check_tag(node[1], ASN1.SEQUENCE)
     check_contextspecific(node[1,1])
+    if o.object isa CER
+        o.object.aki = node[1,1].tag.value
+        if isempty(tpi.certStack)
+            if o.object.selfsigned != true
+                @warn "Expected self-signed certificate: $(o.filename)"
+            end
+            if !isempty(o.object.ski)
+                if o.object.ski != o.object.aki
+                    @warn "Expected ski == aki for $(o.filename)"
+                    remark_ASN1Error!(node, "authorityKeyIdentifier and subjectKeyIdentifier
+                                      present on this (expected to be self-signed)
+                                      certificate, but they do not match")
+                end
+            else
+                @warn "Unexpected empty ski for $(o.filename)"
+            end
+        elseif o.object.aki != tpi.certStack[end].ski
+            @warn "CER aki ski mismatch"
+            remark_ASN1Error!(node, "authorityKeyIdentifier mismatch, expected
+                              $(bytes2hex(tpi.certStack[end].ski))")
+        end
+    elseif o.object isa Union{MFT,ROA}
+        tpi.ee_aki = node[1,1].tag.value
+        if !isempty(tpi.certStack)
+            if tpi.ee_aki != tpi.certStack[end].ski
+                @error "EE aki ski mismatch in $(o.filename)"
+                remark_ASN1Error!(node, "EE aki ski mismatch, expected
+                                  $(bytes2hex(tpi.certStack[end].ski))")
+            end
+        else
+            @debug "empty certStack, is this a check_ASN1 out of process_tas?"
+        end
+    end
     if tpi.nicenames
         node[1,1].nicevalue = bytes2hex(node[1,1].tag.value)
     end
@@ -367,7 +405,6 @@ end
     if !isnothing(issuer)
         if o.object isa CER
             o.object.issuer = ASN1.value(issuer.tag)
-            push!(tpi.issuer, ASN1.value(issuer.tag))
         end
         if tpi.nicenames
             node.nicevalue = ASN1.value(issuer.tag)

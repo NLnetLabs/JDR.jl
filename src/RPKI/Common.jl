@@ -231,23 +231,22 @@ Base.@kwdef mutable struct TmpParseInfo
     nicenames::Bool = true
     stripTree::Bool = false
 
-    subjectKeyIdentifier::Vector{UInt8} = [] # TODO check use
-    signerIdentifier::Vector{UInt8} = [] # TODO check use
     eContent::Union{Nothing,Node} = nothing
     signedAttrs::Union{Nothing,Node} = nothing 
     saHash::String = ""
 
     caCert::Union{Nothing,Node} = nothing
-    issuer::Vector{String} = [] # used as stack
 
     eeCert::Union{Nothing,Node} = nothing
     ee_rsaExponent::Union{Nothing,Node} = nothing
     ee_rsaModulus::Union{Nothing,Node} = nothing
+    ee_aki::Vector{UInt8} = []
+    ee_ski::Vector{UInt8} = []
 
     eeSig::Union{Nothing,Node} = nothing
-    certStack::Vector{Any} = [] # TODO rearrange include/modules so we can actually use type RPKI.CER here
+    certStack::Vector{RPKIFile} = []  # TODO should only be CERs, really
 
-    # current working directory, used in MFT to check file hashes
+    # used in MFT to check file hashes
     cwd::String = ""
     # for ROA:
     afi::UInt32 = 0x0
@@ -318,6 +317,9 @@ Base.@kwdef mutable struct CER <: RPKIFile
 
     issuer::String = ""
     subject::String = ""
+
+    aki::Vector{UInt8} = []
+    ski::Vector{UInt8} = []
 
     inherit_v6_prefixes::Union{Nothing, Bool} = nothing
     inherit_v4_prefixes::Union{Nothing, Bool} = nothing

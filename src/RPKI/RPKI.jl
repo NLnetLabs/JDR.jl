@@ -345,7 +345,6 @@ function process_cer(cer_fn::String, lookup::Lookup, tpi::TmpParseInfo) :: RPKIN
     cer_node.remark_counts_me = count_remarks(cer_obj)
 
     add_filename!(lookup, cer_fn, cer_node)
-    pop!(tpi.issuer)
     pop!(tpi.certStack)
     cer_node
 end

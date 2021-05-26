@@ -1,5 +1,12 @@
+using JDR.Common
+
 @testset "macro" begin
     @test hex2bytes("2A864886F70D01010B") ==  @oid("1.2.840.113549.1.1.11")
+end
+
+@testset "split_scheme_uri" begin
+    @test ("some.domain.tld", "and/module") ==  split_scheme_uri("rsync://some.domain.tld/and/module")
+    @test ("some.domain.tld", "and/path") ==  split_scheme_uri("https://some.domain.tld/and/path")
 end
 
 @testset "oid to str" begin
@@ -11,7 +18,7 @@ end
 end
 
 
-@skip @testset "ASN / AutSysNum" begin
+@testset "ASN / AutSysNum" begin
     @test string(AutSysNum(123)) == "AS123"
     @test string(AutSysNumRange(123,456)) == "AS123..AS456"
 

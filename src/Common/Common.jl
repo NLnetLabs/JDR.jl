@@ -13,17 +13,16 @@ export @oid, oid_to_str
 # from IPRange.jl
 export IPRange, prefixlen
 
-function split_scheme_uri(uri::String) :: Tuple{String, String}
-    m = match(r"(rsync|https)://([^/]+)/(.*)", uri)
-    (_, hostname::String, cer_fn::String) = m.captures
-    (hostname, cer_fn)
+function split_scheme_uri(uri::String) :: Tuple{SubString, SubString}
+    path_idx = 0
+    for i in 9:length(uri)
+        if uri[i] == '/'
+            path_idx = i
+            break
+        end
+    end
+    (SubString(uri, 9:path_idx-1), SubString(uri, path_idx+1))
 end
-function split_rrdp_path(url::String) :: Tuple{String, String}
-    m = match(r"https://([^/]+)(/.*)", url)
-    (hostname, cer_fn) = m.captures
-    (hostname, cer_fn)
-end
-
 
 
 ##############################

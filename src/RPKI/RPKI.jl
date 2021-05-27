@@ -32,7 +32,11 @@ include("CRL.jl")
 function add(p::RPKINode, c::RPKINode)#, o::RPKIObject)
     c.parent = p
     p.remark_counts_children += c.remark_counts_me + c.remark_counts_children
-    push!(p.children, c)
+    if isnothing(p.children)
+        p.children = [c]
+    else
+        push!(p.children, c)
+    end
 end
 function add(p::RPKINode, c::Vector{RPKINode})
     for child in c
@@ -224,7 +228,7 @@ function process_mft(mft_fn::String, lookup::Lookup, tpi::TmpParseInfo, cer_node
 end
 
 function link_resources!(cer::RPKINode)
-    if isempty(cer.children)
+    if isnothing(cer.children)
         return
     end
 

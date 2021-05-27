@@ -98,16 +98,16 @@ Fields:
 """
 mutable struct RPKINode
     parent::Union{Nothing, RPKINode}
-    children::Vector{RPKINode}
-    siblings::Union{Nothing, Vector{RPKINode}}
+    children::Union{Nothing, Vector{RPKINode}}
+    siblings::Union{Nothing, Vector{RPKINode}} # TODO can only be 1, lose the vector
     obj::Union{Nothing, RPKIObject}
     # remark_counts_me could be a wrapper to the obj.remark_counts_me 
     remark_counts_me::Union{Nothing, RemarkCounts_t}
     remark_counts_children::Union{Nothing, RemarkCounts_t}
 end
 
-RPKINode() = RPKINode(nothing, RPKINode[], nothing, nothing, nothing, nothing)
-RPKINode(o::RPKIObject) = RPKINode(nothing, RPKINode[], nothing, o, nothing, nothing)
+RPKINode() = RPKINode(nothing, nothing, nothing, nothing, nothing, nothing)
+RPKINode(o::RPKIObject) = RPKINode(nothing, nothing, nothing, o, nothing, nothing)
 
 """
     get_object(n::RPKINode)
@@ -136,7 +136,9 @@ function iterate(n::RPKINode, to_check=RPKINode[n])
     # prevent the infinite loop, and still get all the RPKINodes without any
     # duplicates.
 
-    Base.append!(to_check, [res.children...])
+    if !isnothing(res.children)
+        Base.append!(to_check, [res.children...])
+    end
     return res, to_check
 end
 

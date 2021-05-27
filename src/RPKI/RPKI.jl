@@ -11,6 +11,10 @@ using Sockets: IPAddr
 
 export process_tas, process_ta, process_cer, link_resources!
 
+
+include("RRDP.jl")
+
+
 """
     check_ASN1
 
@@ -297,6 +301,13 @@ function process_cer(cer_fn::String, lookup::Lookup, tpi::TmpParseInfo) :: RPKIN
     depth = length(tpi.certStack)
     if !(ca_host in keys(lookup.pubpoints))
         lookup.pubpoints[ca_host] = depth => Set(cer_node)
+        if !(isempty(cer_obj.object.rrdp_notify))
+            (rrdp_host, _) = split_scheme_uri(cer_obj.object.rrdp_notify)
+            @info cer_obj.object.rrdp_notify
+            if tpi.fetch_rrdp
+                RRDP.fetch_snapshot(cer_obj.object.rrdp_notify)
+            end
+        end
     else
         (d, s) = lookup.pubpoints[ca_host]
         if depth < d
@@ -368,16 +379,25 @@ Optional keyword arguments:
 
 Returns `Tuple{`[`RPKINode`](@ref)`,`[`Lookup`](@ref)`}`
 """
-function process_ta(ta_cer_fn::String; repodir::String=CFG["rpki"]["rsyncrepo"], lookup=Lookup(), stripTree::Bool=false, nicenames=true) :: Tuple{RPKINode, Lookup}
+function process_ta(ta_cer_fn::String; repodir::String=CFG["rpki"]["rsyncrepo"], lookup=Lookup(), tpi_args...) :: Tuple{RPKINode, Lookup}
     @debug "process_tal for $(basename(ta_cer_fn)) with repodir $(repodir)"
     @assert isfile(ta_cer_fn) "Can not open file $(ta_cer_fn)"
-    @assert isdir(repodir) "Can not find directory $(repodir)"
+
+    tpi = TmpParseInfo(;repodir,lookup, tpi_args...)
+
+    if !isdir(repodir)
+        if !tpi.fetch_rrdp 
+            @error "Can not find directory $(repodir) and not creating/fetching anything"
+            throw("invalid configuration")
+        end
+    end
+
 
     # get rsync url from tal
     #
     rir_root = RPKINode()
     try
-        rir_root = process_cer(ta_cer_fn, lookup, TmpParseInfo(;repodir,lookup,stripTree,nicenames))
+        rir_root = process_cer(ta_cer_fn, lookup, tpi)
     catch e
         @error "error while processing $(ta_cer_fn)"
         @error e
@@ -414,7 +434,7 @@ Optional keyword arguments:
 Returns `Tuple{`[`RPKINode`](@ref)`,`[`Lookup`](@ref)`}`
 
 """
-function process_tas(tal_urls=CFG["rpki"]["tals"]; stripTree::Bool=false, nicenames=true) :: Union{Nothing, Tuple{RPKINode, Lookup}}
+function process_tas(tal_urls=CFG["rpki"]["tals"]; tpi_args...) :: Union{Nothing, Tuple{RPKINode, Lookup}}
     if isempty(tal_urls)
         @warn "No TALs configured, please create/edit JDR.toml and run
 
@@ -422,6 +442,38 @@ function process_tas(tal_urls=CFG["rpki"]["tals"]; stripTree::Bool=false, nicena
 
         "
         return nothing
+    end
+
+    if haskey(tpi_args, :fetch_rrdp) && tpi_args[:fetch_rrdp]
+        if !haskey(CFG["rpki"], "rrdp_repo")
+            @warn "No RRDP repo directory configured, please create/edit JDR.toml and run
+
+            JDR.Config.generate_config()
+
+            "
+            return nothing
+        elseif !isdir(CFG["rpki"]["rrdp_repo"])
+            @info "Configured rrdp_repo does not exist, will try to create it"
+            try
+                mkpath(CFG["rpki"]["rrdp_repo"])
+            catch e
+                @warn "Failed to create $(CFG["rpki"]["rrdp_repo"]): ", e
+            end
+        else
+            @info "Configured rrdp_repo exists, moving it to .bak"
+            try
+                dir = if isdirpath(CFG["rpki"]["rrdp_repo"])
+                    # contains trailing /, chop it off first:
+                    dirname(CFG["rpki"]["rrdp_repo"])
+                else
+                    CFG["rpki"]["rrdp_repo"]
+                end
+                mv(dir, dir*".bak")
+            catch e
+                @warn "Failed to create $(CFG["rpki"]["rrdp_repo"]): ", e
+            end
+
+        end
     end
 
     lookup = Lookup()
@@ -437,7 +489,7 @@ function process_tas(tal_urls=CFG["rpki"]["tals"]; stripTree::Bool=false, nicena
         end
         ta_cer_fn = joinpath(rir_dir, cer_fn)
         @info "Processing $(rir)"
-        (rir_root, _) = process_ta(ta_cer_fn; lookup, stripTree, nicenames)
+        (rir_root, _) = process_ta(ta_cer_fn; lookup, tpi_args...)
         add(rpki_root, rir_root)
         GC.gc()
     end

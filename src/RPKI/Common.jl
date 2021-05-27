@@ -227,6 +227,7 @@ Only the following fields allow for some configuration:
 """
 Base.@kwdef mutable struct TmpParseInfo
     repodir::String = CFG["rpki"]["rsyncrepo"]
+    fetch_rrdp::Bool = false
     lookup::Lookup = Lookup()
     nicenames::Bool = true
     stripTree::Bool = false

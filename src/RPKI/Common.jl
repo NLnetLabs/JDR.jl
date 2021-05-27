@@ -214,6 +214,9 @@ function remarks_below(node::RPKINode) :: Vector{RPKINode}
     collect
 end
 
+@enum Transport rsync rrdp
+export rsync, rrdp
+
 """
 Struct to be passed around during a full run (`process_tas` or `process_ta`), containing
 transient info.
@@ -228,8 +231,15 @@ Only the following fields allow for some configuration:
    `Lookup()`. Passing an existing Lookup should be quite rare though.
 """
 Base.@kwdef mutable struct TmpParseInfo
-    repodir::String = CFG["rpki"]["rsyncrepo"]
-    fetch_rrdp::Bool = false
+    transport::Transport = rsync::Transport
+    fetch_data::Bool = false
+    data_dir::String = if transport == rsync
+        CFG["rpki"]["rsync_data_dir"]
+    elseif transport == rrdp
+        CFG["rpki"]["rrdp_data_dir"]
+    else
+    end
+
     lookup::Lookup = Lookup()
     nicenames::Bool = true
     stripTree::Bool = false

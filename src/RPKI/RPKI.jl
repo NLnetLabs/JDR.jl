@@ -4,6 +4,7 @@ using JDR.Common: Remark, RemarkCounts_t, split_scheme_uri, count_remarks, AutSy
 using JDR.Common: remark_missingFile!, remark_loopIssue!, remark_manifestIssue!
 using JDR.RPKICommon: add_resource!, RPKIObject, RPKINode, Lookup, TmpParseInfo, add_filename!
 using JDR.RPKICommon: CER, add_resource, MFT, CRL, ROA, add_missing_filename!, RootCER, get_pubpoint
+using JDR.RPKICommon: get_object, rsync, rrdp
 using JDR.ASN1: Node
 
 using IntervalTrees: IntervalValue
@@ -284,10 +285,10 @@ function process_cer(cer_fn::String, lookup::Lookup, tpi::TmpParseInfo) :: RPKIN
     check_resources(cer_obj, tpi)
 
     (ca_host, ca_path) = split_scheme_uri(cer_obj.object.pubpoint)
-    ca_dir = joinpath(tpi.repodir, ca_host, ca_path)
+    ca_dir = joinpath(tpi.data_dir, ca_host, ca_path)
     
     mft_host, mft_path = split_scheme_uri(cer_obj.object.manifest)
-    mft_fn = joinpath(tpi.repodir, mft_host, mft_path)
+    mft_fn = joinpath(tpi.data_dir, mft_host, mft_path)
     cer_node = RPKINode(cer_obj)
 
     if cer_obj.sig_valid 
@@ -307,9 +308,8 @@ function process_cer(cer_fn::String, lookup::Lookup, tpi::TmpParseInfo) :: RPKIN
     if !(ca_host in keys(lookup.pubpoints))
         lookup.pubpoints[ca_host] = depth => Set(cer_node)
         if !(isempty(cer_obj.object.rrdp_notify))
-            (rrdp_host, _) = split_scheme_uri(cer_obj.object.rrdp_notify)
             @info cer_obj.object.rrdp_notify
-            if tpi.fetch_rrdp
+            if tpi.transport == rrdp && tpi.fetch_data
                 RRDP.fetch_snapshot(cer_obj.object.rrdp_notify)
             end
         end
@@ -384,15 +384,18 @@ Optional keyword arguments:
 
 Returns `Tuple{`[`RPKINode`](@ref)`,`[`Lookup`](@ref)`}`
 """
-function process_ta(ta_cer_fn::String; repodir::String=CFG["rpki"]["rsyncrepo"], lookup=Lookup(), tpi_args...) :: Tuple{RPKINode, Lookup}
-    @debug "process_tal for $(basename(ta_cer_fn)) with repodir $(repodir)"
+function process_ta(ta_cer_fn::String; lookup=Lookup(), tpi_args...) :: Tuple{RPKINode, Lookup}
+    @debug "process_ta for $(basename(ta_cer_fn))"
+    if haskey(tpi_args, :data_dir)
+        @debug "using custom data_dir $(data_dir)"
+    end
     @assert isfile(ta_cer_fn) "Can not open file $(ta_cer_fn)"
 
-    tpi = TmpParseInfo(;repodir,lookup, tpi_args...)
+    tpi = TmpParseInfo(;lookup, tpi_args...)
 
-    if !isdir(repodir)
-        if !tpi.fetch_rrdp 
-            @error "Can not find directory $(repodir) and not creating/fetching anything"
+    if !isdir(tpi.data_dir)
+        if !tpi.fetch_data 
+            @error "Can not find directory $(tpi.data_dir) and not creating/fetching anything"
             throw("invalid configuration")
         end
     end
@@ -412,7 +415,7 @@ function process_ta(ta_cer_fn::String; repodir::String=CFG["rpki"]["rsyncrepo"],
 
     # 'fetch' cer from TAL ?
     # check TA signature (new)
-    # process first cer, using repodir
+    # process first cer, using data_dir
     return rir_root, lookup
 end
 
@@ -485,14 +488,12 @@ function process_tas(tal_urls=CFG["rpki"]["tals"]; tpi_args...) :: Union{Nothing
     rpki_root = RPKINode()
     rpki_root.obj = RPKIObject{RootCER}()
 
+    _tpi = TmpParseInfo(; tpi_args...)
+    @debug "process_tas for transport type $(_tpi.transport), datadir $(_tpi.data_dir)"
+
     for (rir, rsync_url) in collect(tal_urls)
         (hostname, cer_fn) = split_scheme_uri(rsync_url)  
-        rir_dir = joinpath(CFG["rpki"]["rsyncrepo"], hostname)
-        if !isdir(rir_dir)
-            @error "repo dir for $(rir) not found: $(rir_dir)"
-            continue
-        end
-        ta_cer_fn = joinpath(rir_dir, cer_fn)
+        ta_cer_fn = joinpath(_tpi.data_dir, hostname, cer_fn)
         @info "Processing $(rir)"
         (rir_root, _) = process_ta(ta_cer_fn; lookup, tpi_args...)
         add(rpki_root, rir_root)

@@ -12,6 +12,7 @@ using Sockets: IPAddr
 export process_tas, process_ta, process_cer, link_resources!
 
 
+include("TAL.jl")
 include("RRDP.jl")
 
 

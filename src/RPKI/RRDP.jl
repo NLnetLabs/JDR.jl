@@ -6,10 +6,10 @@ using Base64: base64decode
 using EzXML
 using HTTP
 
-export fetch_snapshot
+export fetch_ta_cer, fetch_snapshot
 
 function uri_to_path(uri::AbstractString)
-    path = joinpath(CFG["rpki"]["rrdp_repo"], uri[9:end])
+    path = joinpath(CFG["rpki"]["rrdp_data_dir"], uri[9:end])
     path
 end
 
@@ -39,6 +39,15 @@ function fetch_snapshot(url::AbstractString)
     catch e
         @warn e
         return
+    end
+end
+
+function fetch_ta_cer(url::AbstractString, output_fn::AbstractString)
+    try
+        mkpath(dirname(output_fn))
+        write(output_fn, HTTP.get(url; connect_timeout = 5).body)
+    catch e
+        @error "Could not retrieve TA cer from $(url): ", e
     end
 end
 

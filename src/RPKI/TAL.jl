@@ -5,7 +5,7 @@ using JDR.ASN1.DER: DER
 
 using Base64
 
-export parse_tal
+export TAL, parse_tal
 
 struct TAL
     rsync::Union{Nothing, AbstractString}

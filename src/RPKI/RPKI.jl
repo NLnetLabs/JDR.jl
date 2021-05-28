@@ -442,8 +442,8 @@ Optional keyword arguments:
 Returns `Tuple{`[`RPKINode`](@ref)`,`[`Lookup`](@ref)`}`
 
 """
-function process_tas(tal_urls=CFG["rpki"]["tals"]; tpi_args...) :: Union{Nothing, Tuple{RPKINode, Lookup}}
-    if isempty(tal_urls)
+function process_tas(tals=CFG["rpki"]["tals"]; tpi_args...) :: Union{Nothing, Tuple{RPKINode, Lookup}}
+    if isempty(tals)
         @warn "No TALs configured, please create/edit JDR.toml and run
 
             JDR.Config.generate_config()
@@ -491,10 +491,43 @@ function process_tas(tal_urls=CFG["rpki"]["tals"]; tpi_args...) :: Union{Nothing
     _tpi = TmpParseInfo(; tpi_args...)
     @debug "process_tas for transport type $(_tpi.transport), datadir $(_tpi.data_dir)"
 
-    for (rir, rsync_url) in collect(tal_urls)
-        (hostname, cer_fn) = split_scheme_uri(rsync_url)  
+    #for (rir, rsync_url) in collect(tal_urls)
+    for talname in keys(tals)
+        @debug "for talname: $(talname)"
+        tal = parse_tal(joinpath(CFG["rpki"]["tal_dir"], talname*".tal"))
+        cer_uri = if _tpi.transport == rsync
+            tal.rsync
+        elseif _tpi.transport == rrdp
+            if !isnothing(tal.rrdp)
+                tal.rrdp
+            else
+                # FIXME this breaks the fetch_ta_cer below..
+                @warn "No RRDP URI for tal $(talname), falling back to rsync"
+                tal.rsync
+            end
+        end
+        @debug cer_uri
+
+        (hostname, cer_fn) = split_scheme_uri(cer_uri) 
+        # TODO fetch ta_cer(_fn) !
         ta_cer_fn = joinpath(_tpi.data_dir, hostname, cer_fn)
-        @info "Processing $(rir)"
+        if !isfile(ta_cer_fn)
+            if _tpi.fetch_data
+                #fetch_ta_cer(cer_uri)
+                if _tpi.transport == rrdp
+                    RRDP.fetch_ta_cer(cer_uri, ta_cer_fn)
+                else
+                    @warn "Fetching TA cert via rsync not implemented yet"
+                    continue
+                end
+            else
+                @warn "TA certificate for $(talname) not locally available and not fetching
+                in this run. Consider setting `fetch_data`."
+                continue
+            end
+        end
+
+        @info "Processing $(talname)"
         (rir_root, _) = process_ta(ta_cer_fn; lookup, tpi_args...)
         add(rpki_root, rir_root)
         GC.gc()

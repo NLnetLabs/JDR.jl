@@ -281,8 +281,8 @@ function length(vue_branch::VueNode)
     res
 end
 
-function _pubpoints!(pp_tree::VueNode, tree::RPKI.RPKINode, current_pp::String)
-    if isempty(tree.children)
+function _pubpoints!(pp_tree::VueNode, tree::RPKI.RPKINode, current_pp::AbstractString)
+    if isnothing(tree.children)
         return
     end
 

@@ -1,5 +1,6 @@
 module Webservice
 using JDR.Config: CFG, generate_config
+using JDR.RPKICommon: rsync, rrdp
 using JDR.RPKI#: process_tas, link_resources!
 using JDR.BGP: RISTree, ris_from_file, search
 using JDR.Common: AutSysNum, AutSysNumRange, IPRange, RemarkCounts_t, Remark, RemarkLevel, RemarkType
@@ -431,7 +432,7 @@ function update()
     global rwlock
     @info "update() on thread $(Threads.threadid())"
 
-    @time (tree, lookup) = process_tas(CFG["rpki"]["tals"]; stripTree=true, nicenames=false)
+    @time (tree, lookup) = process_tas(CFG["rpki"]["tals"]; transport=rrdp, fetch_data=true, stripTree=true, nicenames=false)
     RPKI.link_resources!.(tree.children)
 
     new_RISv6 = new_RISv4 = nothing

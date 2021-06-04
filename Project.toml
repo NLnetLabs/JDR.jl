@@ -4,8 +4,10 @@ authors = ["Luuk Hendriks <mail@luukhendriks.eu>"]
 version = "0.1.0"
 
 [deps]
+Base64 = "2a0f44e3-6c83-55bd-87e4-b1978d98bd5f"
 DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
 Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"
+EzXML = "8f5d6c58-4d21-5cfd-889c-e3ad7ee6a615"
 FileWatching = "7b1f6079-737a-58dc-b8bc-7a2ca5c1b5ee"
 Glob = "c27321d9-0574-5035-807b-f59d2c89b15c"
 HTTP = "cd3eb016-35fb-5094-929b-558a96fad6f3"

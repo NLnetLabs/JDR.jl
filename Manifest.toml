@@ -64,6 +64,12 @@ uuid = "8ba89e20-285c-5b6f-9357-94700520ee1b"
 deps = ["ArgTools", "LibCURL", "NetworkOptions"]
 uuid = "f43a241f-c20a-4ad4-852c-f6b1247861c6"
 
+[[EzXML]]
+deps = ["Printf", "XML2_jll"]
+git-tree-sha1 = "0fa3b52a04a4e210aeb1626def9c90df3ae65268"
+uuid = "8f5d6c58-4d21-5cfd-889c-e3ad7ee6a615"
+version = "1.1.0"
+
 [[FileWatching]]
 uuid = "7b1f6079-737a-58dc-b8bc-7a2ca5c1b5ee"
 
@@ -121,6 +127,12 @@ git-tree-sha1 = "a3f24677c21f5bbe9d2a714f95dcd58337fb2856"
 uuid = "82899510-4779-5014-852e-03e436cf321d"
 version = "1.0.0"
 
+[[JLLWrappers]]
+deps = ["Preferences"]
+git-tree-sha1 = "642a199af8b68253517b80bd3bfd17eb4e84df6e"
+uuid = "692b3bcd-3c85-4b1f-b108-f13ce0eb3210"
+version = "1.3.0"
+
 [[JSON]]
 deps = ["Dates", "Mmap", "Parsers", "Unicode"]
 git-tree-sha1 = "81690084b6198a2e1da36fcfda16eeca9f9f24e4"
@@ -157,6 +169,12 @@ uuid = "29816b5a-b9ab-546f-933c-edad1886dfa8"
 
 [[Libdl]]
 uuid = "8f399da3-3557-5675-b5ff-fb832c97cbdb"
+
+[[Libiconv_jll]]
+deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg"]
+git-tree-sha1 = "8d22e127ea9a0917bc98ebd3755c8bd31989381e"
+uuid = "94ce4f54-9a6c-5748-9c1c-f9c7231a4531"
+version = "1.16.1+0"
 
 [[LinearAlgebra]]
 deps = ["Libdl"]
@@ -226,6 +244,12 @@ deps = ["DataAPI", "Future"]
 git-tree-sha1 = "cde4ce9d6f33219465b55162811d8de8139c0414"
 uuid = "2dfb63ee-cc39-5dd5-95bd-886bf059d720"
 version = "1.2.1"
+
+[[Preferences]]
+deps = ["TOML"]
+git-tree-sha1 = "00cfd92944ca9c760982747e9a1d0d5d86ab1e5a"
+uuid = "21216c6a-2e73-6563-6e65-726566657250"
+version = "1.2.2"
 
 [[PrettyTables]]
 deps = ["Crayons", "Formatting", "Markdown", "Reexport", "Tables"]
@@ -376,6 +400,12 @@ uuid = "cf7118a7-6976-5b1a-9a39-7adc72f591a4"
 
 [[Unicode]]
 uuid = "4ec0a83e-493e-50e2-b9ac-8f72acf5a8f5"
+
+[[XML2_jll]]
+deps = ["Artifacts", "JLLWrappers", "Libdl", "Libiconv_jll", "Pkg", "Zlib_jll"]
+git-tree-sha1 = "1acf5bdf07aa0907e0a37d3718bb88d4b687b74a"
+uuid = "02c8fc9c-b97f-50b9-bbe4-9be30ff0a78a"
+version = "2.9.12+0"
 
 [[Zlib_jll]]
 deps = ["Libdl"]

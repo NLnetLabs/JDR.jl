@@ -186,6 +186,10 @@ function _parse!(tag::ASN.Tag, buf::Buf, indef_stack::Stack) :: ASN.Node
     me
 end
 
+function parse_recursive(buf::Buf) :: Node
+    tag = DER.next!(buf)
+    _parse!(tag, buf, Stack(0))
+end
 function parse_file_recursive(fn::String) :: Node
     fd = open(fn)
     buf = DER.Buf(fd)

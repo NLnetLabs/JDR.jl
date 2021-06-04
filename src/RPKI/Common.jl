@@ -20,6 +20,12 @@ export add_resource!, get_object, root_to, iterate, print_ASN1
 # from Lookup.jl:
 export search, new_since, add_filename!, add_missing_filename!, add_resource, get_pubpoint
 
+
+include("TAL.jl")
+using .Tal: TAL, parse_tal
+export parse_tal
+
+
 """ Abstract type to parameterize [`RPKIObject`](@ref)
 ```julia-repl
 julia> subtypes(RPKIFile)
@@ -240,6 +246,7 @@ Base.@kwdef mutable struct TmpParseInfo
     else
     end
 
+    tal::Union{Nothing, TAL} = nothing
     lookup::Lookup = Lookup()
     nicenames::Bool = true
     stripTree::Bool = false

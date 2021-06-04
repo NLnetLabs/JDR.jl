@@ -28,6 +28,7 @@ Base.@kwdef struct Lookup
         IntervalTree{IPv4,IntervalValue{IPv4,RPKINode}}()
 
     pubpoints::Dict{String}{Pair{Int,Set{RPKINode}}} = Dict()
+    rsync_modules::Dict{String}{String} = Dict()
     too_specific::Vector{RPKINode} = Vector()
     invalid_signatures::Vector{RPKIObject{T} where T} = Vector() # TODO refactor to RPKINode
     invalid_certs::Vector{RPKINode} = Vector()

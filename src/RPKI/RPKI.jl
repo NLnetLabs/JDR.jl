@@ -1,10 +1,10 @@
 module RPKI
 using JDR: CFG
 using JDR.Common: Remark, RemarkCounts_t, split_scheme_uri, count_remarks, AutSysNum, IPRange
-using JDR.Common: remark_missingFile!, remark_loopIssue!, remark_manifestIssue!
+using JDR.Common: remark_missingFile!, remark_loopIssue!, remark_manifestIssue!, remark_validityIssue!
 using JDR.RPKICommon: add_resource!, RPKIObject, RPKINode, Lookup, TmpParseInfo, add_filename!
 using JDR.RPKICommon: CER, add_resource, MFT, CRL, ROA, add_missing_filename!, RootCER, get_pubpoint
-using JDR.RPKICommon: get_object, rsync, rrdp
+using JDR.RPKICommon: get_object, rsync, rrdp, parse_tal
 using JDR.ASN1: Node
 
 using IntervalTrees: IntervalValue
@@ -13,7 +13,7 @@ using Sockets: IPAddr
 export process_tas, process_ta, process_cer, link_resources!
 
 
-include("TAL.jl")
+include("rsync.jl")
 include("RRDP.jl")
 
 
@@ -280,13 +280,19 @@ function process_cer(cer_fn::String, lookup::Lookup, tpi::TmpParseInfo) :: RPKIN
 
     cer_obj::RPKIObject{CER} = check_ASN1(RPKIObject{CER}(cer_fn), tpi)
 
+    if !isnothing(tpi.tal)
+        if cer_obj.object.rsa_modulus != tpi.tal.key
+            remark_validityIssue!(cer_obj, "key does not match TAL")
+            @error "Certificate key does not match key in TAL: $(cer_fn)"
+        end
+        tpi.tal = nothing
+    end
+
+
     push!(tpi.certStack, cer_obj.object)
     check_cert(cer_obj, tpi)
     check_resources(cer_obj, tpi)
 
-    (ca_host, ca_path) = split_scheme_uri(cer_obj.object.pubpoint)
-    ca_dir = joinpath(tpi.data_dir, ca_host, ca_path)
-    
     mft_host, mft_path = split_scheme_uri(cer_obj.object.manifest)
     mft_fn = joinpath(tpi.data_dir, mft_host, mft_path)
     cer_node = RPKINode(cer_obj)
@@ -304,12 +310,29 @@ function process_cer(cer_fn::String, lookup::Lookup, tpi::TmpParseInfo) :: RPKIN
         add_resource(lookup, r.first, r.last, cer_node)
     end
 
+    (ca_host, ca_path) = if tpi.transport == rsync
+        split_scheme_uri(cer_obj.object.pubpoint)
+    elseif tpi.transport == rrdp
+        if !isempty(cer_obj.object.rrdp_notify)
+            split_scheme_uri(cer_obj.object.rrdp_notify)
+        else
+            @warn "No RRDP SIA for $(cer_fn)"
+            (nothing, nothing)
+        end
+    end
+
+    
+    rsync_module = joinpath(ca_host, splitpath(ca_path)[1])
     depth = length(tpi.certStack)
-    if !(ca_host in keys(lookup.pubpoints))
+    if tpi.transport == rrdp && !(ca_host in keys(lookup.pubpoints)) ||
+        tpi.transport == rsync && !(rsync_module in keys(lookup.rsync_modules))
         lookup.pubpoints[ca_host] = depth => Set(cer_node)
-        if !(isempty(cer_obj.object.rrdp_notify))
-            @info cer_obj.object.rrdp_notify
-            if tpi.transport == rrdp && tpi.fetch_data
+        if tpi.fetch_data
+            if tpi.transport == rsync
+                @debug "rsync, $(rsync_module) not seen before"
+                Rsync.fetch_all(ca_host, ca_path)
+                lookup.rsync_modules[rsync_module] = cer_fn
+            elseif tpi.transport == rrdp
                 RRDP.fetch_snapshot(cer_obj.object.rrdp_notify)
             end
         end
@@ -324,14 +347,6 @@ function process_cer(cer_fn::String, lookup::Lookup, tpi::TmpParseInfo) :: RPKIN
             push!(s, cer_node)
         end
     end
-    #= # for now, do not add the RRDP hosts to lookup.pubpoints
-    if !(isempty(cer_obj.object.rrdp_notify))
-        (rrdp_host, _) = split_rrdp_path(cer_obj.object.rrdp_notify)
-        if !(rrdp_host in keys(lookup.pubpoints))
-            lookup.pubpoints[rrdp_host] = cer_node
-        end
-    end
-    =#
 
     if tpi.stripTree
         cer_obj.tree = nothing
@@ -384,14 +399,14 @@ Optional keyword arguments:
 
 Returns `Tuple{`[`RPKINode`](@ref)`,`[`Lookup`](@ref)`}`
 """
-function process_ta(ta_cer_fn::String; lookup=Lookup(), tpi_args...) :: Tuple{RPKINode, Lookup}
+function process_ta(ta_cer_fn::String; tal=nothing, lookup=Lookup(), tpi_args...) :: Tuple{RPKINode, Lookup}
     @debug "process_ta for $(basename(ta_cer_fn))"
     if haskey(tpi_args, :data_dir)
         @debug "using custom data_dir $(data_dir)"
     end
     @assert isfile(ta_cer_fn) "Can not open file $(ta_cer_fn)"
 
-    tpi = TmpParseInfo(;lookup, tpi_args...)
+    tpi = TmpParseInfo(;lookup, tal, tpi_args...)
 
     if !isdir(tpi.data_dir)
         if !tpi.fetch_data 
@@ -452,35 +467,33 @@ function process_tas(tals=CFG["rpki"]["tals"]; tpi_args...) :: Union{Nothing, Tu
         return nothing
     end
 
-    if haskey(tpi_args, :fetch_rrdp) && tpi_args[:fetch_rrdp]
-        if !haskey(CFG["rpki"], "rrdp_repo")
-            @warn "No RRDP repo directory configured, please create/edit JDR.toml and run
+    _tpi = TmpParseInfo(; tpi_args...)
 
-            JDR.Config.generate_config()
-
-            "
-            return nothing
-        elseif !isdir(CFG["rpki"]["rrdp_repo"])
-            @info "Configured rrdp_repo does not exist, will try to create it"
+    if _tpi.fetch_data
+        if !isdir(_tpi.data_dir)
+            @info "Configured data directory $(_tpi.data_dir) does not exist, will try to create it"
             try
-                mkpath(CFG["rpki"]["rrdp_repo"])
+                mkpath(_tpi.data_dir)
             catch e
-                @warn "Failed to create $(CFG["rpki"]["rrdp_repo"]): ", e
+                @warn "Failed to create $(_tpi.data_dir): ", e
             end
         else
-            @info "Configured rrdp_repo exists, moving it to .bak"
-            try
-                dir = if isdirpath(CFG["rpki"]["rrdp_repo"])
-                    # contains trailing /, chop it off first:
-                    dirname(CFG["rpki"]["rrdp_repo"])
-                else
-                    CFG["rpki"]["rrdp_repo"]
-                end
-                mv(dir, dir*".bak")
-            catch e
-                @warn "Failed to create $(CFG["rpki"]["rrdp_repo"]): ", e
-            end
+            # we fetch full snapshots for RRDP, so we start with a clean slate every fetch
+            # for rsync we want to keep the old dir around to reduce transfer delays
+            if _tpi.transport == rrdp
+                @info "Configured RRDP data directory exists, moving it to .prev"
+                try
+                    dir = _tpi.data_dir
+                    if isdirpath(dir)
+                        # contains trailing slash, chop it off
+                        dir = dirname(dir)
+                    end
 
+                    mv(dir, dir*".prev"; force=true)
+                catch e
+                    @warn "Failed to move $(dir) to $(dir).prev : ", e
+                end
+            end
         end
     end
 
@@ -488,47 +501,38 @@ function process_tas(tals=CFG["rpki"]["tals"]; tpi_args...) :: Union{Nothing, Tu
     rpki_root = RPKINode()
     rpki_root.obj = RPKIObject{RootCER}()
 
-    _tpi = TmpParseInfo(; tpi_args...)
-    @debug "process_tas for transport type $(_tpi.transport), datadir $(_tpi.data_dir)"
 
-    #for (rir, rsync_url) in collect(tal_urls)
-    for talname in keys(tals)
+    for (talname, tal_fn) in tals
         @debug "for talname: $(talname)"
-        tal = parse_tal(joinpath(CFG["rpki"]["tal_dir"], talname*".tal"))
+        tal = parse_tal(joinpath(CFG["rpki"]["tal_dir"], tal_fn))
         cer_uri = if _tpi.transport == rsync
             tal.rsync
         elseif _tpi.transport == rrdp
-            if !isnothing(tal.rrdp)
-                tal.rrdp
-            else
-                # FIXME this breaks the fetch_ta_cer below..
-                @warn "No RRDP URI for tal $(talname), falling back to rsync"
-                tal.rsync
+            if isnothing(tal.rrdp)
+                @warn "No RRDP URI for tal $(talname), skipping"
+                continue
             end
+            tal.rrdp
         end
-        @debug cer_uri
 
         (hostname, cer_fn) = split_scheme_uri(cer_uri) 
-        # TODO fetch ta_cer(_fn) !
         ta_cer_fn = joinpath(_tpi.data_dir, hostname, cer_fn)
         if !isfile(ta_cer_fn)
             if _tpi.fetch_data
-                #fetch_ta_cer(cer_uri)
                 if _tpi.transport == rrdp
                     RRDP.fetch_ta_cer(cer_uri, ta_cer_fn)
                 else
-                    @warn "Fetching TA cert via rsync not implemented yet"
-                    continue
+                    Rsync.fetch_ta_cer(cer_uri, ta_cer_fn)
                 end
             else
                 @warn "TA certificate for $(talname) not locally available and not fetching
-                in this run. Consider setting `fetch_data`."
+                in this run. Consider passing `fetch_data=true`."
                 continue
             end
         end
 
         @info "Processing $(talname)"
-        (rir_root, _) = process_ta(ta_cer_fn; lookup, tpi_args...)
+        (rir_root, _) = process_ta(ta_cer_fn; lookup, tal, tpi_args...)
         add(rpki_root, rir_root)
         GC.gc()
     end

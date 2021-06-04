@@ -9,18 +9,22 @@ global CFG = Dict()
 
 _CFG = TOML.parse("""
 [rpki]
-rsyncrepo   = "$(ENV["HOME"])/.rpki-cache/repository/rsync"
+rsync_data_dir  = "rsync_repo"
+rrdp_data_dir   = "rrdp_repo"
+tal_dir         = "tals"
 
 [rpki.tals]
+# Configure which TALs from the tal_dir are processed.
+#
 # Before uncommenting and using the ARIN TAL, please make sure you read and
 # agree with the ARIN RPA:
 # https://www.arin.net/resources/manage/rpki/tal/#relying-party-agreement-rpa
-#
-#arin       = "rsync://rpki.arin.net/repository/arin-rpki-ta.cer"
-#afrinic    = "rsync://rpki.afrinic.net/repository/AfriNIC.cer"
-#apnic      = "rsync://rpki.apnic.net/repository/apnic-rpki-root-iana-origin.cer"
-#lacnic     = "rsync://repository.lacnic.net/rpki/lacnic/rta-lacnic-rpki.cer"
-#ripe       = "rsync://rpki.ripe.net/ta/ripe-ncc-ta.cer"
+
+#arin       = "arin.tal"
+#afrinic    = "afrinic.tal"
+#apnic      = "apnic.tal"
+#lacnic     = "lacnic.tal"
+#ripe       = "ripe.tal"
 
 [webservice]
 port = 8081

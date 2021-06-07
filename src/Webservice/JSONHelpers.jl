@@ -70,7 +70,7 @@ StructTypes.StructType(::Type{RPKI.RemarkCounts_t}) = StructTypes.DictType()
 function ObjectDetails(r::RPKI.RPKIObject, rc::Union{Nothing, RemarkCounts_t})
     # we parse this again, because it is removed from the main tree/lookup 
     tmp = RPKI.RPKIObject(r.filename)
-    RPKI.check_ASN1(tmp, RPKI.TmpParseInfo(;nicenames=true))
+    RPKI.check_ASN1(tmp, RPKI.TmpParseInfo(;nicenames=true, oneshot=true))
     @assert isnothing(tmp.remarks_tree)
     RPKI.collect_remarks_from_asn1!(tmp, tmp.tree)
     
@@ -214,7 +214,7 @@ function get_vue_leaf_node(node::RPKI.RPKINode) ::RPKINode
             node.siblings[1]
         end
     elseif node.obj.object isa CER
-        if !isempty(node.children)
+        if !isnothing(node.children)
             @assert length(node.children) == 1
             @assert node.children[1].obj.object isa MFT
             node.children[1]

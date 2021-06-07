@@ -317,7 +317,9 @@ function process_cer(cer_fn::String, lookup::Lookup, tpi::TmpParseInfo) :: RPKIN
             split_scheme_uri(cer_obj.object.rrdp_notify)
         else
             @warn "No RRDP SIA for $(cer_fn)"
-            (nothing, nothing)
+            #(nothing, nothing)
+            pop!(tpi.certStack)
+            return cer_node
         end
     end
 

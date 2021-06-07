@@ -283,35 +283,46 @@ end
     check_contextspecific(node[1,1])
     if o.object isa CER
         o.object.aki = node[1,1].tag.value
-        if isempty(tpi.certStack)
-            if o.object.selfsigned != true
-                @warn "Expected self-signed certificate: $(o.filename)"
-            end
-            if !isempty(o.object.ski)
-                if o.object.ski != o.object.aki
-                    @warn "Expected ski == aki for $(o.filename)"
-                    remark_ASN1Error!(node, "authorityKeyIdentifier and subjectKeyIdentifier
-                                      present on this (expected to be self-signed)
-                                      certificate, but they do not match")
+        if !tpi.oneshot
+            if isempty(tpi.certStack)
+                if o.object.selfsigned != true
+                    @warn "Expected self-signed certificate: $(o.filename)"
                 end
-            else
-                @warn "Unexpected empty ski for $(o.filename)"
+                if !isempty(o.object.ski)
+                    if o.object.ski != o.object.aki
+                        @warn "Expected ski == aki for $(o.filename)"
+                        remark_ASN1Error!(o, "authorityKeyIdentifier and subjectKeyIdentifier
+                                          present on this (expected to be self-signed)
+                                          certificate, but they do not match")
+                        remark_ASN1Error!(node, "authorityKeyIdentifier and subjectKeyIdentifier
+                                          present on this (expected to be self-signed)
+                                          certificate, but they do not match")
+                    end
+                else
+                    @warn "Unexpected empty ski for $(o.filename)"
+                end
+            elseif o.object.aki != tpi.certStack[end].ski
+                @warn "CER aki ski mismatch"
+                remark_ASN1Error!(o, "authorityKeyIdentifier mismatch, expected
+                                  $(bytes2hex(tpi.certStack[end].ski))")
+                remark_ASN1Error!(node, "authorityKeyIdentifier mismatch, expected
+                                  $(bytes2hex(tpi.certStack[end].ski))")
             end
-        elseif o.object.aki != tpi.certStack[end].ski
-            @warn "CER aki ski mismatch"
-            remark_ASN1Error!(node, "authorityKeyIdentifier mismatch, expected
-                              $(bytes2hex(tpi.certStack[end].ski))")
         end
     elseif o.object isa Union{MFT,ROA}
         tpi.ee_aki = node[1,1].tag.value
-        if !isempty(tpi.certStack)
-            if tpi.ee_aki != tpi.certStack[end].ski
-                @error "EE aki ski mismatch in $(o.filename)"
-                remark_ASN1Error!(node, "EE aki ski mismatch, expected
-                                  $(bytes2hex(tpi.certStack[end].ski))")
+        if !tpi.oneshot
+            if !isempty(tpi.certStack)
+                if tpi.ee_aki != tpi.certStack[end].ski
+                    @error "EE aki ski mismatch in $(o.filename)"
+                    remark_ASN1Error!(o, "EE aki ski mismatch, expected
+                                      $(bytes2hex(tpi.certStack[end].ski))")
+                    remark_ASN1Error!(node, "EE aki ski mismatch, expected
+                                      $(bytes2hex(tpi.certStack[end].ski))")
+                end
+            else
+                @debug "empty certStack, is this a check_ASN1 out of process_tas?"
             end
-        else
-            @debug "empty certStack, is this a check_ASN1 out of process_tas?"
         end
     end
     if tpi.nicenames

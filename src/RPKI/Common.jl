@@ -250,6 +250,7 @@ Base.@kwdef mutable struct TmpParseInfo
     lookup::Lookup = Lookup()
     nicenames::Bool = true
     stripTree::Bool = false
+    oneshot::Bool = false
 
     eContent::Union{Nothing,Node} = nothing
     signedAttrs::Union{Nothing,Node} = nothing 

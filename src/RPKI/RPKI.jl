@@ -316,7 +316,7 @@ function process_cer(cer_fn::String, lookup::Lookup, tpi::TmpParseInfo) :: RPKIN
         if !isempty(cer_obj.object.rrdp_notify)
             split_scheme_uri(cer_obj.object.rrdp_notify)
         else
-            @warn "No RRDP SIA for $(cer_fn)"
+            @warn "No RRDP SIA for $(cer_fn), rsync SIA is $(cer_obj.object.pubpoint)"
             #(nothing, nothing)
             pop!(tpi.certStack)
             return cer_node
@@ -335,7 +335,7 @@ function process_cer(cer_fn::String, lookup::Lookup, tpi::TmpParseInfo) :: RPKIN
                 Rsync.fetch_all(ca_host, ca_path)
                 lookup.rsync_modules[rsync_module] = cer_fn
             elseif tpi.transport == rrdp
-                RRDP.fetch_snapshot(cer_obj.object.rrdp_notify)
+                RRDP.fetch_process_notification(cer_obj.object.rrdp_notify)
             end
         end
     else
@@ -482,20 +482,20 @@ function process_tas(tals=CFG["rpki"]["tals"]; tpi_args...) :: Union{Nothing, Tu
         else
             # we fetch full snapshots for RRDP, so we start with a clean slate every fetch
             # for rsync we want to keep the old dir around to reduce transfer delays
-            if _tpi.transport == rrdp
-                @info "Configured RRDP data directory exists, moving it to .prev"
-                try
-                    dir = _tpi.data_dir
-                    if isdirpath(dir)
-                        # contains trailing slash, chop it off
-                        dir = dirname(dir)
-                    end
+            #if _tpi.transport == rrdp
+            #    @info "Configured RRDP data directory exists, moving it to .prev"
+            #    try
+            #        dir = _tpi.data_dir
+            #        if isdirpath(dir)
+            #            # contains trailing slash, chop it off
+            #            dir = dirname(dir)
+            #        end
 
-                    mv(dir, dir*".prev"; force=true)
-                catch e
-                    @warn "Failed to move $(dir) to $(dir).prev : ", e
-                end
-            end
+            #        mv(dir, dir*".prev"; force=true)
+            #    catch e
+            #        @warn "Failed to move $(dir) to $(dir).prev : ", e
+            #    end
+            #end
         end
     end
 

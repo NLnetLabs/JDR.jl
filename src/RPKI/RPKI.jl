@@ -335,7 +335,8 @@ function process_cer(cer_fn::String, lookup::Lookup, tpi::TmpParseInfo) :: RPKIN
                 Rsync.fetch_all(ca_host, ca_path)
                 lookup.rsync_modules[rsync_module] = cer_fn
             elseif tpi.transport == rrdp
-                RRDP.fetch_process_notification(cer_obj.object.rrdp_notify)
+                rrdp_update = RRDP.fetch_process_notification(cer_node)
+                RRDP.add(lookup, rrdp_update)
             end
         end
     else
@@ -503,6 +504,8 @@ function process_tas(tals=CFG["rpki"]["tals"]; tpi_args...) :: Union{Nothing, Tu
     rpki_root = RPKINode()
     rpki_root.obj = RPKIObject{RootCER}()
 
+    tasks = Vector{Task}()
+    results = Channel()
 
     for (talname, tal_fn) in tals
         @debug "for talname: $(talname)"
@@ -518,7 +521,7 @@ function process_tas(tals=CFG["rpki"]["tals"]; tpi_args...) :: Union{Nothing, Tu
         end
 
         (hostname, cer_fn) = split_scheme_uri(cer_uri) 
-        ta_cer_fn = joinpath(_tpi.data_dir, hostname, cer_fn)
+        ta_cer_fn = joinpath(_tpi.data_dir, "tmp", hostname, cer_fn)
         if !isfile(ta_cer_fn)
             if _tpi.fetch_data
                 if _tpi.transport == rrdp
@@ -533,11 +536,26 @@ function process_tas(tals=CFG["rpki"]["tals"]; tpi_args...) :: Union{Nothing, Tu
             end
         end
 
-        @info "Processing $(talname)"
-        (rir_root, _) = process_ta(ta_cer_fn; lookup, tal, tpi_args...)
-        add(rpki_root, rir_root)
-        GC.gc()
+        work() = try 
+            @info "Processing $(talname)"
+            put!(results, process_ta(ta_cer_fn; lookup, tal, tpi_args...))
+        catch e
+            @error ta_cer_fn e
+        end
+        task = Task(work)
+        push!(tasks, task)
+        schedule(task)
+
     end
+    processed = 0
+    while !all(istaskdone, tasks)
+        (rir_root, lkup) = take!(results)
+        add(rpki_root, rir_root)
+        processed += 1
+        @info "TAL $(processed)/$(length(tals)) merged: $(rir_root)"
+    end
+    @info "Done, $(processed)/$(length(tals)) merged successfully"
+
     rpki_root, lookup
 end
 

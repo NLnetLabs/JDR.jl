@@ -33,6 +33,8 @@ Base.@kwdef struct Lookup
     invalid_signatures::Vector{RPKIObject{T} where T} = Vector() # TODO refactor to RPKINode
     invalid_certs::Vector{RPKINode} = Vector()
     valid_certs::Vector{RPKINode} = Vector()
+
+    rrdp_updates::Dict{AbstractString}{Any} = Dict() # TODO refactor to Vector{RRDPUpdate}
 end
 
 add_resource(l::Lookup, ipr::IPRange{IPv6}, node::RPKINode) = push!(l.resources_v6, IntervalValue(ipr, node))

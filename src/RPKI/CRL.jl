@@ -66,7 +66,7 @@ end
             check_tag(s[2], [ASN1.UTCTIME, ASN1.GENTIME])
         end
     else
-        @debug "empty revokedCertificates SEQUENCE in $(o.filename)"
+        #@debug "empty revokedCertificates SEQUENCE in $(o.filename)"
     end
 end
 

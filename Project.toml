@@ -5,6 +5,7 @@ version = "0.1.0"
 
 [deps]
 Base64 = "2a0f44e3-6c83-55bd-87e4-b1978d98bd5f"
+CodecZlib = "944b1d66-785c-5afd-91f1-9de20f533193"
 DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
 Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"
 EzXML = "8f5d6c58-4d21-5cfd-889c-e3ad7ee6a615"
@@ -24,9 +25,9 @@ StatsBase = "2913bbd2-ae8a-5f71-8c99-4fb6c76f3a91"
 StructTypes = "856f2bd8-1eba-4b0a-8007-ebc267875bd4"
 TOML = "fa267f1f-6049-4f14-aa54-33bafae1ed76"
 ThreadPools = "b189fb0b-2eb5-4ed4-bc0c-d34c51242431"
+TimerOutputs = "a759f4b9-e2f1-59dc-863e-4aeb61b1ea8f"
 
 [extras]
-Atlas = "fffdd0fa-cd2d-464f-a959-2e2d5749a296"
 Coverage = "a2441757-f6aa-5fb2-8edb-039e3f45d037"
 Jive = "ba5e3d4b-8524-549f-bc71-e76ad9e9deed"
 PProf = "e4faabce-9ead-11e9-39d9-4379958e3056"
@@ -36,4 +37,3 @@ TimerOutputs = "a759f4b9-e2f1-59dc-863e-4aeb61b1ea8f"
 
 [targets]
 test = ["Coverage", "Jive", "PProf", "Revise", "Test", "TimerOutputs"]
-ws = ["Atlas"]

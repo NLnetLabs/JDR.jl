@@ -505,7 +505,7 @@ function process_tas(tals=CFG["rpki"]["tals"]; tpi_args...) :: Union{Nothing, Tu
     rpki_root.obj = RPKIObject{RootCER}()
 
     tasks = Vector{Task}()
-    results = Channel()
+    results = Channel(10)
 
     for (talname, tal_fn) in tals
         @debug "for talname: $(talname)"
@@ -539,20 +539,39 @@ function process_tas(tals=CFG["rpki"]["tals"]; tpi_args...) :: Union{Nothing, Tu
         work() = try 
             @info "Processing $(talname)"
             put!(results, process_ta(ta_cer_fn; lookup, tal, tpi_args...))
+            @info "Done processing $(talname)"
         catch e
             @error ta_cer_fn e
+            if e isa InterruptException
+                put!(results, ErrorException("Processing $(talname) timed out"))
+            else
+                put!(results, ErrorException("Failed to process $(talname), $(e)"))
+            end
         end
         task = Task(work)
         push!(tasks, task)
         schedule(task)
 
     end
+
+    status = timedwait(() -> all(istaskdone, tasks), 180)
+    if status == :timed_out
+        @warn "One or more tasks timed out"
+        for t_to in filter(t->!istaskdone(t), tasks)
+            schedule(t_to, InterruptException(); error=true)
+        end
+    end
     processed = 0
-    while !all(istaskdone, tasks)
-        (rir_root, lkup) = take!(results)
-        add(rpki_root, rir_root)
-        processed += 1
-        @info "TAL $(processed)/$(length(tals)) merged: $(rir_root)"
+    while isready(results)
+        res = take!(results)
+        if res isa ErrorException 
+            @warn res.msg
+        else
+            (rir_root, lkup) = res
+            add(rpki_root, rir_root)
+            processed += 1
+            @info "TAL $(processed)/$(length(tals)) merged: $(rir_root)"
+        end
     end
     @info "Done, $(processed)/$(length(tals)) merged successfully"
 

@@ -5,7 +5,7 @@ using JDR.ASN1: bitstring_to_v4range, to_bigint
 using JDR.Common: IPRange, check_coverage, prefixlen, remark_ASN1Error!, remark_resourceIssue!
 using JDR.Common: remark_validityIssue!
 using JDR.PKIX.CMS: check_ASN1_contentType, check_ASN1_content # from macros
-using JDR.RPKICommon: ROA, RPKIObject, RPKIFile, TmpParseInfo
+using JDR.RPKICommon: RPKINode, ROA, RPKIObject, RPKIFile, CER, TmpParseInfo, get_object
 
 using IntervalTrees: Interval, IntervalValue
 using SHA: sha256
@@ -129,7 +129,7 @@ end
     (@__MODULE__).check_ASN1_ipAddrBlocks(o, node[offset+2], tpi)
 end
 
-function RPKI.check_ASN1(o::RPKIObject{ROA}, tpi::TmpParseInfo) :: RPKIObject{ROA}
+function RPKI.check_ASN1(o::RPKIObject{ROA}, tpi::TmpParseInfo, parent_cer::Union{Nothing, RPKIObject{CER}}=nothing) :: RPKIObject{ROA}
     cmsobject = o.tree
     # CMS, RFC5652:
     #       ContentInfo ::= SEQUENCE {
@@ -141,21 +141,22 @@ function RPKI.check_ASN1(o::RPKIObject{ROA}, tpi::TmpParseInfo) :: RPKIObject{RO
 
     # from CMS.jl:
     check_ASN1_contentType(o, cmsobject[1], tpi)
-    check_ASN1_content(o, cmsobject[2], tpi)
+    check_ASN1_content(o, cmsobject[2], tpi, parent_cer)
 
     check_ASN1_routeOriginAttestation(o, tpi.eContent, tpi)
 
     o
 end
 
-function RPKI.check_cert(o::RPKIObject{ROA}, tpi::TmpParseInfo)
+function RPKI.check_cert(o::RPKIObject{ROA}, tpi::TmpParseInfo, parent_cer::RPKINode)
     # hash tpi.eeCert
     @assert !isnothing(tpi.eeCert)
     tbs_raw = @view o.tree.buf.data[tpi.eeCert.tag.offset_in_file:tpi.eeCert.tag.offset_in_file + tpi.eeCert.tag.len + 4 - 1]
     my_hash = bytes2hex(sha256(tbs_raw))
 
     # decrypt tpi.eeSig 
-    v = powermod(to_bigint(@view tpi.eeSig.tag.value[2:end]), tpi.certStack[end].rsa_exp,tpi.certStack[end].rsa_modulus)
+    #v = powermod(to_bigint(@view tpi.eeSig.tag.value[2:end]), tpi.certStack[end].rsa_exp,tpi.certStack[end].rsa_modulus)
+    v = powermod(to_bigint(@view tpi.eeSig.tag.value[2:end]), get_object(parent_cer).rsa_exp, get_object(parent_cer).rsa_modulus)
     v.size = 4
     v_str = string(v, base=16, pad=64)
     
@@ -182,7 +183,7 @@ end
 RPKI.add_resource!(roa::ROA, ipr::IPRange{IPv6}) = push!(roa.resources_v6, Interval(ipr))
 RPKI.add_resource!(roa::ROA, ipr::IPRange{IPv4}) = push!(roa.resources_v4, Interval(ipr))
 
-function RPKI.check_resources(o::RPKIObject{ROA}, tpi::TmpParseInfo)
+function RPKI.check_resources(o::RPKIObject{ROA}, tpi::TmpParseInfo, parent_cer::RPKINode)
     # TODO: check out intersect(t1::IntervalTree, t2::IntervalTree) and find any
     # underclaims?
     o.object.resources_valid = true
@@ -195,9 +196,11 @@ function RPKI.check_resources(o::RPKIObject{ROA}, tpi::TmpParseInfo)
 
     #v6:
     if !isempty(o.object.resources_v6)
-        overlap_v6 = collect(intersect(tpi.certStack[end].resources_v6, o.object.resources_v6))
+        #overlap_v6 = collect(intersect(tpi.certStack[end].resources_v6, o.object.resources_v6))
+        overlap_v6 = collect(intersect(get_object(parent_cer).resources_v6, o.object.resources_v6))
         if length(overlap_v6) == 0
-            @warn "IPv6 resource on EE in $(o.filename) not covered by parent certificate $(tpi.certStack[end].subject)"
+            #@warn "IPv6 resource on EE in $(o.filename) not covered by parent certificate $(tpi.certStack[end].subject)"
+            @warn "IPv6 resource on EE in $(o.filename) not covered by parent certificate $(get_object(parent_cer).subject)"
             remark_resourceIssue!(o, "IPv6 resource on EE not covered by parent certificate")
             o.object.resources_valid = false
         else
@@ -212,9 +215,11 @@ function RPKI.check_resources(o::RPKIObject{ROA}, tpi::TmpParseInfo)
     end
     #v4:
     if !isempty(o.object.resources_v4)
-        overlap_v4 = collect(intersect(tpi.certStack[end].resources_v4, o.object.resources_v4))
+        #overlap_v4 = collect(intersect(tpi.certStack[end].resources_v4, o.object.resources_v4))
+        overlap_v4 = collect(intersect(get_object(parent_cer).resources_v4, o.object.resources_v4))
         if length(overlap_v4) == 0
-            @warn "IPv4 resource on EE in $(o.filename) not covered by parent certificate $(tpi.certStack[end].subject)"
+            #@warn "IPv4 resource on EE in $(o.filename) not covered by parent certificate $(tpi.certStack[end].subject)"
+            @warn "IPv4 resource on EE in $(o.filename) not covered by parent certificate $(get_object(parent_cer).subject)"
             remark_resourceIssue!(o, "IPv4 resource on EE not covered by parent certificate")
             o.object.resources_valid = false
         else

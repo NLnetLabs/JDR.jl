@@ -3,7 +3,7 @@ module Crl
 using JDR.Common: @oid, remark_ASN1Issue!, remark_validityIssue!
 using JDR.ASN1: ASN1, Node, childcount, to_bigint, istag, check_extensions
 using JDR.ASN1: check_value, check_tag, check_OID, check_attribute, check_contextspecific
-using JDR.RPKICommon: CRL, RPKIFile, RPKIObject, TmpParseInfo
+using JDR.RPKICommon: CRL, RPKIFile, CER, RPKINode, RPKIObject, TmpParseInfo, get_object
 using JDR.PKIX.X509: X509
 
 import JDR.RPKI # to extend check_ASN1, check_cert
@@ -149,7 +149,7 @@ end
 end
 
 
-function RPKI.check_ASN1(o::RPKIObject{CRL}, tpi::TmpParseInfo) :: RPKIObject{CRL}
+function RPKI.check_ASN1(o::RPKIObject{CRL}, tpi::TmpParseInfo, parent_cer::Union{Nothing, RPKIObject{CER}}=nothing) :: RPKIObject{CRL}
 	# CertificateList  ::=  SEQUENCE  {
 	#  tbsCertList          TBSCertList,
 	#  signatureAlgorithm   AlgorithmIdentifier,
@@ -157,7 +157,7 @@ function RPKI.check_ASN1(o::RPKIObject{CRL}, tpi::TmpParseInfo) :: RPKIObject{CR
     
     childcount(o.tree, 3)
 
-    (@__MODULE__).check_ASN1_tbsCertList(o, o.tree.children[1], tpi)
+    (@__MODULE__).check_ASN1_tbsCertList(o, o.tree.children[1], tpi, parent_cer)
     # from X509.jl:
     X509.check_ASN1_signatureAlgorithm(o, o.tree.children[2], tpi)
     X509.check_ASN1_signatureValue(o, o.tree.children[3], tpi)
@@ -165,10 +165,11 @@ function RPKI.check_ASN1(o::RPKIObject{CRL}, tpi::TmpParseInfo) :: RPKIObject{CR
     o
 end
 
-function RPKI.check_cert(o::RPKIObject{CRL}, tpi::TmpParseInfo) :: RPKI.RPKIObject{CRL}
+function RPKI.check_cert(o::RPKIObject{CRL}, tpi::TmpParseInfo, parent_cer::RPKINode) :: RPKI.RPKIObject{CRL}
     sig = o.tree.children[3]
     signature = to_bigint(@view sig.tag.value[2:end])
-    v = powermod(signature, tpi.certStack[end].rsa_exp, tpi.certStack[end].rsa_modulus)
+    #v = powermod(signature, tpi.certStack[end].rsa_exp, tpi.certStack[end].rsa_modulus)
+    v = powermod(signature, get_object(parent_cer).rsa_exp, get_object(parent_cer).rsa_modulus)
     v.size = 4
     v_str = string(v, base=16, pad=64)
 

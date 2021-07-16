@@ -284,7 +284,8 @@ end
     if o.object isa CER
         o.object.aki = node[1,1].tag.value
         if !tpi.oneshot
-            if isempty(tpi.certStack)
+            #if isempty(tpi.certStack)
+            if isnothing(parent_cer)
                 if o.object.selfsigned != true
                     @warn "Expected self-signed certificate: $(o.filename)"
                 end
@@ -301,27 +302,34 @@ end
                 else
                     @warn "Unexpected empty ski for $(o.filename)"
                 end
-            elseif o.object.aki != tpi.certStack[end].ski
+            #elseif o.object.aki != tpi.certStack[end].ski
+            elseif o.object.aki != parent_cer.object.ski
                 @warn "CER aki ski mismatch"
                 remark_ASN1Error!(o, "authorityKeyIdentifier mismatch, expected
-                                  $(bytes2hex(tpi.certStack[end].ski))")
+                                  $(bytes2hex(parent_cer.object.ski))")
+                                  #$(bytes2hex(tpi.certStack[end].ski))")
                 remark_ASN1Error!(node, "authorityKeyIdentifier mismatch, expected
-                                  $(bytes2hex(tpi.certStack[end].ski))")
+                                  $(bytes2hex(parent_cer.object.ski))")
+                                  #$(bytes2hex(tpi.certStack[end].ski))")
             end
         end
     elseif o.object isa Union{MFT,ROA}
         tpi.ee_aki = node[1,1].tag.value
         if !tpi.oneshot
-            if !isempty(tpi.certStack)
-                if tpi.ee_aki != tpi.certStack[end].ski
+            #if !isempty(tpi.certStack)
+            if !isnothing(parent_cer)
+                #if tpi.ee_aki != tpi.certStack[end].ski
+                if tpi.ee_aki != parent_cer.object.ski
                     @error "EE aki ski mismatch in $(o.filename)"
                     remark_ASN1Error!(o, "EE aki ski mismatch, expected
-                                      $(bytes2hex(tpi.certStack[end].ski))")
+                                      $(bytes2hex(parent_cer.object.ski))")
+                                      #$(bytes2hex(tpi.certStack[end].ski))")
                     remark_ASN1Error!(node, "EE aki ski mismatch, expected
-                                      $(bytes2hex(tpi.certStack[end].ski))")
+                                      $(bytes2hex(parent_cer.object.ski))")
+                                      #$(bytes2hex(tpi.certStack[end].ski))")
                 end
             else
-                @debug "empty certStack, is this a check_ASN1 out of process_tas?"
+                @debug "empty certStack/parent_cer, is this a check_ASN1 out of process_tas?"
             end
         end
     end
@@ -330,7 +338,7 @@ end
     end
 end
 
-function check_ASN1_extension(oid::Vector{UInt8}, o::RPKIObject{T}, node::ASN1.Node, tpi::TmpParseInfo) where T
+function check_ASN1_extension(oid::Vector{UInt8}, o::RPKIObject{T}, node::ASN1.Node, tpi::TmpParseInfo, parent_cer::Union{Nothing,RPKIObject{CER}}=nothing) where T
     if oid == @oid("1.3.6.1.5.5.7.1.11")
         check_ASN1_subjectInfoAccess(o, node, tpi)
     elseif oid == @oid("1.3.6.1.5.5.7.1.7")
@@ -350,7 +358,7 @@ function check_ASN1_extension(oid::Vector{UInt8}, o::RPKIObject{T}, node::ASN1.N
     elseif oid == @oid("1.3.6.1.5.5.7.1.1")
         check_ASN1_authorityInfoAccess(o, node, tpi)
     elseif oid == @oid("2.5.29.35")
-        check_ASN1_authorityKeyIdentifier(o, node, tpi)
+        check_ASN1_authorityKeyIdentifier(o, node, tpi, parent_cer)
     else
         @warn "Unknown oid $(oid_to_str(oid)) passed to X509::check_extension" maxlog=10
         remark_ASN1Issue!(node, "Unknown extension")
@@ -631,7 +639,7 @@ const MANDATORY_EXTENSIONS_EE = Vector{Vector{UInt8}}([
     # SIA checks # TODO rewrite / split up check_subject_information_access
     #RPKI.check_subject_information_access(o, all_extensions[@oid "1.3.6.1.5.5.7.1.11"])
     for (oid,node) in all_extensions
-        (@__MODULE__).check_ASN1_extension(oid, o, node, tpi)
+        (@__MODULE__).check_ASN1_extension(oid, o, node, tpi, parent_cer)
     end
 
     # IP and/or ASN checks:
@@ -651,7 +659,7 @@ end
     (@__MODULE__).check_ASN1_validity(o, node[5], tpi)
     (@__MODULE__).check_ASN1_subject(o, node[6], tpi)
     (@__MODULE__).check_ASN1_subjectPublicKeyInfo(o, node[7], tpi)
-    (@__MODULE__).check_ASN1_extensions(o, node[8], tpi)
+    (@__MODULE__).check_ASN1_extensions(o, node[8], tpi, parent_cer)
 
     if o.object isa ROA 
         tpi.eeCert = node

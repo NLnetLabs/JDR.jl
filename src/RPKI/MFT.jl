@@ -2,7 +2,7 @@ module Mft
 using JDR.ASN1: ASN1, check_tag, childcount, to_bigint, check_contextspecific, check_OID
 using JDR.Common: @oid, remark_ASN1Error!, remark_manifestIssue!, remark_validityIssue!
 using JDR.RPKI: MFT
-using JDR.RPKICommon: RPKIObject, RPKIFile, TmpParseInfo
+using JDR.RPKICommon: RPKINode, RPKIObject, RPKIFile, CER, TmpParseInfo, get_object
 using JDR.PKIX.CMS: check_ASN1_contentType, check_ASN1_content # from macros
 
 using Dates: DateTime, @dateformat_str
@@ -132,7 +132,7 @@ end
     (@__MODULE__).check_ASN1_fileList(o, node[offset+5], tpi)
 end
 
-function RPKI.check_ASN1(o::RPKIObject{MFT}, tpi::TmpParseInfo) :: RPKIObject{MFT}
+function RPKI.check_ASN1(o::RPKIObject{MFT}, tpi::TmpParseInfo, parent_cer::Union{Nothing, RPKIObject{CER}}=nothing) :: RPKIObject{MFT}
     cmsobject = o.tree
     # CMS, RFC5652:
     #       ContentInfo ::= SEQUENCE {
@@ -144,21 +144,22 @@ function RPKI.check_ASN1(o::RPKIObject{MFT}, tpi::TmpParseInfo) :: RPKIObject{MF
 
     # from CMS.jl:
     check_ASN1_contentType(o, cmsobject[1], tpi)
-    check_ASN1_content(o, cmsobject[2], tpi)
+    check_ASN1_content(o, cmsobject[2], tpi, parent_cer)
 
     check_ASN1_manifest(o, tpi.eContent, tpi)
 
     o
 end
 
-function RPKI.check_cert(o::RPKIObject{MFT}, tpi::TmpParseInfo)
+function RPKI.check_cert(o::RPKIObject{MFT}, tpi::TmpParseInfo, parent_cer::RPKINode)
     # hash tpi.eeCert
     @assert !isnothing(tpi.eeCert)
     tbs_raw = @view o.tree.buf.data[tpi.eeCert.tag.offset_in_file:tpi.eeCert.tag.offset_in_file + tpi.eeCert.tag.len + 4 - 1]
     my_hash = bytes2hex(sha256(tbs_raw))
 
     # decrypt tpi.eeSig 
-    v = powermod(to_bigint(@view tpi.eeSig.tag.value[2:end]), tpi.certStack[end].rsa_exp,tpi.certStack[end].rsa_modulus)
+    #v = powermod(to_bigint(@view tpi.eeSig.tag.value[2:end]), tpi.certStack[end].rsa_exp,tpi.certStack[end].rsa_modulus)
+    v = powermod(to_bigint(@view tpi.eeSig.tag.value[2:end]), get_object(parent_cer).rsa_exp, get_object(parent_cer).rsa_modulus)
     v.size = 4
     v_str = string(v, base=16, pad=64)
     

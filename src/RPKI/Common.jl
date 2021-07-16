@@ -265,7 +265,7 @@ Base.@kwdef mutable struct TmpParseInfo
     ee_ski::Vector{UInt8} = []
 
     eeSig::Union{Nothing,Node} = nothing
-    certStack::Vector{RPKIFile} = []  # TODO should only be CERs, really
+    #certStack::Vector{RPKIFile} = []  # TODO should only be CERs, really
 
     # used in MFT to check file hashes
     cwd::String = ""

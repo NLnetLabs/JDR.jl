@@ -5,7 +5,7 @@ using JDR.ASN1: check_tag, check_OID, check_value, childcount, check_contextspec
 using JDR.ASN1: istag, to_bigint
 using JDR.ASN1: ASN1 # for ASN1 tags
 using JDR.ASN1.DER: Buf, parse_append!, parse_replace_children!
-using JDR.RPKICommon: RPKIFile # for macro_check
+using JDR.RPKICommon: RPKIFile, CER # for macro_check
 using ..X509: X509 # to check TbsCert
 
 using SHA: sha256
@@ -116,7 +116,8 @@ end
     if length(node[1].children) > 3
         @info "More than one certificate in $(o.filename)?"
     end
-    X509.check_ASN1_tbsCertificate(o, node[1,1], tpi)
+    #@debug "calling _tbsCertificate from CMS, parent_cer: $(parent_cer)"
+    X509.check_ASN1_tbsCertificate(o, node[1,1], tpi, parent_cer)
     X509.check_ASN1_signatureAlgorithm(o, node[1,2], tpi)
     X509.check_ASN1_signatureValue(o, node[1,3], tpi)
     tpi.eeSig = node[1,3]
@@ -272,7 +273,7 @@ end
     (@__MODULE__).check_ASN1_digestAlgorithms(o, node[2], tpi)
     (@__MODULE__).check_ASN1_encapContentInfo(o, node[3], tpi)
     # eContent specific checks happen in MFT.jl or ROA.jl via the TmpParseInfo
-    (@__MODULE__).check_ASN1_certificates(o, node[4], tpi)
+    (@__MODULE__).check_ASN1_certificates(o, node[4], tpi, parent_cer)
     (@__MODULE__).check_ASN1_signerInfos(o, node[5], tpi)
 
 end
@@ -280,7 +281,7 @@ end
 @check "content" begin
     
     check_contextspecific(node, 0x00)
-    (@__MODULE__).check_ASN1_signedData(o, node[1], tpi)
+    (@__MODULE__).check_ASN1_signedData(o, node[1], tpi, parent_cer)
 end
 
 end # end module

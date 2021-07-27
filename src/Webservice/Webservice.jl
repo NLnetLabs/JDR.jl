@@ -262,12 +262,12 @@ function bgp_prefix(req::HTTP.Request)
     else
         search(STATE.RISv4, ipr, include_more_specific)
     end
-    prefixes = map(e-> string(IPRange(e.first, e.last)), unique(prefixes_found))
+    prefixes_and_origins = map(e-> (string(IPRange(e.first, e.last)), e.value), unique(prefixes_found)) 
 
     # populate the result with all prefixes found in BGP
-    res = Dict{String,Union{Nothing,Set{Dict}}}()
-    for p in prefixes
-        res[p] = nothing
+    res = Dict{Tuple{String,AutSysNum},Union{Nothing,Set{Dict}}}()
+    for (p,o) in prefixes_and_origins
+        res[(p,o)] = nothing
     end
 
     matches = if ipr.first isa IPv6
@@ -305,12 +305,12 @@ function bgp_prefix(req::HTTP.Request)
                    )
             end
         end
-        if isnothing(res[prefix])
-            #@debug "isnothing" # FIXME should this happen with the preallocating?
-            res[prefix] = Set{Dict}()
+
+        origin = m[2].value
+        if isnothing(res[(prefix, origin)])
+            res[(prefix, origin)] = Set{Dict}()
         end
-        push!(res[prefix],  Dict(
-                        "origin" => m[2].value.asn,
+        push!(res[(prefix, origin)],  Dict(
                         "roa" => m[1].value.obj.filename,
                         "repo" => RPKICommon.get_pubpoint(m[1].value),
                         "vrps" => vrps,
@@ -321,8 +321,9 @@ function bgp_prefix(req::HTTP.Request)
     end
     res2 = []
     for (k,v) in sort(res)
+        (prefix, origin) = k
         push!(res2, 
-              Dict("bgp" => k, "matches" => v)
+              Dict("bgp" => prefix, "origin" => origin.asn, "matches" => v)
              )
     end
 
@@ -344,9 +345,9 @@ function bgp(req::HTTP.Request)
     prefixes6 = map(e-> string(IPRange(e.first, e.last)), risv6) |> unique
 
     # populate the result with all prefixes found in BGP
-    res = Dict{String,Union{Nothing,Set{Dict}}}()
+    res = Dict{Tuple{String, AutSysNum},Union{Nothing,Set{Dict}}}()
     for p in vcat(prefixes, prefixes6)
-        res[p] = nothing
+        res[(p, asid)] = nothing
     end
 
     matches4 = intersect(STATE.lookup.resources_v4, risv4) |> @filter(first(_).value.obj.object isa RPKI.ROA) |> unique |> collect
@@ -382,10 +383,10 @@ function bgp(req::HTTP.Request)
                    )
             end
         end
-        if isnothing(res[prefix])
-            res[prefix] = Set{Dict}()
+        if isnothing(res[(prefix, asid)])
+            res[(prefix, asid)] = Set{Dict}()
         end
-        push!(res[prefix],  Dict(
+        push!(res[(prefix, asid)],  Dict(
                         "roa" => m[1].value.obj.filename,
                         "repo" => RPKICommon.get_pubpoint(m[1].value),
                         "vrps" => vrps,
@@ -396,8 +397,9 @@ function bgp(req::HTTP.Request)
     end
     res2 = []
     for (k,v) in sort(res)
+        (prefix, origin) = k
         push!(res2, 
-              Dict("bgp" => k, "matches" => v)
+              Dict("bgp" => prefix, "origin" => origin.asn, "matches" => v)
              )
     end
 

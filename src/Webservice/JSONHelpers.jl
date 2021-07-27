@@ -200,6 +200,7 @@ StructTypes.omitempties(::Type{VueNode}) = (:children, :mates)
 
 
 function get_vue_leaf_node(node::RPKI.RPKINode) ::RPKINode
+    @debug "in get_vue_leaf_node"
     if node.obj.object isa CRL
         @assert length(node.siblings) == 1
         @assert node.siblings[1].obj.object isa CER

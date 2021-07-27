@@ -4,16 +4,19 @@ using JDR.ASN1: ASN1, check_contextspecific, childcount, check_tag, value, bitst
 using JDR.ASN1: bitstring_to_v4range, to_bigint
 using JDR.Common: IPRange, check_coverage, prefixlen, remark_ASN1Error!, remark_resourceIssue!
 using JDR.Common: remark_validityIssue!
-using JDR.PKIX.CMS: check_ASN1_contentType, check_ASN1_content # from macros
-using JDR.RPKICommon: RPKINode, ROA, RPKIObject, RPKIFile, CER, TmpParseInfo, get_object
+#using JDR.PKIX.CMS: check_ASN1_contentType, check_ASN1_content # from macros
+#using JDR.RPKICommon: RPKINode, ROA, RPKIObject, RPKIFile, CER, TmpParseInfo, get_object
 
 using IntervalTrees: Interval, IntervalValue
 using SHA: sha256
 using Sockets: IPAddr, IPv6, IPv4
 
-import JDR.RPKI # to extend check_ASN1, check_cert, add_resource!, check_resources
+#import JDR.RPKI # to extend check_ASN1, check_cert, add_resource!, check_resources
 include("../ASN1/macro_check.jl")
 
+#refactor:
+using ..RPKI: ROA, CMS
+using JDR.Common: AutSysNum
 
 function Base.show(io::IO, roa::ROA)
     println(io, "ASID: ", roa.asid)
@@ -38,12 +41,12 @@ end
 
 @check "asID" begin
     check_tag(node, ASN1.INTEGER)
-    o.object.asid = ASN1.value(node.tag)
+    rf.object.asid = AutSysNum(ASN1.value(node.tag))
 end
 @check "ROAIPAddress" begin
     check_tag(node, ASN1.SEQUENCE)
     check_tag(node[1], ASN1.BITSTRING)
-    tpi.nicenames && (node[1].nicename = "address")
+    gpi.nicenames && (node[1].nicename = "address")
 
     prefix = if tpi.afi == 1
         #bitstring_to_ipv4net(node[1].tag.value)
@@ -60,7 +63,7 @@ end
     # optional maxLength:
     if length(node.children) == 2
         check_tag(node[2], ASN1.INTEGER)
-        tpi.nicenames && (node[2].nicename = "maxLength")
+        gpi.nicenames && (node[2].nicename = "maxLength")
         #@assert node[2].tag.len == 1
         if node[2].tag.value[1] == maxlength
             #remark_ASN1Issue!(node[2], "redundant maxLength")
@@ -68,12 +71,12 @@ end
             maxlength = node[2].tag.value[1]
         end
     end
-    #push!(o.object.vrps, (@__MODULE__).VRP(prefix, maxlength))
+    #push!(rf.object.vrps, (@__MODULE__).VRP(prefix, maxlength))
 
     if tpi.afi == 1
-        push!(o.object.vrp_tree.resources_v4, IntervalValue(prefix.first, prefix.last, maxlength))
+        push!(rf.object.vrp_tree.resources_v4, IntervalValue(prefix.first, prefix.last, maxlength))
     elseif tpi.afi == 2
-        push!(o.object.vrp_tree.resources_v6, IntervalValue(prefix.first, prefix.last, maxlength))
+        push!(rf.object.vrp_tree.resources_v6, IntervalValue(prefix.first, prefix.last, maxlength))
     end
 
 end
@@ -90,11 +93,11 @@ end
 
         addresses = node[2]
         check_tag(addresses, ASN1.SEQUENCE)
-        tpi.nicenames && (addresses.nicename = "addresses")
+        gpi.nicenames && (addresses.nicename = "addresses")
         if length(addresses.children) == 0
             remark_ASN1Error!(addresses, "there should be at least one ROAIPAddress here")
         end
-        if tpi.nicenames
+        if gpi.nicenames
             if tpi.afi == 1 # IPv4
                 node[1].nicename = "addressFamily: IPv4"
             else
@@ -102,7 +105,7 @@ end
             end
         end
         for roa_ipaddress in addresses.children
-            (@__MODULE__).check_ASN1_ROAIPAddress(o, roa_ipaddress, tpi)
+            (@__MODULE__).check_ASN1_ROAIPAddress(rf, roa_ipaddress, gpi, tpi)
         end
 end
 @check "ipAddrBlocks" begin
@@ -112,7 +115,7 @@ end
         remark_ASN1Error!(node, "there should be at least one ROAIPAddressFamily here")
     end
     for roa_afi in node.children
-        (@__MODULE__).check_ASN1_ROAIPAddressFamily(o, roa_afi, tpi)
+        (@__MODULE__).check_ASN1_ROAIPAddressFamily(rf, roa_afi, gpi, tpi)
     end
 end
 
@@ -122,56 +125,56 @@ end
     # the 'version' is optional, defaults to 0
     offset = 0
     if length(node.children) == 6
-		check_ASN1_version(o, node[1], tpi)
+		check_ASN1_version(rf, node[1], gpi, tpi)
         offset += 1
 	end
-    (@__MODULE__).check_ASN1_asID(o, node[offset+1], tpi)
-    (@__MODULE__).check_ASN1_ipAddrBlocks(o, node[offset+2], tpi)
+    (@__MODULE__).check_ASN1_asID(rf, node[offset+1], gpi, tpi)
+    (@__MODULE__).check_ASN1_ipAddrBlocks(rf, node[offset+2], gpi, tpi)
 end
 
-function RPKI.check_ASN1(o::RPKIObject{ROA}, tpi::TmpParseInfo, parent_cer::Union{Nothing, RPKIObject{CER}}=nothing) :: RPKIObject{ROA}
-    cmsobject = o.tree
-    # CMS, RFC5652:
-    #       ContentInfo ::= SEQUENCE {
-    #           contentType ContentType,
-    #           content [0] EXPLICIT ANY DEFINED BY contentType }
-    
-    check_tag(cmsobject, ASN1.SEQUENCE)
-    childcount(cmsobject, 2)
-
-    # from CMS.jl:
-    check_ASN1_contentType(o, cmsobject[1], tpi)
-    check_ASN1_content(o, cmsobject[2], tpi, parent_cer)
-
-    check_ASN1_routeOriginAttestation(o, tpi.eContent, tpi)
-
-    o
-end
-
-function RPKI.check_cert(o::RPKIObject{ROA}, tpi::TmpParseInfo, parent_cer::RPKINode)
-    # hash tpi.eeCert
-    @assert !isnothing(tpi.eeCert)
-    tbs_raw = @view o.tree.buf.data[tpi.eeCert.tag.offset_in_file:tpi.eeCert.tag.offset_in_file + tpi.eeCert.tag.len + 4 - 1]
-    my_hash = bytes2hex(sha256(tbs_raw))
-
-    # decrypt tpi.eeSig 
-    #v = powermod(to_bigint(@view tpi.eeSig.tag.value[2:end]), tpi.certStack[end].rsa_exp,tpi.certStack[end].rsa_modulus)
-    v = powermod(to_bigint(@view tpi.eeSig.tag.value[2:end]), get_object(parent_cer).rsa_exp, get_object(parent_cer).rsa_modulus)
-    v.size = 4
-    v_str = string(v, base=16, pad=64)
-    
-    # compare hashes
-    if v_str == my_hash
-        o.sig_valid = true
-    else
-        @error "invalid signature for" o.filename
-        remark_validityIssue!(o, "invalid signature")
-        o.sig_valid = false
-    end
-
-    # compare subject with SKI
-    # TODO
-end
+#function RPKI.check_ASN1(o::RPKIObject{ROA}, tpi::TmpParseInfo, parent_cer::Union{Nothing, RPKIObject{CER}}=nothing) :: RPKIObject{ROA}
+#    cmsobject = o.tree
+#    # CMS, RFC5652:
+#    #       ContentInfo ::= SEQUENCE {
+#    #           contentType ContentType,
+#    #           content [0] EXPLICIT ANY DEFINED BY contentType }
+#    
+#    check_tag(cmsobject, ASN1.SEQUENCE)
+#    childcount(cmsobject, 2)
+#
+#    # from CMS.jl:
+#    check_ASN1_contentType(o, cmsobject[1], tpi)
+#    check_ASN1_content(o, cmsobject[2], tpi, parent_cer)
+#
+#    check_ASN1_routeOriginAttestation(o, tpi.eContent, tpi)
+#
+#    o
+#end
+#
+#function RPKI.check_cert(o::RPKIObject{ROA}, tpi::TmpParseInfo, parent_cer::RPKINode)
+#    # hash tpi.eeCert
+#    @assert !isnothing(tpi.eeCert)
+#    tbs_raw = @view o.tree.buf.data[tpi.eeCert.tag.offset_in_file:tpi.eeCert.tag.offset_in_file + tpi.eeCert.tag.len + 4 - 1]
+#    my_hash = bytes2hex(sha256(tbs_raw))
+#
+#    # decrypt tpi.eeSig 
+#    #v = powermod(to_bigint(@view tpi.eeSig.tag.value[2:end]), tpi.certStack[end].rsa_exp,tpi.certStack[end].rsa_modulus)
+#    v = powermod(to_bigint(@view tpi.eeSig.tag.value[2:end]), get_object(parent_cer).rsa_exp, get_object(parent_cer).rsa_modulus)
+#    v.size = 4
+#    v_str = string(v, base=16, pad=64)
+#    
+#    # compare hashes
+#    if v_str == my_hash
+#        o.sig_valid = true
+#    else
+#        @error "invalid signature for" o.filename
+#        remark_validityIssue!(o, "invalid signature")
+#        o.sig_valid = false
+#    end
+#
+#    # compare subject with SKI
+#    # TODO
+#end
 
 #import .RPKI.add_resource!
 #function RPKI.add_resource!(roa::ROA, minaddr::IPv6, maxaddr::IPv6)
@@ -180,81 +183,81 @@ end
 #function RPKI.add_resource!(roa::ROA, minaddr::IPv4, maxaddr::IPv4)
 #	push!(roa.resources_v4, IntervalValue(minaddr, maxaddr, VRP[]))
 #end
-RPKI.add_resource!(roa::ROA, ipr::IPRange{IPv6}) = push!(roa.resources_v6, Interval(ipr))
-RPKI.add_resource!(roa::ROA, ipr::IPRange{IPv4}) = push!(roa.resources_v4, Interval(ipr))
-
-function RPKI.check_resources(o::RPKIObject{ROA}, tpi::TmpParseInfo, parent_cer::RPKINode)
-    # TODO: check out intersect(t1::IntervalTree, t2::IntervalTree) and find any
-    # underclaims?
-    o.object.resources_valid = true
-
-
-    # first, check the resources on the EE are properly covered by the resources
-    # in the parent CER
-    # TODO: check: can the parent cer have inherit set instead of listing actual
-    # resources?
-
-    #v6:
-    if !isempty(o.object.resources_v6)
-        #overlap_v6 = collect(intersect(tpi.certStack[end].resources_v6, o.object.resources_v6))
-        overlap_v6 = collect(intersect(get_object(parent_cer).resources_v6, o.object.resources_v6))
-        if length(overlap_v6) == 0
-            #@warn "IPv6 resource on EE in $(o.filename) not covered by parent certificate $(tpi.certStack[end].subject)"
-            @warn "IPv6 resource on EE in $(o.filename) not covered by parent certificate $(get_object(parent_cer).subject)"
-            remark_resourceIssue!(o, "IPv6 resource on EE not covered by parent certificate")
-            o.object.resources_valid = false
-        else
-            for (p, ee) in overlap_v6
-                if !(p.first <= ee.first <= ee.last <= p.last)
-                    @warn "IPv6 resource on EE in $(o.filename) not properly covered by parent certificate"
-                    remark_resourceIssue!(o, "Illegal IP resource $(ee)")
-                    o.object.resources_valid = false
-                end
-            end
-        end
-    end
-    #v4:
-    if !isempty(o.object.resources_v4)
-        #overlap_v4 = collect(intersect(tpi.certStack[end].resources_v4, o.object.resources_v4))
-        overlap_v4 = collect(intersect(get_object(parent_cer).resources_v4, o.object.resources_v4))
-        if length(overlap_v4) == 0
-            #@warn "IPv4 resource on EE in $(o.filename) not covered by parent certificate $(tpi.certStack[end].subject)"
-            @warn "IPv4 resource on EE in $(o.filename) not covered by parent certificate $(get_object(parent_cer).subject)"
-            remark_resourceIssue!(o, "IPv4 resource on EE not covered by parent certificate")
-            o.object.resources_valid = false
-        else
-            for (p, ee) in overlap_v4
-                if !(p.first <= ee.first <= ee.last <= p.last)
-                    @warn "IPv4 resource on EE in $(o.filename) not properly covered by parent certificate"
-                    remark_resourceIssue!(o, "Illegal IP resource $(ee)")
-                    o.object.resources_valid = false
-                end
-            end
-        end
-    end
-
-
-    # --
-
-    # now that we know the validity of the resources on the EE, verify that the
-    # VRPs are covered by the resources on the EE
-
-
-    # attempt with new vrp_tree
-
-    # IPv6:
-    check_coverage(o.object.resources_v6, o.object.vrp_tree.resources_v6) do invalid
-        @warn "illegal IPv6 VRP $(IPRange(invalid.first, invalid.last)) not covered by EE on $(o.filename)"
-        remark_resourceIssue!(o, "Illegal IPv6 VRP $(IPRange(invalid.first, invalid.last))")
-        o.object.resources_valid = false
-    end
-
-    # IPv4:
-    check_coverage(o.object.resources_v4, o.object.vrp_tree.resources_v4) do invalid
-        @warn "illegal IPv4 VRP $(IPRange(invalid.first, invalid.last)) not covered by EE on $(o.filename)"
-        remark_resourceIssue!(o, "Illegal IPv4 VRP $(IPRange(invalid.first, invalid.last))")
-        o.object.resources_valid = false
-    end
-end
+#RPKI.add_resource!(roa::ROA, ipr::IPRange{IPv6}) = push!(roa.resources_v6, Interval(ipr))
+#RPKI.add_resource!(roa::ROA, ipr::IPRange{IPv4}) = push!(roa.resources_v4, Interval(ipr))
+#
+#function RPKI.check_resources(o::RPKIObject{ROA}, tpi::TmpParseInfo, parent_cer::RPKINode)
+#    # TODO: check out intersect(t1::IntervalTree, t2::IntervalTree) and find any
+#    # underclaims?
+#    o.object.resources_valid = true
+#
+#
+#    # first, check the resources on the EE are properly covered by the resources
+#    # in the parent CER
+#    # TODO: check: can the parent cer have inherit set instead of listing actual
+#    # resources?
+#
+#    #v6:
+#    if !isempty(o.object.resources_v6)
+#        #overlap_v6 = collect(intersect(tpi.certStack[end].resources_v6, o.object.resources_v6))
+#        overlap_v6 = collect(intersect(get_object(parent_cer).resources_v6, o.object.resources_v6))
+#        if length(overlap_v6) == 0
+#            #@warn "IPv6 resource on EE in $(o.filename) not covered by parent certificate $(tpi.certStack[end].subject)"
+#            @warn "IPv6 resource on EE in $(o.filename) not covered by parent certificate $(get_object(parent_cer).subject)"
+#            remark_resourceIssue!(o, "IPv6 resource on EE not covered by parent certificate")
+#            o.object.resources_valid = false
+#        else
+#            for (p, ee) in overlap_v6
+#                if !(p.first <= ee.first <= ee.last <= p.last)
+#                    @warn "IPv6 resource on EE in $(o.filename) not properly covered by parent certificate"
+#                    remark_resourceIssue!(o, "Illegal IP resource $(ee)")
+#                    o.object.resources_valid = false
+#                end
+#            end
+#        end
+#    end
+#    #v4:
+#    if !isempty(o.object.resources_v4)
+#        #overlap_v4 = collect(intersect(tpi.certStack[end].resources_v4, o.object.resources_v4))
+#        overlap_v4 = collect(intersect(get_object(parent_cer).resources_v4, o.object.resources_v4))
+#        if length(overlap_v4) == 0
+#            #@warn "IPv4 resource on EE in $(o.filename) not covered by parent certificate $(tpi.certStack[end].subject)"
+#            @warn "IPv4 resource on EE in $(o.filename) not covered by parent certificate $(get_object(parent_cer).subject)"
+#            remark_resourceIssue!(o, "IPv4 resource on EE not covered by parent certificate")
+#            o.object.resources_valid = false
+#        else
+#            for (p, ee) in overlap_v4
+#                if !(p.first <= ee.first <= ee.last <= p.last)
+#                    @warn "IPv4 resource on EE in $(o.filename) not properly covered by parent certificate"
+#                    remark_resourceIssue!(o, "Illegal IP resource $(ee)")
+#                    o.object.resources_valid = false
+#                end
+#            end
+#        end
+#    end
+#
+#
+#    # --
+#
+#    # now that we know the validity of the resources on the EE, verify that the
+#    # VRPs are covered by the resources on the EE
+#
+#
+#    # attempt with new vrp_tree
+#
+#    # IPv6:
+#    check_coverage(o.object.resources_v6, o.object.vrp_tree.resources_v6) do invalid
+#        @warn "illegal IPv6 VRP $(IPRange(invalid.first, invalid.last)) not covered by EE on $(o.filename)"
+#        remark_resourceIssue!(o, "Illegal IPv6 VRP $(IPRange(invalid.first, invalid.last))")
+#        o.object.resources_valid = false
+#    end
+#
+#    # IPv4:
+#    check_coverage(o.object.resources_v4, o.object.vrp_tree.resources_v4) do invalid
+#        @warn "illegal IPv4 VRP $(IPRange(invalid.first, invalid.last)) not covered by EE on $(o.filename)"
+#        remark_resourceIssue!(o, "Illegal IPv4 VRP $(IPRange(invalid.first, invalid.last))")
+#        o.object.resources_valid = false
+#    end
+#end
 
 end # module

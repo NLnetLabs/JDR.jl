@@ -1,11 +1,16 @@
 module X509
 using JDR.Common: @oid, AutSysNum, AutSysNumRange, oid_to_str, remark_ASN1Error!, remark_ASN1Issue!
-using JDR.RPKICommon: RPKIFile, RPKIObject, TmpParseInfo, CER, MFT, ROA, add_resource!
+#using JDR.RPKICommon: RPKIFile, RPKIObject, TmpParseInfo, CER, MFT, ROA, add_resource!
 using JDR.ASN1: ASN1, check_tag, check_contextspecific, childcount, istag, check_value
 using JDR.ASN1: check_OID, check_attribute, check_extensions, get_extensions
 using JDR.ASN1: bitstring_to_v6range, bitstrings_to_v6range
 using JDR.ASN1: bitstring_to_v4range, bitstrings_to_v4range, to_bigint
 using JDR.ASN1.DER: DER
+
+
+# refactor:
+using ..RPKI: CER, MFT, ROA, add_resource!
+using StaticArrays: SVector
 
 include("../ASN1/macro_check.jl")
 
@@ -37,28 +42,34 @@ const MANDATORY_EXTENSIONS = Vector{Pair{Vector{UInt8}, String}}([
         check_contextspecific(access_description[2], 0x06)
 
         #now check for the MUST-be presents:
+        ##TODO:
+        # rfc6487:
+        # The ordering of URIs in this
+        # accessDescription sequence reflect the CA's relative preferences for
+        # access methods to be used by RPs, with the first element of the
+        # sequence being the most preferred by the CA.
         if access_description[1].tag.value == @oid "1.3.6.1.5.5.7.48.5"
-            tpi.nicenames && (access_description[1].nicename = "caRepository")
+            gpi.nicenames && (access_description[1].nicename = "caRepository")
             carepo_present = true
-            if o.object isa CER
-                o.object.pubpoint = String(copy(access_description[2].tag.value))
+            if rf.object isa CER
+                rf.object.pubpoint = String(copy(access_description[2].tag.value))
             end
         end
         if access_description[1].tag.value == @oid "1.3.6.1.5.5.7.48.10"
-            tpi.nicenames && (access_description[1].nicename = "rpkiManifest")
+            gpi.nicenames && (access_description[1].nicename = "rpkiManifest")
             manifest_present = true
-            if o.object isa CER
-                o.object.manifest = String(copy(access_description[2].tag.value))
+            if rf.object isa CER
+                rf.object.manifest = String(copy(access_description[2].tag.value))
             end
         end
         if access_description[1].tag.value == @oid "1.3.6.1.5.5.7.48.13"
-            tpi.nicenames && (access_description[1].nicename = "rpkiNotify")
-            if o.object isa CER
-                o.object.rrdp_notify = String(copy(access_description[2].tag.value))
+            gpi.nicenames && (access_description[1].nicename = "rpkiNotify")
+            if rf.object isa CER
+                rf.object.rrdp_notify = String(copy(access_description[2].tag.value))
             end
         end
     end
-    if o.object isa CER
+    if rf.object isa CER
         if !carepo_present
             remark_ASN1Error!(node, "missing essential caRepository")
         end
@@ -120,21 +131,21 @@ AFI_v6 = 0x02
                     @error "unexpected tag number $(ipaddress_or_range.tag.number)"
                     continue
                 end
-                add_resource!(o.object, ipr)
+                add_resource!(rf.object, ipr)
             end # for-loop over SEQUENCE OF IPAddressOrRange
-            if o.object isa CER
+            if rf.object isa CER
                 if afi == AFI_v6 
-                    o.object.inherit_v6_prefixes = false
+                    rf.object.inherit_v6_prefixes = false
                 elseif afi == AFI_v4
-                    o.object.inherit_v4_prefixes = false
+                    rf.object.inherit_v4_prefixes = false
                 end
             end
         elseif istag(ipaddrblock[2].tag, ASN1.NULL)
-            if o.object isa CER
+            if rf.object isa CER
                 if afi == AFI_v6 
-                    o.object.inherit_v6_prefixes = true
+                    rf.object.inherit_v6_prefixes = true
                 elseif afi == AFI_v4
-                    o.object.inherit_v4_prefixes = true
+                    rf.object.inherit_v4_prefixes = true
                 end
             end
         else
@@ -156,25 +167,25 @@ end
             #DER.parse_append!(DER.Buf(asidentifierchoice.tag.value), asidentifierchoice)
             # or NULL (inherit) or SEQUENCE OF ASIdOrRange
             if istag(asidentifierchoice[1].tag, ASN1.NULL)
-                if o.object isa CER
-                    o.object.inherit_ASNs = true
+                if rf.object isa CER
+                    rf.object.inherit_ASNs = true
                 end
                 #throw("implement inherit for ASIdentifierChoice")
             elseif istag(asidentifierchoice[1].tag, ASN1.SEQUENCE)
                 # now it can be or a single INTEGER, or again a SEQUENCE
                 asidentifierchoice[1].validated = true
-                if o.object isa CER
-                    o.object.inherit_ASNs = false
+                if rf.object isa CER
+                    rf.object.inherit_ASNs = false
                 end
                 for asid_or_range in asidentifierchoice[1].children
                     if istag(asid_or_range.tag, ASN1.INTEGER)
                         asid = UInt32(ASN1.value(asid_or_range.tag))
-                        push!(o.object.ASNs, AutSysNum(asid))
+                        push!(rf.object.ASNs, AutSysNum(asid))
                         asid_or_range.validated = true
                     elseif istag(asid_or_range.tag, ASN1.SEQUENCE)
                         asmin = UInt32(ASN1.value(asid_or_range[1].tag))
                         asmax = UInt32(ASN1.value(asid_or_range[2].tag))
-                        push!(o.object.ASNs, AutSysNumRange(asmin, asmax))
+                        push!(rf.object.ASNs, AutSysNumRange(asmin, asmax))
                         asid_or_range.validated = true
                         asid_or_range[1].validated = true
                         asid_or_range[2].validated = true
@@ -197,12 +208,12 @@ end
 @check "subjectKeyIdentifier" begin
     # second pass
     DER.parse_append!(DER.Buf(node.tag.value), node)
-    if o.object isa CER
-        o.object.ski = node[1].tag.value
-    elseif o.object isa Union{MFT,ROA}
-        tpi.ee_ski = node[1].tag.value
+    if rf.object isa CER
+        rf.object.ski = node[1].tag.value
+    elseif rf.object isa Union{MFT,ROA}
+        tpi.ee_ski = SVector{20}(node[1].tag.value)
     end
-    if tpi.nicenames
+    if gpi.nicenames
         node[1].nicevalue = bytes2hex(node[1].tag.value)
     end
 end
@@ -214,7 +225,7 @@ end
     for c in node[1].children
         check_tag(c, ASN1.SEQUENCE)
         check_tag(c[1], ASN1.OID)
-        if tpi.nicenames
+        if gpi.nicenames
             c[1].nicevalue = oid_to_str(c[1].tag.value)
         end
     end
@@ -225,7 +236,7 @@ end
     DER.parse_append!(DER.Buf(node.tag.value), node)
     check_tag(node[1], ASN1.SEQUENCE)
     check_tag(node[1,1], ASN1.BOOLEAN)
-    if tpi.nicenames
+    if gpi.nicenames
         node[1,1].nicename = "cA"
     end
 end
@@ -235,7 +246,7 @@ end
     DER.parse_append!(DER.Buf(node.tag.value), node)
     check_tag(node, ASN1.OCTETSTRING)
     check_tag(node[1], ASN1.BITSTRING)
-    if tpi.nicenames
+    if gpi.nicenames
         node[1].nicevalue = ASN1.value(node[1].tag)
     end
 end
@@ -253,7 +264,7 @@ end
                 #fullName
                 if c[1,1,1].tag.number == ASN1.Tagnumber(6)
                     # uniformResourceIdentifier
-                    if tpi.nicenames
+                    if gpi.nicenames
                         c[1,1,1].nicevalue = String(copy(c[1,1,1].tag.value))
                     end
                 end
@@ -270,7 +281,7 @@ end
         # expecting 1.3.6.1.5.5.7.48.2 == id-ad-caIssuers
         check_OID(c[1], @oid("1.3.6.1.5.5.7.48.2"))
         check_contextspecific(c[2])
-        if tpi.nicenames
+        if gpi.nicenames
             c[2].nicevalue = String(copy(c[2].tag.value))
         end
     end
@@ -281,18 +292,18 @@ end
     DER.parse_append!(DER.Buf(node.tag.value), node)
     check_tag(node[1], ASN1.SEQUENCE)
     check_contextspecific(node[1,1])
-    if o.object isa CER
-        o.object.aki = node[1,1].tag.value
-        if !tpi.oneshot
+    if rf.object isa CER
+        rf.object.aki = node[1,1].tag.value
+        if !gpi.oneshot
             #if isempty(tpi.certStack)
-            if isnothing(parent_cer)
-                if o.object.selfsigned != true
-                    @warn "Expected self-signed certificate: $(o.filename)"
+            if isnothing(rf.parent)
+                if rf.object.selfsigned != true
+                    @warn "Expected self-signed certificate: $(rf.filename)"
                 end
-                if !isempty(o.object.ski)
-                    if o.object.ski != o.object.aki
-                        @warn "Expected ski == aki for $(o.filename)"
-                        remark_ASN1Error!(o, "authorityKeyIdentifier and subjectKeyIdentifier
+                if !isempty(rf.object.ski)
+                    if rf.object.ski != rf.object.aki
+                        @warn "Expected ski == aki for $(rf.filename)"
+                        remark_ASN1Error!(rf, "authorityKeyIdentifier and subjectKeyIdentifier
                                           present on this (expected to be self-signed)
                                           certificate, but they do not match")
                         remark_ASN1Error!(node, "authorityKeyIdentifier and subjectKeyIdentifier
@@ -300,32 +311,44 @@ end
                                           certificate, but they do not match")
                     end
                 else
-                    @warn "Unexpected empty ski for $(o.filename)"
+                    @warn "Unexpected empty ski for $(rf.filename)"
                 end
-            #elseif o.object.aki != tpi.certStack[end].ski
-            elseif o.object.aki != parent_cer.object.ski
+            #elseif rf.object.aki != tpi.certStack[end].ski
+        
+        elseif !isnothing(rf.parent.parent) && rf.object.aki != rf.parent.parent.object.ski
+            #TODO why do we need the isnothing in the elseif condition?
                 @warn "CER aki ski mismatch"
-                remark_ASN1Error!(o, "authorityKeyIdentifier mismatch, expected
-                                  $(bytes2hex(parent_cer.object.ski))")
+                remark_ASN1Error!(rf, "authorityKeyIdentifier mismatch, expected
+                                  $(bytes2hex(rf.parent.parent.object.ski))")
                                   #$(bytes2hex(tpi.certStack[end].ski))")
                 remark_ASN1Error!(node, "authorityKeyIdentifier mismatch, expected
-                                  $(bytes2hex(parent_cer.object.ski))")
+                                  $(bytes2hex(rf.parent.parent.object.ski))")
                                   #$(bytes2hex(tpi.certStack[end].ski))")
             end
         end
-    elseif o.object isa Union{MFT,ROA}
-        tpi.ee_aki = node[1,1].tag.value
-        if !tpi.oneshot
+    elseif rf.object isa Union{MFT,ROA}
+        tpi.ee_aki = SVector{20}(node[1,1].tag.value)
+        if !gpi.oneshot
             #if !isempty(tpi.certStack)
-            if !isnothing(parent_cer)
-                #if tpi.ee_aki != tpi.certStack[end].ski
-                if tpi.ee_aki != parent_cer.object.ski
-                    @error "EE aki ski mismatch in $(o.filename)"
-                    remark_ASN1Error!(o, "EE aki ski mismatch, expected
-                                      $(bytes2hex(parent_cer.object.ski))")
+            if !isnothing(rf.parent)
+                #TODO: make a proper parent_cer(::RPKIFile)
+                parent_ski = if rf.object isa MFT
+                    @assert rf.parent.object isa CER "unexpected parent type $(typeof(rf.parent.object)) as parent of $(typeof(rf.object))
+                    filename parent: $(rf.parent.filename)
+                    filename this: $(rf.filename)
+                    "
+                    rf.parent.object.ski
+                else
+                    rf.parent.parent.object.ski
+                end
+
+                if tpi.ee_aki != parent_ski
+                    @error "EE aki ski mismatch in $(rf.filename)"
+                    remark_ASN1Error!(rf, "EE aki ski mismatch, expected
+                                      $(bytes2hex(parent_ski))")
                                       #$(bytes2hex(tpi.certStack[end].ski))")
                     remark_ASN1Error!(node, "EE aki ski mismatch, expected
-                                      $(bytes2hex(parent_cer.object.ski))")
+                                      $(bytes2hex(parent_ski))")
                                       #$(bytes2hex(tpi.certStack[end].ski))")
                 end
             else
@@ -333,32 +356,32 @@ end
             end
         end
     end
-    if tpi.nicenames
+    if gpi.nicenames
         node[1,1].nicevalue = bytes2hex(node[1,1].tag.value)
     end
 end
 
-function check_ASN1_extension(oid::Vector{UInt8}, o::RPKIObject{T}, node::ASN1.Node, tpi::TmpParseInfo, parent_cer::Union{Nothing,RPKIObject{CER}}=nothing) where T
+function check_ASN1_extension(oid::Vector{UInt8}, rf::RPKIFile{T}, node::ASN1.Node, gpi::GlobalProcessInfo, tpi::TmpParseInfo) where T
     if oid == @oid("1.3.6.1.5.5.7.1.11")
-        check_ASN1_subjectInfoAccess(o, node, tpi)
+        check_ASN1_subjectInfoAccess(rf, node, gpi, tpi)
     elseif oid == @oid("1.3.6.1.5.5.7.1.7")
-        check_ASN1_ipAddrBlocks(o, node, tpi)
+        check_ASN1_ipAddrBlocks(rf, node, gpi, tpi)
     elseif oid == @oid("1.3.6.1.5.5.7.1.8")
-        check_ASN1_autonomousSysIds(o, node, tpi)
+        check_ASN1_autonomousSysIds(rf, node, gpi, tpi)
     elseif oid == @oid("2.5.29.14")
-        check_ASN1_subjectKeyIdentifier(o, node, tpi)
+        check_ASN1_subjectKeyIdentifier(rf, node, gpi, tpi)
     elseif oid == @oid("2.5.29.32")
-        check_ASN1_certificatePolicies(o, node, tpi)
+        check_ASN1_certificatePolicies(rf, node, gpi, tpi)
     elseif oid == @oid("2.5.29.19")
-        check_ASN1_basicConstraints(o, node, tpi)
+        check_ASN1_basicConstraints(rf, node, gpi, tpi)
     elseif oid == @oid("2.5.29.15")
-        check_ASN1_keyUsage(o, node, tpi)
+        check_ASN1_keyUsage(rf, node, gpi, tpi)
     elseif oid == @oid("2.5.29.31")
-        check_ASN1_cRLDistributionPoints(o, node, tpi)
+        check_ASN1_cRLDistributionPoints(rf, node, gpi, tpi)
     elseif oid == @oid("1.3.6.1.5.5.7.1.1")
-        check_ASN1_authorityInfoAccess(o, node, tpi)
+        check_ASN1_authorityInfoAccess(rf, node, gpi, tpi)
     elseif oid == @oid("2.5.29.35")
-        check_ASN1_authorityKeyIdentifier(o, node, tpi, parent_cer)
+        check_ASN1_authorityKeyIdentifier(rf, node, gpi, tpi)
     else
         @warn "Unknown oid $(oid_to_str(oid)) passed to X509::check_extension" maxlog=10
         remark_ASN1Issue!(node, "Unknown extension")
@@ -367,10 +390,11 @@ function check_ASN1_extension(oid::Vector{UInt8}, o::RPKIObject{T}, node::ASN1.N
 end
 
 @check "version"  begin
+    #@debug "X509 version macro called"
     # Version == 0x02? (meaning version 3)
     check_contextspecific(node, 0x00)
     check_value(node[1], ASN1.INTEGER, 0x02)
-    if tpi.nicenames
+    if gpi.nicenames
         node.nicevalue = string(ASN1.value(node[1].tag))
     end
 end
@@ -378,10 +402,10 @@ end
 @check "serialNumber" begin
     check_tag(node, ASN1.INTEGER)
     # do we need the serial? 
-    if o.object isa CER
-        o.object.serial = ASN1.value(node.tag, force_reinterpret=true)
+    if rf.object isa CER
+        rf.object.serial = ASN1.value(node.tag, force_reinterpret=true)
     end
-    if tpi.nicenames 
+    if gpi.nicenames 
         node.nicevalue = string(ASN1.value(node.tag, force_reinterpret=true))
     end
 end
@@ -391,7 +415,7 @@ end
 
     #tag_OID(node[1], @oid "1.2.840.113549.1.1.11") # sha256WithRSAEncryption
     check_OID(node[1], @oid "1.2.840.113549.1.1.11") # sha256WithRSAEncryption
-    if tpi.nicenames
+    if gpi.nicenames
         node[1].nicevalue = oid_to_str(node[1].tag.value)
     end
     # here, the parameters MUST be present and MUST be NULL (RFC4055)
@@ -422,14 +446,14 @@ end
     # TODO check this interpretation
     issuer = check_attribute(issuer_set, @oid("2.5.4.3"), ASN1.PRINTABLESTRING, [ASN1.UTF8STRING])
     if !isnothing(issuer)
-        if o.object isa CER
-            o.object.issuer = ASN1.value(issuer.tag)
+        if rf.object isa CER
+            rf.object.issuer = ASN1.value(issuer.tag)
         end
-        if tpi.nicenames
+        if gpi.nicenames
             node.nicevalue = ASN1.value(issuer.tag)
         end
     else
-        @warn("no issuer for $(o.filename)")
+        @warn("no issuer for $(rf.filename)")
     end
 
 	if length(issuer_set.children) > 1
@@ -443,11 +467,11 @@ end
     check_tag(node, ASN1.SEQUENCE)
     check_tag(node[1], [ASN1.UTCTIME, ASN1.GENTIME])
     check_tag(node[2], [ASN1.UTCTIME, ASN1.GENTIME])
-    if o.object isa CER
-        o.object.notBefore = ASN1.value(node[1].tag)
-        o.object.notAfter = ASN1.value(node[2].tag)
+    if rf.object isa CER
+        rf.object.notBefore = ASN1.value(node[1].tag)
+        rf.object.notAfter = ASN1.value(node[2].tag)
     end
-    if tpi.nicenames
+    if gpi.nicenames
         node[1].nicename = "notBefore"
         node[1].nicevalue = string(ASN1.value(node[1].tag))
         node[2].nicename = "notAfter"
@@ -466,12 +490,12 @@ end
     subject = check_attribute(node[1], @oid("2.5.4.3"), ASN1.PRINTABLESTRING, [ASN1.UTF8STRING])
     #@debug "CER, subject:" ASN1.value(subject.tag)
 
-    if tpi.nicenames
+    if gpi.nicenames
         node.nicevalue = ASN1.value(subject.tag)
     end
-    if o.object isa CER
-        o.object.subject = ASN1.value(subject.tag)
-        o.object.selfsigned = o.object.issuer == o.object.subject
+    if rf.object isa CER
+        rf.object.subject = ASN1.value(subject.tag)
+        rf.object.selfsigned = rf.object.issuer == rf.object.subject
     end
 end
 
@@ -480,7 +504,7 @@ end
     # FIXME: RFC6485 is not quite clear on which OID we should expect here..
     check_OID(node[1], @oid "1.2.840.113549.1.1.1")
     check_tag(node[2], ASN1.NULL)
-    if tpi.nicenames
+    if gpi.nicenames
         node[1].nicevalue = oid_to_str(node[1].tag.value)
     end
 end
@@ -505,11 +529,11 @@ end
 
     # 256 bytes + the first byte indicating unused bits == 257
     @assert encaps_modulus.tag.len == 257
-    if o.object isa CER
-        o.object.rsa_modulus   = to_bigint(@view encaps_modulus.tag.value[2:end])
-        o.object.rsa_exp       = ASN1.value(encaps_exponent.tag)
+    if rf.object isa CER
+        rf.object.rsa_modulus   = to_bigint(@view encaps_modulus.tag.value[2:end])
+        rf.object.rsa_exp       = ASN1.value(encaps_exponent.tag)
     end
-    if o.object isa ROA || o.object isa MFT
+    if rf.object isa ROA || rf.object isa MFT
         tpi.ee_rsaExponent = encaps_exponent
         tpi.ee_rsaModulus = encaps_modulus
     end
@@ -518,8 +542,8 @@ end
 @check "subjectPublicKeyInfo" begin
     # AlgorithmIdentifier + BITSTRING
     check_tag(node, ASN1.SEQUENCE)
-    (@__MODULE__).check_ASN1_algorithm(o, node[1], tpi)
-    (@__MODULE__).check_ASN1_subjectPublicKey(o, node[2], tpi)
+    (@__MODULE__).check_ASN1_algorithm(rf, node[1], gpi, tpi)
+    (@__MODULE__).check_ASN1_subjectPublicKey(rf, node[2], gpi, tpi)
 end
 
 const MANDATORY_EXTENSIONS_SS = Vector{Vector{UInt8}}([
@@ -637,9 +661,9 @@ const MANDATORY_EXTENSIONS_EE = Vector{Vector{UInt8}}([
 
 
     # SIA checks # TODO rewrite / split up check_subject_information_access
-    #RPKI.check_subject_information_access(o, all_extensions[@oid "1.3.6.1.5.5.7.1.11"])
+    #RPKI.check_subject_information_access(rf, all_extensions[@oid "1.3.6.1.5.5.7.1.11"])
     for (oid,node) in all_extensions
-        (@__MODULE__).check_ASN1_extension(oid, o, node, tpi, parent_cer)
+        (@__MODULE__).check_ASN1_extension(oid, rf, node, gpi, tpi)
     end
 
     # IP and/or ASN checks:
@@ -652,21 +676,21 @@ const MANDATORY_EXTENSIONS_EE = Vector{Vector{UInt8}}([
 end
 
 @check "tbsCertificate" begin
-    (@__MODULE__).check_ASN1_version(o, node[1], tpi)
-    (@__MODULE__).check_ASN1_serialNumber(o, node[2], tpi)
-    (@__MODULE__).check_ASN1_signature(o, node[3], tpi)
-    (@__MODULE__).check_ASN1_issuer(o, node[4], tpi)
-    (@__MODULE__).check_ASN1_validity(o, node[5], tpi)
-    (@__MODULE__).check_ASN1_subject(o, node[6], tpi)
-    (@__MODULE__).check_ASN1_subjectPublicKeyInfo(o, node[7], tpi)
-    (@__MODULE__).check_ASN1_extensions(o, node[8], tpi, parent_cer)
+    (@__MODULE__).check_ASN1_version(rf, node[1], gpi, tpi)
+    (@__MODULE__).check_ASN1_serialNumber(rf, node[2], gpi, tpi)
+    (@__MODULE__).check_ASN1_signature(rf, node[3], gpi, tpi)
+    (@__MODULE__).check_ASN1_issuer(rf, node[4], gpi, tpi)
+    (@__MODULE__).check_ASN1_validity(rf, node[5], gpi, tpi)
+    (@__MODULE__).check_ASN1_subject(rf, node[6], gpi, tpi)
+    (@__MODULE__).check_ASN1_subjectPublicKeyInfo(rf, node[7], gpi, tpi)
+    (@__MODULE__).check_ASN1_extensions(rf, node[8], gpi, tpi)
 
-    if o.object isa ROA 
+    if rf.object isa ROA 
         tpi.eeCert = node
-    elseif o.object isa MFT
+    elseif rf.object isa MFT
         tpi.eeCert = node
-    elseif o.object isa CER
-        tpi.caCert = node
+    elseif rf.object isa CER
+        #tpi.caCert = node
     else
         throw(ErrorException("what object?"))
     end
@@ -678,7 +702,7 @@ end
     check_tag(node, ASN1.SEQUENCE)
 
     check_OID(node[1], @oid "1.2.840.113549.1.1.11") # sha256WithRSAEncryption
-    if tpi.nicenames
+    if gpi.nicenames
         node[1].nicevalue = oid_to_str(node[1].tag.value)
     end
     # here, the parameters MUST be present and MUST be NULL (RFC4055)

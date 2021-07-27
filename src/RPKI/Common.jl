@@ -1,5 +1,6 @@
 module RPKICommon
 
+using TimerOutputs
 
 using JDR.Config: CFG
 using JDR.Common: Remark, RemarkCounts_t, AutSysNum, AsIdsOrRanges, IPRange, split_scheme_uri
@@ -54,7 +55,7 @@ Fields:
  - `sig_valid::Union{Nothing, Bool}`
  - `cms_digest_valid::Union{Nothing, Bool}`
 """
-mutable struct RPKIObject{T<:RPKIFile}
+mutable struct depr_RPKIObject{T<:RPKIFile}
     filename::String
     tree::Union{Nothing, Node}
     object::T

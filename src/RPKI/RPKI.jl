@@ -1,20 +1,880 @@
 module RPKI
+using TimerOutputs
 using JDR: CFG
 using JDR.Common: Remark, RemarkCounts_t, split_scheme_uri, count_remarks, AutSysNum, IPRange
 using JDR.Common: remark_missingFile!, remark_loopIssue!, remark_manifestIssue!, remark_validityIssue!
-using JDR.RPKICommon: add_resource!, RPKIObject, RPKINode, Lookup, TmpParseInfo, add_filename!
-using JDR.RPKICommon: CER, add_resource, MFT, CRL, ROA, add_missing_filename!, RootCER, get_pubpoint
-using JDR.RPKICommon: get_object, rsync, rrdp, parse_tal
-using JDR.ASN1: Node
+#using JDR.RPKICommon: add_resource!, RPKIObject, RPKINode, Lookup, TmpParseInfo, add_filename!
+#using JDR.RPKICommon: CER, add_resource, MFT, CRL, ROA, add_missing_filename!, RootCER, get_pubpoint
+#using JDR.RPKICommon: get_object, rsync, rrdp, parse_tal
+using JDR.ASN1: Node, SEQUENCE, check_tag
 
-using IntervalTrees: IntervalValue
+#using IntervalTrees: IntervalValue, IntervalMap
 using Sockets: IPAddr
 
 export process_tas, process_ta, process_cer, link_resources!
 
 
 include("rsync.jl")
-include("RRDP.jl")
+#include("RRDP.jl") # TODO relies on old RPKICommon
+
+
+
+
+##############################
+# start of refactor
+##############################
+
+using Dates: DateTime
+using IntervalTrees: IntervalTree, IntervalMap, Interval, IntervalValue
+using Sockets: IPv6, IPv4
+using StaticArrays: SVector
+
+using JDR.ASN1: Node
+using JDR.ASN1.DER: parse_file_recursive
+using JDR.Common: AsIdsOrRanges
+include("TAL.jl")
+using .Tal: TAL, parse_tal
+export parse_tal
+
+@enum Transport rsync rrdp
+export rsync, rrdp
+
+abstract type RPKIObject end
+
+
+" RPKIFile represents the Node+Object "
+mutable struct RPKIFile{T<:RPKIObject}
+	" The parent RPKIFile, is only `nothing` for the root RPKIFile "
+	parent::Union{Nothing, RPKIFile}
+    " Descendant RPKIFile(s) "
+    children::Union{Nothing, RPKIFile, Vector{RPKIFile}}
+	" The actual object, e.g. a CER/CRL/MFT/ROA etc. "
+	object::T
+	" Filename for the object "
+	filename::AbstractString #TODO check, is AbstractString bad here?
+    " ASN1 tree"
+    asn1_tree::Union{Nothing, Node}
+	#siblings?
+	#remarks? or on object
+	#remarks_ASN1 (was remarks_tree)
+	#sig_valid? cms_digest_valid? or keep that in remarks
+end
+
+Base.show(io::IO, rf::RPKIFile{T}) where {T<:RPKIObject} = print(io, "[", nameof(T), "] ", rf.filename)
+
+Base.IteratorSize(::RPKIFile) = Base.SizeUnknown()
+Base.IteratorEltype(::RPKIFile) = Base.HasEltype()
+eltype(::RPKIFile) = Type{RPKIFile}
+function Base.iterate(rf::RPKIFile, queue=RPKIFile[rf])
+    if isempty(queue)
+        return nothing
+    end
+    res = popfirst!(queue)
+    if !isnothing(res.children)
+        if res.children isa Vector
+            append!(queue, res.children)
+        else
+            push!(queue, res.children)
+        end
+    end
+    return res, queue
+end
+
+struct Lookup
+    filenames::Dict{AbstractString}{RPKIFile}
+    asns::Dict{AutSysNum}{Vector{RPKIFile}}
+    vrps_v6::IntervalMap{IPv6, RPKIFile}
+    vrps_v4::IntervalMap{IPv4, RPKIFile}
+    remarks::Vector{Tuple{Remark, RPKIFile}}
+
+    # remarks
+
+    #resources_v6 # done in vrps_?
+    #resources_v4 # done in vrps_?
+    
+    #pubpoints
+    #rrdp_updates # this should go elsewhere perhaps
+    
+    # ---
+    
+    #rsync_modules # was temporary
+    #too_specific # guess this can be replaced by Remarks
+    #invalid_* # same
+    #missing_files # same?
+end
+function Lookup(rf::RPKIFile{<:RPKIObject}) :: Lookup
+    filenames = Dict{AbstractString}{RPKIFile}()
+    asns = Dict{AutSysNum}{Vector{RPKIFile}}()
+    vrps_v6 = IntervalMap{IPv6, RPKIFile}()
+    vrps_v4 = IntervalMap{IPv4, RPKIFile}()
+    remarks = Tuple{Remark, RPKIFile}[]
+
+    for f in rf
+        filenames[f.filename] = f
+        if f.object isa ROA #TODO ROA is not yet defined here, move this to bottom
+            asid = f.object.asid
+            if asid in keys(asns)
+                push!(asns[asid], f)
+            else
+                asns[asid] = [f]
+            end
+            for v in f.object.vrp_tree.resources_v6
+                push!(vrps_v6, IntervalValue{IPv6, RPKIFile}(v.first, v.last, f))
+            end
+            for v in f.object.vrp_tree.resources_v4
+                push!(vrps_v4, IntervalValue{IPv4, RPKIFile}(v.first, v.last, f))
+            end
+        end
+    end
+    Lookup(filenames, asns, vrps_v6, vrps_v4, remarks)
+end
+function Base.show(io::IO, lookup::Lookup)
+    print(io, "filenames: ", length(lookup.filenames))
+    print(io, "\n")
+    print(io, "ASNs: ", length(lookup.asns))
+    print(io, "\n")
+    print(io, "VRPs v6/v4: ", length(lookup.vrps_v6), " / ", length(lookup.vrps_v4))
+end
+
+struct RootCER <: RPKIObject
+    resources_v6::IntervalTree{IPv6, IntervalValue{IPv6, Vector{RPKIFile}}}
+    resources_v4::IntervalTree{IPv4, IntervalValue{IPv4, Vector{RPKIFile}}}
+end
+RootCER() = RootCER(IntervalTree{IPv6, IntervalValue{IPv6, Vector{RPKIFile}}}(), IntervalTree{IPv4, IntervalValue{IPv4, Vector{RPKIFile}}}())
+
+RPKIFile() = RPKIFile(nothing, RPKIFile[], RootCER(), "", nothing)
+RPKIFile(parent::RPKIFile, children, obj::T, fn::String, asn1::Node) where {T<:RPKIFile} = RPKIFile(parent, children, obj, fn, asn1)
+#RPKIFile(parent::RPKIFile, children::Vector{RPKIFile}, obj::T, fn::String) where {T<:RPKIFile} = RPKIFile(parent, children, obj, fn)
+
+
+""" Simple wrapper for `serial::Integer` """
+struct SerialNumber
+    serial::Integer
+end
+Base.convert(::Type{SerialNumber}, i::Integer) = SerialNumber(i)
+Base.string(s::SerialNumber) = uppercase(string(s.serial, base=16))
+
+struct ASIdentifiers
+    ids::Vector{AutSysNum}
+    ranges::Vector{OrdinalRange{AutSysNum}}
+end
+const LinkedResources{T<:IPAddr} = IntervalMap{T, Vector{RPKIFile}}
+"""
+	CER <: RPKIObject
+
+Represents a decoded certificate (.cer) file.
+
+Fields:
+
+Extracted from decoded file:
+ - `serial`  -- Serial number on this certificate
+ - `notBefore`/`notAfter` -- DateTime fields
+ - `pubpoint` -- String
+ - `manifest` -- String
+ - `rrdp_notify` -- String
+ - `selfsigned` -- Bool or Nothing
+ - `issuer` -- String
+ - `subject` -- String
+
+Set after validation: 
+ - `validsig` -- Bool or Nothing
+ - `resources_valid` -- Bool or Nothing
+
+"""
+Base.@kwdef mutable struct CER <: RPKIObject
+    serial::SerialNumber = 0
+    notBefore::Union{Nothing, DateTime} = nothing
+    notAfter::Union{Nothing, DateTime} = nothing
+    pubpoint::String = ""
+    manifest::String = ""
+    rrdp_notify::String = ""
+    selfsigned::Union{Nothing, Bool} = nothing
+    validsig::Union{Nothing, Bool} = nothing
+    rsa_modulus::BigInt = 0
+    rsa_exp::Int = 0
+
+    issuer::String = ""
+    subject::String = ""
+
+    aki::Vector{UInt8} = []
+    ski::Vector{UInt8} = []
+
+    inherit_v6_prefixes::Union{Nothing, Bool} = nothing
+    inherit_v4_prefixes::Union{Nothing, Bool} = nothing
+    resources_v6::LinkedResources{IPv6} = LinkedResources{IPv6}() 
+    resources_v4::LinkedResources{IPv4} = LinkedResources{IPv4}() 
+
+    inherit_ASNs::Union{Nothing, Bool} = nothing
+    ASNs::AsIdsOrRanges = AsIdsOrRanges()
+
+    resources_valid::Union{Nothing,Bool} = nothing
+end
+
+add_resource!(cer::CER, ipr::IPRange{IPv6}) = push!(cer.resources_v6, IntervalValue(ipr, RPKIFile[])) #TODO: should we remove this RPKIFile[] alloc?
+add_resource!(cer::CER, ipr::IPRange{IPv4}) = push!(cer.resources_v4, IntervalValue(ipr, RPKIFile[]))
+
+function Base.show(io::IO, cer::CER)
+    print(io, "  pubpoint: ", cer.pubpoint, '\n')
+    print(io, "  manifest: ", cer.manifest, '\n')
+    print(io, "  rrdp: ", cer.rrdp_notify, '\n')
+    print(io, "  notBefore: ", cer.notBefore, '\n')
+    print(io, "  notAfter: ", cer.notAfter, '\n')
+    printstyled(io, "  ASNs: \n")
+    print(io, "    ", join(cer.ASNs, ","), "\n")
+end
+
+
+"""
+	MFT <: RPKIObject
+
+Represents a decoded manifest (.mft) file.
+
+Fields:
+
+Extracted from decoded file:
+ - `files` -- `Vector{String}` containing filenames listed on this manifest
+ - `loops` -- `Vector{String}` or `Nothing` listing the filenames causing a loop
+ - `missing_files` -- `Vector{String}` of filenames listed in the manifest but not found on disk
+ - `this_update`: `DateTime`
+ - `next_update`: `DateTime`
+"""
+mutable struct MFT <: RPKIObject
+    files::Vector{String}
+    loops::Union{Nothing, Vector{String}}
+    missing_files::Union{Nothing, Vector{String}}
+    this_update::Union{Nothing, DateTime}
+    next_update::Union{Nothing, DateTime}
+
+end
+MFT() = MFT([], nothing, nothing, nothing, nothing)
+
+"""
+	CRL <: RPKIObject
+
+Represents a decoded Certificate Revocation List (.crl) file.
+
+Fields:
+
+ - `revoked_serials` -- Vector of [`SerialNumber`](@ref)'s
+ - `this_update` -- `DateTime`
+ - `next_update` -- `DateTime`
+
+"""
+mutable struct CRL <: RPKIObject
+    revoked_serials::Vector{SerialNumber} # TODO also include Revocation Date for each serial
+    this_update::Union{Nothing, DateTime}
+    next_update::Union{Nothing, DateTime}
+end
+CRL() = CRL([], nothing, nothing)
+Base.show(io::IO, crl::CRL) = print(io, crl.this_update, " -> ", crl.next_update, "\n", crl.revoked_serials)
+
+
+const _VRPS{T<:IPAddr} = IntervalMap{T, UInt8}
+
+"""
+Holds the IPv6 and IPv4 resources listed on this ROA, as an IntervalTree,
+with Values denoting the maxlength.
+
+
+Fields:
+
+ - `resources_v6::_VRPS{IPv6}`
+ - `resources_v4::_VRPS{IPv4}`
+
+These field are named this way so we can easily to coverage checks between different
+RPKIObject types.  `_VRPS` is an alias for `IntervalMap{T, UInt8}`. 
+
+"""
+struct VRPS
+    resources_v6::_VRPS{IPv6}
+    resources_v4::_VRPS{IPv4}
+end
+VRPS() = VRPS(_VRPS{IPv6}(), _VRPS{IPv4}())
+
+"""
+	ROA <: RPKIObject
+
+Represents a decoded Route Origin Authorization (.roa) file.
+
+Fields:
+
+ - `asid` -- Integer
+ - `vrp_tree` -- [`VRPS`](@ref)
+ - `resources_v6` -- `IntervalTree{IPv6}` of the IPv6 resources in the EE certificate
+ - `resources_v4` -- `IntervalTree{IPv4}` of the IPv4 resources in the EE certificate
+
+After validation:
+ - `resources_valid` -- Bool or Nothing
+"""
+mutable struct ROA <: RPKIObject
+    asid::AutSysNum
+    vrp_tree::VRPS
+    resources_valid::Union{Nothing,Bool}
+    resources_v6::Union{Nothing, IntervalTree{IPv6}} # TODO should we store these? or move to tpi?
+    resources_v4::Union{Nothing, IntervalTree{IPv4}} # TODO should we store these?
+end
+ROA() = ROA(AutSysNum(0), VRPS(), # FIXME the AS0 here is ugly
+            nothing,
+            IntervalTree{IPv6, Interval{IPv6}}(),
+            IntervalTree{IPv4, Interval{IPv4}}(),
+           )
+
+
+struct UnknownType <: RPKIObject end
+
+
+#function load(t::Type{T}, fn::AbstractString, parent=Union{Nothing, RPKIFile}=nothing) :: RPKIFile{<:RPKIObject} where {T<:RPKIObject}
+function load(t::Type{T}, fn::AbstractString, parent=Union{Nothing, RPKIFile}=nothing) where {T<:RPKIObject}
+    if !isfile(fn)
+        @error "File not found: [$(nameof(T))] $(fn)"
+        @debug "parent is: $(parent)"
+        return nothing
+        #return RPKIFile(parent, nothing, UnknownType(), fn, nothing)
+    else
+        asn1_tree = parse_file_recursive(fn)
+        obj = t()
+        return RPKIFile(parent, nothing, obj, fn, asn1_tree)
+    end
+end
+function load(fn::AbstractString, parent=Union{Nothing, RPKIFile}=nothing)
+    if endswith(fn, r"\.cer"i)
+        load(CER, fn, parent)
+    elseif endswith(fn, r"\.mft"i)
+        load(MFT, fn, parent)
+    elseif endswith(fn, r"\.crl"i)
+        load(CRL, fn, parent)
+    elseif endswith(fn, r"\.roa"i)
+        load(ROA, fn, parent)
+    else
+        load(UnknownType, fn, parent)
+    end
+end
+
+#include("Lookup.jl")
+
+Base.@kwdef struct GlobalProcessInfo
+    lock::ReentrantLock = ReentrantLock() 
+    #transport::Transport = rsync::Transport
+    transport::Transport = rrdp::Transport
+    fetch_data::Bool = false
+    data_dir::String = if transport == rsync
+        CFG["rpki"]["rsync_data_dir"]
+    elseif transport == rrdp
+        CFG["rpki"]["rrdp_data_dir"]
+    else
+    end
+
+    #tal::Union{Nothing, TAL} = nothing
+    #lookup::Lookup = Lookup()
+    nicenames::Bool = false
+    strip_tree::Bool = false
+    oneshot::Bool = false
+
+    fetched_notifies::Dict{AbstractString}{Task} = Dict()
+    tasks::Vector{Task} = []
+end
+
+#TODO can we make specific ones, per RPKIObject type, perhaps isbits/immutable?
+Base.@kwdef mutable struct TmpParseInfo
+    eContent::Union{Nothing,Node} = nothing
+    signedAttrs::Union{Nothing,Node} = nothing  #TODO currently not used
+    saHash::Union{Nothing, SVector{32, UInt8}} = nothing
+
+    #caCert::Union{Nothing,Node} = nothing
+
+    eeCert::Union{Nothing,Node} = nothing
+    ee_rsaExponent::Union{Nothing,Node} = nothing
+    ee_rsaModulus::Union{Nothing,Node} = nothing
+
+    ee_aki::Union{Nothing, SVector{20, UInt8}} = nothing
+    ee_ski::Union{Nothing, SVector{20, UInt8}} = nothing
+
+    eeSig::Union{Nothing,Node} = nothing
+
+    # for ROA:
+    afi::UInt32 = 0x0
+    # to verify CMS digest in MFT/ROAs:
+    cms_message_digest::Union{Nothing, String} = "" #TODO SVector?
+end
+
+include("../PKIX/PKIX.jl")
+
+using JDR.ASN1: childcount
+#using .PKIX.X509
+function check_ASN1(rf::RPKIFile{CER}, gpi::GlobalProcessInfo)
+    childcount(rf.asn1_tree, 3) # this one marks the SEQUENCE as checked!
+    #@debug typeof(rf)
+    
+    tpi = TmpParseInfo() 
+    tbsCertificate = rf.asn1_tree.children[1]
+    X509.check_ASN1_tbsCertificate(rf, tbsCertificate, gpi, tpi)
+    #TODO:
+    X509.check_ASN1_signatureAlgorithm(rf, rf.asn1_tree.children[2], gpi, tpi)
+    X509.check_ASN1_signatureValue(rf, rf.asn1_tree.children[3], gpi, tpi)
+end
+
+function fake_fetch(url::AbstractString)
+    try
+        @info "fake_fetching $(url)"
+        t = rand()*0.1
+        sleep(t)
+        @info "fake_fetching $(url) done after $(t)"
+    catch e
+        @error e url
+    end
+end
+
+struct DelayedProcess
+    notify_url::AbstractString
+    rf::RPKIFile{CER}
+end
+
+function process(rf::RPKIFile{CER}, gpi::GlobalProcessInfo) :: Union{Nothing, DelayedProcess}
+    processing_delayed = false
+    if !isempty(rf.object.manifest)
+        processing_delayed = true
+    else
+        check_ASN1(rf, gpi)
+    end
+
+    #if rf.filename == "rrdp_repo/rpki.ripe.net/repository/DEFAULT/RYesy9trwR8qCh_LPX2r4iePXek.cer"
+    #    debugme = true
+    #    @debug Threads.threadid() processing_delayed "processing RIPE one"
+    #elseif rf.filename == "rrdp_repo/rpki.arin.net/repository/arin-rpki-ta/5e4a23ea-e80a-403e-b08c-2171da2157d3/f60c9f32-a87c-4339-a2f3-6299a3b02e29/1c804bcc-72df-429f-a7d4-aedec2326572/cbe5446eb35e68e341eb7d92888bcc552b9c3c50b2c814c3e9.cer"
+    #    debugme = true
+    #    @debug Threads.threadid() processing_delayed "processing ARIN one"
+    #end
+
+    @assert !isempty(rf.object.manifest)
+
+    #check_ASN1(rf, gpi)
+    
+    # fetch y/n?
+    # load() MFT based on rf.object.manifest
+    #@debug "load for manifest $(rf.object.manifest)"
+
+    # check if we hop to another CA
+    if !isnothing(rf.parent.parent)
+        (parent_ca, _) = split_scheme_uri(rf.parent.parent.object.pubpoint)
+        (this_ca, _) = split_scheme_uri(rf.object.pubpoint)
+        if parent_ca != this_ca
+            lock(gpi.lock)
+            try
+                if !(rf.object.rrdp_notify in keys(gpi.fetched_notifies) && istaskdone(gpi.fetched_notifies[rf.object.rrdp_notify]))
+                    #@debug "new pubpoint: $(this_ca), notify: $(rf.object.rrdp_notify)"
+                    @assert !processing_delayed
+                    #debugme && @debug "returning DelayedProcess for $(rf.filename) with url $(rf.object.rrdp_notify)"
+                    return DelayedProcess(rf.object.rrdp_notify, rf)
+                #else
+                #    @assert processing_delayed
+                end
+            finally
+                unlock(gpi.lock)
+            end
+        end
+    end
+
+    mft_fn = joinpath(gpi.data_dir, @view rf.object.manifest[9:end])
+    mft = load(MFT, mft_fn, rf)
+    rf.children = mft
+    gpi.strip_tree && (rf.asn1_tree = nothing)
+    return nothing
+end
+
+include("../PKIX/CMS.jl")
+include("MFT.jl")
+function check_ASN1(rf::RPKIFile{MFT}, gpi::GlobalProcessInfo)
+    tpi = TmpParseInfo()
+    cmsobject = rf.asn1_tree
+    # CMS, RFC5652:
+    #       ContentInfo ::= SEQUENCE {
+    #           contentType ContentType,
+    #           content [0] EXPLICIT ANY DEFINED BY contentType }
+    
+    check_tag(cmsobject, SEQUENCE)
+    childcount(cmsobject, 2)
+
+    # from CMS.jl:
+    CMS.check_ASN1_contentType(rf, cmsobject[1], gpi, tpi)
+    CMS.check_ASN1_content(rf, cmsobject[2], gpi, tpi)
+
+    Mft.check_ASN1_manifest(rf, tpi.eContent, gpi, tpi)
+end
+
+function process(rf::RPKIFile{MFT}, gpi::GlobalProcessInfo)
+    check_ASN1(rf, gpi)
+    # for each of listed files, load() CER/CRL/ROA
+    
+    #children = map(fn -> load(fn, rf), rf.object.files)
+    children = RPKIFile[]
+    for f in rf.object.files
+        mft_path = dirname(rf.filename)
+        fn = joinpath(mft_path, f)
+        push!(children, load(fn, rf))
+    end
+
+
+    # push to children (Vector)
+    rf.children = children
+    gpi.strip_tree && (rf.asn1_tree = nothing)
+    rf
+end
+
+include("CRL.jl")
+function check_ASN1(rf::RPKIFile{CRL}, gpi::GlobalProcessInfo)
+	# CertificateList  ::=  SEQUENCE  {
+	#  tbsCertList          TBSCertList,
+	#  signatureAlgorithm   AlgorithmIdentifier,
+	#  signatureValue       BIT STRING  }
+    
+    tpi = TmpParseInfo()
+    childcount(rf.asn1_tree, 3)
+
+    Crl.check_ASN1_tbsCertList(rf, rf.asn1_tree.children[1], gpi, tpi)
+    # from X509.jl:
+    X509.check_ASN1_signatureAlgorithm(rf, rf.asn1_tree.children[2], gpi, tpi)
+    X509.check_ASN1_signatureValue(rf, rf.asn1_tree.children[3], gpi, tpi)
+end
+
+function process(rf::RPKIFile{CRL}, gpi::GlobalProcessInfo)
+    check_ASN1(rf, gpi)
+    # no children
+    #
+    gpi.strip_tree && (rf.asn1_tree = nothing)
+end
+
+include("ROA.jl")
+add_resource!(roa::ROA, ipr::IPRange{IPv6}) = push!(roa.resources_v6, Interval(ipr))
+add_resource!(roa::ROA, ipr::IPRange{IPv4}) = push!(roa.resources_v4, Interval(ipr))
+function check_ASN1(rf::RPKIFile{ROA}, gpi::GlobalProcessInfo)
+    cmsobject = rf.asn1_tree
+    # CMS, RFC5652:
+    #       ContentInfo ::= SEQUENCE {
+    #           contentType ContentType,
+    #           content [0] EXPLICIT ANY DEFINED BY contentType }
+    
+    tpi = TmpParseInfo()
+    check_tag(cmsobject, SEQUENCE)
+    childcount(cmsobject, 2)
+
+    # from CMS.jl:
+    CMS.check_ASN1_contentType(rf, cmsobject[1], gpi, tpi)
+    CMS.check_ASN1_content(rf, cmsobject[2], gpi, tpi)
+
+    Roa.check_ASN1_routeOriginAttestation(rf, tpi.eContent, gpi, tpi)
+end
+function process(rf::RPKIFile{ROA}, gpi::GlobalProcessInfo)
+    check_ASN1(rf, gpi)
+    # no children
+    gpi.strip_tree && (rf.asn1_tree = nothing)
+end
+
+function process(rf::RPKIFile{UnknownType}, ::GlobalProcessInfo)
+    @warn "No implementation to process $(basename(rf.filename))"
+    # no children
+end
+
+
+function process_all(rf::RPKIFile, gpi=GlobalProcessInfo()) :: RPKIFile
+    #@debug "process_all for $(rf.filename), parent: $(rf.parent)"
+    # TODO check if rf is already processed?
+    #RPKI.process(rf, gpi)
+    #todo = RPKIFile[rf]
+    todo_c = Channel{RPKIFile}(50000)
+    put!(todo_c, rf)
+    #for c in todo
+    total = 0
+    while(isready(todo_c))
+        total += 1
+        #@debug "in todo for $(c)"
+        c = take!(todo_c)
+        res = RPKI.process(c, gpi)
+        if res isa DelayedProcess
+            #@debug "got a new DelayedProcess for $(res.notify_url)"
+            lock(gpi.lock)
+            try
+                if !(res.notify_url in keys(gpi.fetched_notifies))
+                    fetch_t = @async fake_fetch(res.notify_url)
+                    gpi.fetched_notifies[res.notify_url] = fetch_t
+                end
+                new_process_all_t = @async begin
+                    wait(gpi.fetched_notifies[res.notify_url])
+                    #@debug "Spawned thread, wait done for $(res.notify_url)"
+                    process_all(res.rf, gpi)
+                end
+                push!(gpi.tasks, new_process_all_t)
+
+                #if res.notify_url in keys(gpi.fetched_notifies)
+                #    #new_process_all_t = Threads.@spawn begin
+                #    new_process_all_t = @async begin
+                #        wait(gpi.fetched_notifies[res.notify_url])
+                #        #@debug "Spawned thread, wait done for $(res.notify_url)"
+                #        process_all(res.rf, gpi)
+                #    end
+                #    push!(gpi.tasks, new_process_all_t)
+                #    #@debug "gpi.tasks: $(length(gpi.tasks))"
+                #else
+                #    #@debug "not in notify_urls : $(res.notify_url)"
+                #    #@debug "keys: $(keys(gpi.fetched_notifies))"
+                #    fetch_t = @async fake_fetch(res.notify_url)
+                #    gpi.fetched_notifies[res.notify_url] = fetch_t
+                #end
+            finally
+                unlock(gpi.lock)
+            end
+        elseif !isnothing(c.children)
+            if !isnothing(c.children)
+                if c.children isa Vector
+                    for _c in c.children
+                        #push!(todo, _c)
+                        put!(todo_c, _c)
+                    end
+                else
+                    #push!(todo, c.children)
+                    put!(todo_c, c.children)
+                end
+            end
+        end
+    end
+    #@debug "process_all done ($(total) processed) for $(rf.filename)"
+    rf
+end
+
+function process_tas()
+    root = RPKIFile()
+    gpi = GlobalProcessInfo(;strip_tree = true)
+    #tasks = Task[]
+    tas = [
+           "rrdp_repo/rpki.afrinic.net/repository/AfriNIC.cer",
+           "rrdp_repo/rpki.apnic.net/repository/apnic-rpki-root-iana-origin.cer",
+           "rrdp_repo/rpki.arin.net/repository/arin-rpki-ta.cer",
+           "rrdp_repo/repository.lacnic.net/rpki/lacnic/rta-lacnic-rpki.cer",
+           "rrdp_repo/rpki.ripe.net/ta/ripe-ncc-ta.cer",
+           ]
+    for ta_fn in tas
+        ta_rf = load(RPKI.CER, ta_fn, root)
+        push!(root.children, ta_rf)
+        t = Threads.@spawn process_all(ta_rf, gpi)
+        lock(gpi.lock)
+        try
+            push!(gpi.tasks, t)
+        finally
+            unlock(gpi.lock)
+        end
+    end
+    @debug "gpi.tasks: $(length(gpi.tasks))"
+
+    #@info timedwait(() -> all(istaskdone, gpi.tasks), 60)
+    
+    done = false
+    i = 0
+    while !done
+        lock(gpi.lock)
+        try
+            done = all(istaskdone, gpi.tasks)
+            #FIXME this has no timeout like timedwait
+            i % 100 == 0 && @info "waiting for $(count(!istaskdone, gpi.tasks))/$(length(gpi.tasks))"
+        finally
+            unlock(gpi.lock)
+        end
+        sleep(0.01)
+        i += 1
+        i %= 100
+    end
+
+    @debug "gpi.tasks done: $(count(istaskdone, gpi.tasks))"
+    @debug "pre foreach wait gpi.tasks"
+    foreach(wait, gpi.tasks)
+    @debug "post foreach wait"
+    #results = map((t) -> t.result, gpi.tasks)
+    #@debug results
+
+    @debug "one more time, gpi.tasks: $(length(gpi.tasks))"
+    @debug "gpi.fetched_notifies ($(length(keys(gpi.fetched_notifies)))): $(keys(gpi.fetched_notifies))"
+
+    root#, results
+end
+
+
+function depr_process_ta(ta_cer_fn::AbstractString, root=RPKI.RPKIFile(); kw...)
+    gpi = GlobalProcessInfo()
+	#root = RPKI.RPKIFile() # creates a RootCer #TODO pass to this method as arg?
+	cer_rf = RPKI.load(ta_cer_fn, root)
+	RPKI.process(cer_rf, gpi)
+
+	mft_rf = cer_rf.children
+	@assert mft_rf.object isa RPKI.MFT
+	RPKI.process(mft_rf, gpi)
+
+	# now loop/recurse
+	@assert mft_rf.children isa Vector
+
+	tasks = Channel{RPKI.RPKIFile{<:RPKI.RPKIObject}}(50000)
+	for c in mft_rf.children
+		put!(tasks, c)
+	end
+	total = Threads.Atomic{Int}(2)
+
+# TODO do_work() into a proper function?
+	do_work(t_id) = begin
+		@debug t_id "spawned do_work()"
+		try
+            c = nothing
+            #while timedwait(() -> begin c = take!(tasks); true end, 5) == :ok
+			while timedwait(() -> isready(tasks), 2) == :ok
+				@debug t_id "in isready"
+                if timedwait(() -> begin c = take!(tasks); true end, 1) == :timed_out
+                    @debug "inner timed_out"
+                    break
+                end
+                @debug t_id "post timedwait take!"
+				#c = take!(tasks)
+				Threads.atomic_add!(total, 1)
+				RPKI.process(c, gpi)
+                @debug t_id "post .process"
+				if !isnothing(c.children)
+					if c.children isa Vector
+						for _c in c.children
+							put!(tasks, _c)
+						end
+					else
+						put!(tasks, c.children)
+					end
+				end
+                @debug t_id "end of while"
+			end
+			@debug t_id "tasks notready"
+		catch e
+			@warn t_id e
+            display(stacktrace(catch_backtrace()))
+			throw(e)
+		end
+        @info t_id "task done"
+	end
+	worker_handles = []
+	@debug "spawning tasks on $(Threads.nthreads()) threads"
+	for i in 1:Threads.nthreads()
+		_h = Threads.@spawn do_work(i)
+		@assert !isnothing(_h)
+		push!(worker_handles, _h)
+	end
+	@debug "waiting on $(length(worker_handles)) worker_handles"
+	i = 0
+	ind_symbols = ['|', '/', '-', '\\', '|', '/', '-', '\\']
+	while !all(istaskdone, worker_handles)
+		ind = ind_symbols[(i %= length(ind_symbols)) + 1]
+		print("\r$(ind) $(count(istaskdone, worker_handles))/$(length(worker_handles)) done, $(count(istaskfailed, worker_handles)) failed, waiting")
+		sleep(0.05)
+		i += 1
+	end
+	@info "Done, processed $(total[]) files"
+	@debug "pre foreach wait"
+	foreach(wait, worker_handles) # to get errors/output
+	@debug "post foreach wait"
+	#@info "Making lookup"
+	#global lookup
+	#@time lookup = RPKI.Lookup(cer_rf)
+end
+
+function tmp_runall()
+    gpi = GlobalProcessInfo()
+    root_rf = RPKI.RPKIFile()
+    tas = split("""
+           rrdp_repo/rpki.afrinic.net/repository/AfriNIC.cer
+           """
+           #rrdp_repo/rpki.apnic.net/repository/apnic-rpki-root-iana-origin.cer
+           #rrdp_repo/rpki.arin.net/repository/arin-rpki-ta.cer
+           #rrdp_repo/repository.lacnic.net/rpki/lacnic/rta-lacnic-rpki.cer
+           #rrdp_repo/rpki.ripe.net/ta/ripe-ncc-ta.cer
+           #"""
+           )
+    #for ta_fn in tas
+    #    @debug "calling process_ta for $(ta_fn)"
+    #    @time process_ta(ta_fn)
+    #end
+    tasks = Vector{Task}()
+    results = Channel(10)
+
+    for ta_fn in tas
+        talname = "TODO" # comes from config eventually
+        #@debug "for talname: $(talname)"
+        #=
+        tal = parse_tal(joinpath(CFG["rpki"]["tal_dir"], ta_fn))
+        cer_uri = if gpi.transport == rsync
+            tal.rsync
+        elseif gpi.transport == rrdp
+            if isnothing(tal.rrdp)
+                @warn "No RRDP URI for tal $(talname), skipping"
+                continue
+            end
+            tal.rrdp
+        end
+
+        (hostname, cer_fn) = split_scheme_uri(cer_uri) 
+        ta_cer_fn = joinpath(gpi.data_dir, "tmp", hostname, cer_fn)
+        if !isfile(ta_cer_fn)
+            if gpi.fetch_data
+                if gpi.transport == rrdp
+                    RRDP.fetch_ta_cer(cer_uri, ta_cer_fn)
+                else
+                    Rsync.fetch_ta_cer(cer_uri, ta_cer_fn)
+                end
+            else
+                @warn "TA certificate for $(talname) not locally available and not fetching
+                in this run. Consider passing `fetch_data=true`."
+                continue
+            end
+        end
+        #TODO move ta_cer to non-tmp dir!
+        =#
+        work() = try 
+            @info "Processing $(talname)"
+            process_ta(ta_fn, root_rf)
+            @info "Done processing $(talname)"
+        catch e
+            @error ta_fn e
+            if e isa InterruptException
+                put!(results, ErrorException("Processing $(talname) timed out"))
+            else
+                put!(results, ErrorException("Failed to process $(talname), $(e)"))
+            end
+        end
+        task = Task(work)
+        push!(tasks, task)
+        schedule(task)
+
+    end
+
+    status = timedwait(() -> all(istaskdone, tasks), 180)
+    if status == :timed_out
+        @warn "One or more tasks timed out"
+        for t_to in filter(t->!istaskdone(t), tasks)
+            schedule(t_to, InterruptException(); error=true)
+        end
+    end
+    #processed = 0
+    #while isready(results)
+    #    res = take!(results)
+    #    if res isa ErrorException 
+    #        @warn res.msg
+    #    else
+    #        (rir_root, lkup) = res
+    #        add(rpki_root, rir_root)
+    #        processed += 1
+    #        @info "TAL $(processed)/$(length(tals)) merged: $(rir_root)"
+    #    end
+    #end
+    @info "Done!"
+    root_rf
+end
+
+##############################
+# end of refactor
+##############################
+
+
+#=
+
 
 
 """
@@ -38,6 +898,10 @@ function add(p::RPKINode, c::RPKINode)#, o::RPKIObject)
         p.children = [c]
     else
         push!(p.children, c)
+        #if length(Set(p.children)) < length(p.children)
+        #    @warn "duplicates in RPKINode children"
+        #    throw("stop")
+        #end
     end
 end
 function add(p::RPKINode, c::Vector{RPKINode})
@@ -152,6 +1016,11 @@ function process_mft(mft_fn::String, lookup::Lookup, tpi::TmpParseInfo, cer_node
         mft_obj.tree = nothing 
     end
 
+    cer_tasks = Vector{Task}()
+    cer_results = Channel()
+
+    sub_cers_todo = 0
+
     for f in mft_obj.object.files
         if !isfile(joinpath(mft_dir, f))
             @warn "[$(get_pubpoint(cer_node))] Missing file: $(f)"
@@ -259,6 +1128,25 @@ function process_mft(mft_fn::String, lookup::Lookup, tpi::TmpParseInfo, cer_node
         end
 
     end
+
+    #=
+    # processing the @async'ed sub_cers
+    @debug "pre while, sub_cers_todo: $(sub_cers_todo)"
+    no_of_subcers = 0
+    #while !all(istaskdone, cer_tasks)
+    while (sub_cers_todo > no_of_subcers)
+        #@debug "in while, not all subcertasks done"
+        #while isready(cer_results)
+            sub_cer_node = take!(cer_results)
+            @debug "adding sub_cer $(sub_cer_node) to mft $(mft_node)"
+            add(mft_node, sub_cer_node)
+            no_of_subcers += 1
+        #end
+    end
+    @debug "sub_cers done, $(no_of_subcers) processed for $(mft_node)"
+    =#
+
+
 
     # returning:
     mft_node.remark_counts_me = count_remarks(mft_obj) 
@@ -617,6 +1505,7 @@ function process_ta(ta_cer_fn::String; tal=nothing, lookup=Lookup(), tpi_args...
     # 'fetch' cer from TAL ?
     # check TA signature (new)
     # process first cer, using data_dir
+    @debug "process_ta done, returning tuple"
     return rir_root, lookup
 end
 
@@ -718,6 +1607,7 @@ function process_tas(tals=CFG["rpki"]["tals"]; tpi_args...) :: Union{Nothing, Tu
                 continue
             end
         end
+        #TODO move ta_cer to non-tmp dir!
 
         work() = try 
             @info "Processing $(talname)"
@@ -774,5 +1664,7 @@ function collect_remarks_from_asn1!(o::RPKIObject{T}, node::Node) where T
         end
     end
 end
+
+=# # end of refactor tmp comment block
 
 end # module

@@ -103,6 +103,10 @@ function next!(buf::Buf, offset::Int=1) :: Tag
         readbytes!(buf.iob, value, len)
     end
 
+    if tagnumber > 24
+        tagnumber = ASN.Unimplemented
+    end
+
     Tag(first_byte, tagnumber, len, len_indef, _header_len, value, offset_in_file)
 end
 
@@ -190,7 +194,7 @@ function parse_recursive(buf::Buf) :: Node
     tag = DER.next!(buf)
     _parse!(tag, buf, Stack(0))
 end
-function parse_file_recursive(fn::String) :: Node
+function parse_file_recursive(fn::AbstractString) :: Node
     fd = open(fn)
     buf = DER.Buf(fd)
     tag = DER.next!(buf)

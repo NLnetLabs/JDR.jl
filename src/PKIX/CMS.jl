@@ -1,14 +1,19 @@
 module CMS
 using JDR.Common: @oid, oid_to_str, remark_ASN1Issue!, remark_ASN1Error!, remark_encodingIssue!, remark_validityIssue!
-using JDR.RPKICommon: RPKIObject, ROA, MFT, TmpParseInfo
+#using JDR.RPKICommon: RPKIObject, ROA, MFT, TmpParseInfo
 using JDR.ASN1: check_tag, check_OID, check_value, childcount, check_contextspecific
 using JDR.ASN1: istag, to_bigint
 using JDR.ASN1: ASN1 # for ASN1 tags
 using JDR.ASN1.DER: Buf, parse_append!, parse_replace_children!
-using JDR.RPKICommon: RPKIFile, CER # for macro_check
-using ..X509: X509 # to check TbsCert
+#using JDR.RPKICommon: RPKIFile, CER # for macro_check
+#using ..X509: X509 # to check TbsCert
 
 using SHA: sha256
+
+
+# refactor:
+using ..RPKI: MFT, ROA, X509
+using StaticArrays: SVector
 
 include("../ASN1/macro_check.jl")
 
@@ -17,13 +22,14 @@ include("../ASN1/macro_check.jl")
 end
 
 @check "version"  begin
+    #@debug "CMS version macro called"
     check_value(node, ASN1.INTEGER, 0x03)
 end
 
 @check "digestAlgorithm" begin
     check_tag(node, ASN1.SEQUENCE)
     check_OID(node[1], @oid("2.16.840.1.101.3.4.2.1")) # SHA-256 RFC5754 sec 2.2
-    if tpi.nicenames
+    if gpi.nicenames
         node[1].nicevalue = oid_to_str(node[1].tag.value)
     end
     # TODO: This field MUST contain the same algorithm identifier as the
@@ -38,7 +44,7 @@ end
 @check "digestAlgorithms" begin
     check_tag(node, ASN1.SET)
     childcount(node, 1)
-    (@__MODULE__).check_ASN1_digestAlgorithm(o, node[1], tpi)
+    (@__MODULE__).check_ASN1_digestAlgorithm(rf, node[1], gpi, tpi)
 end
 
 
@@ -86,14 +92,14 @@ end
 
 @check "eContentType" begin
     # this can only be either a manifest or a ROA, so:
-    if o.object isa MFT
+    if rf.object isa MFT
         check_OID(node, @oid("1.2.840.113549.1.9.16.1.26"))
-        if tpi.nicenames
+        if gpi.nicenames
             node.nicename *= " (MFT)"
         end
-    elseif o.object isa ROA
+    elseif rf.object isa ROA
         check_OID(node, @oid("1.2.840.113549.1.9.16.1.24"))
-        if tpi.nicenames
+        if gpi.nicenames
             node.nicename *= " (ROA)"
         end
     else
@@ -107,20 +113,22 @@ end
 
 	check_tag(node, ASN1.SEQUENCE)    
 	childcount(node, 2)
-    (@__MODULE__).check_ASN1_eContentType(o, node[1], tpi)
-    (@__MODULE__).check_ASN1_eContent(o, node[2], tpi)
+    (@__MODULE__).check_ASN1_eContentType(rf, node[1], gpi, tpi)
+    (@__MODULE__).check_ASN1_eContent(rf, node[2], gpi, tpi)
 end
 
 @check "certificates" begin
     check_contextspecific(node, 0x00)
     if length(node[1].children) > 3
-        @info "More than one certificate in $(o.filename)?"
+        @info "More than one certificate in $(rf.filename)?"
     end
     #@debug "calling _tbsCertificate from CMS, parent_cer: $(parent_cer)"
-    X509.check_ASN1_tbsCertificate(o, node[1,1], tpi, parent_cer)
-    X509.check_ASN1_signatureAlgorithm(o, node[1,2], tpi)
-    X509.check_ASN1_signatureValue(o, node[1,3], tpi)
+    X509.check_ASN1_tbsCertificate(rf, node[1,1], gpi, tpi)
+    X509.check_ASN1_signatureAlgorithm(rf, node[1,2], gpi, tpi)
+    X509.check_ASN1_signatureValue(rf, node[1,3], gpi, tpi)
     tpi.eeSig = node[1,3]
+    ##@debug length(tpi.eeSig.tag.value[2:end])
+    #tpi.eeSig = SVector{256}(node[1,3].tag.value[2:end])
 end
 
 @check "sid" begin
@@ -128,7 +136,7 @@ end
     signerIdentifier = node.tag.value
 
     if tpi.ee_ski != signerIdentifier
-        @warn "unexpected signerIdentifier in $(o.filename)"
+        @warn "unexpected signerIdentifier in $(rf.filename)"
         remark_ASN1Error!(node, "signerIdentifier mismatch, expected
                           $(bytes2hex(tpi.ee_ski))")
     end
@@ -137,14 +145,14 @@ end
 @check "sa_contentType" begin
     check_tag(node, ASN1.SET)
     check_tag(node[1], ASN1.OID)
-    if o.object isa ROA
+    if rf.object isa ROA
         check_OID(node[1], @oid("1.2.840.113549.1.9.16.1.24"))
-        if tpi.nicenames
+        if gpi.nicenames
             node[1].nicename = "routeOriginAuthz"
         end
-    elseif o.object isa MFT
+    elseif rf.object isa MFT
         check_OID(node[1], @oid("1.2.840.113549.1.9.16.1.26"))
-        if tpi.nicenames
+        if gpi.nicenames
             node[1].nicename = "rpkiManifest"
         end
     end
@@ -154,17 +162,17 @@ end
     check_tag(node, ASN1.SET)
     md = bytes2hex(node[1].tag.value)
 
-    o.cms_digest_valid = if tpi.cms_message_digest == ""
+    cms_digest_valid = if tpi.cms_message_digest == ""
         _ec_offset = tpi.eContent.tag.offset_in_file
         _ec_len = tpi.eContent.tag.len + tpi.eContent.tag.headerlen
-        ec_raw = @view o.tree.buf.data[_ec_offset:_ec_offset+_ec_len-1]
+        ec_raw = @view rf.asn1_tree.buf.data[_ec_offset:_ec_offset+_ec_len-1]
         md == bytes2hex(sha256(ec_raw))
     else
         md == tpi.cms_message_digest
     end
-    if !o.cms_digest_valid
-        remark_ASN1Error!(o, "CMS Digest incorrect")
-        @error "Incorrect CMS digest for $(o.filename)"
+    if !cms_digest_valid
+        remark_ASN1Error!(rf, "CMS Digest incorrect")
+        @error "Incorrect CMS digest for $(rf.filename)"
     end
 end
 
@@ -175,13 +183,13 @@ end
     check_tag(node, ASN1.SEQUENCE)
     check_tag(node[1], ASN1.OID)
     if node[1].tag.value == @oid("1.2.840.113549.1.9.3")
-        (@__MODULE__).check_ASN1_sa_contentType(o, node[2], tpi)
+        (@__MODULE__).check_ASN1_sa_contentType(rf, node[2], gpi, tpi)
     elseif node[1].tag.value == @oid("1.2.840.113549.1.9.4")
-        (@__MODULE__).check_ASN1_messageDigest(o, node[2], tpi)
+        (@__MODULE__).check_ASN1_messageDigest(rf, node[2], gpi, tpi)
     elseif node[1].tag.value == @oid("1.2.840.113549.1.9.5")
-        (@__MODULE__).check_ASN1_signingTime(o, node[2], tpi)
+        (@__MODULE__).check_ASN1_signingTime(rf, node[2], gpi, tpi)
     else
-        @warn "unknown signedAttribute in $(o.filename)"
+        @warn "unknown signedAttribute in $(rf.filename)"
     end
 end
 @check "signedAttrs" begin
@@ -191,17 +199,17 @@ end
     tpi.signedAttrs = node
     # IMPLICIT SET OF Attributes (1..MAX)
     for attr in node.children
-        (@__MODULE__).check_ASN1_attribute(o, attr, tpi)
+        (@__MODULE__).check_ASN1_attribute(rf, attr, gpi, tpi)
     end
     # RFC6488: MUST include the content-type and message-digest attributes
 
     # now hash the signedAttrs for the signature check later on
-    sa_raw = @view o.tree.buf.data[node.tag.offset_in_file:node.tag.offset_in_file + node.tag.len + 2 - 1]
+    sa_raw = @view rf.asn1_tree.buf.data[node.tag.offset_in_file:node.tag.offset_in_file + node.tag.len + 2 - 1]
 
     # the hash is calculated based on the DER EXPLICIT SET OF tag, not the
     # IMPLICIT [0], so we overwrite the first byte:
     sa_raw[1] = 0x11 | 0b00100000
-    tpi.saHash = bytes2hex(sha256(sa_raw))
+    tpi.saHash = sha256(sa_raw)
 end
 
 @check "signatureAlgorithm" begin
@@ -216,7 +224,8 @@ end
     v = powermod(to_bigint(node.tag.value), ASN1.value(tpi.ee_rsaExponent.tag), to_bigint(@view tpi.ee_rsaModulus.tag.value[2:end]))
     v.size = 4
     v_str = string(v, base=16, pad=64)
-    if tpi.saHash == v_str
+
+    if bytes2hex(tpi.saHash) == v_str
         node.validated = true
     else
         @error "invalid signature for $(o.filename)"
@@ -235,21 +244,21 @@ end
   #	   unsignedAttrs [1] IMPLICIT UnsignedAttributes OPTIONAL }
 
     check_tag(node, ASN1.SEQUENCE)
-    (@__MODULE__).check_ASN1_version(o, node[1], tpi)
-    (@__MODULE__).check_ASN1_sid(o, node[2], tpi)
-    (@__MODULE__).check_ASN1_digestAlgorithm(o, node[3], tpi)
-    (@__MODULE__).check_ASN1_signedAttrs(o, node[4], tpi)
-    (@__MODULE__).check_ASN1_signatureAlgorithm(o, node[5], tpi)
-    (@__MODULE__).check_ASN1_signature(o, node[6], tpi)
+    (@__MODULE__).check_ASN1_version(rf, node[1], gpi, tpi)
+    (@__MODULE__).check_ASN1_sid(rf, node[2], gpi, tpi)
+    (@__MODULE__).check_ASN1_digestAlgorithm(rf, node[3], gpi, tpi)
+    (@__MODULE__).check_ASN1_signedAttrs(rf, node[4], gpi, tpi)
+    (@__MODULE__).check_ASN1_signatureAlgorithm(rf, node[5], gpi, tpi)
+    (@__MODULE__).check_ASN1_signature(rf, node[6], gpi, tpi)
 end
 
 @check "signerInfos" begin
     check_tag(node, ASN1.SET)    
     if length(node.children) > 1
-        @info "More than one signerInfo in $(o.filename)"
+        @info "More than one signerInfo in $(rf.filename)"
     end
     for si in node.children
-        (@__MODULE__).check_ASN1_signerInfo(o, si, tpi)
+        (@__MODULE__).check_ASN1_signerInfo(rf, si, gpi, tpi)
     end
 end
 
@@ -269,19 +278,19 @@ end
     check_tag(node, ASN1.SEQUENCE)
     childcount(node, 5)
 
-    (@__MODULE__).check_ASN1_version(o, node[1], tpi)
-    (@__MODULE__).check_ASN1_digestAlgorithms(o, node[2], tpi)
-    (@__MODULE__).check_ASN1_encapContentInfo(o, node[3], tpi)
+    (@__MODULE__).check_ASN1_version(rf, node[1], gpi, tpi)
+    (@__MODULE__).check_ASN1_digestAlgorithms(rf, node[2], gpi, tpi)
+    (@__MODULE__).check_ASN1_encapContentInfo(rf, node[3], gpi, tpi)
     # eContent specific checks happen in MFT.jl or ROA.jl via the TmpParseInfo
-    (@__MODULE__).check_ASN1_certificates(o, node[4], tpi, parent_cer)
-    (@__MODULE__).check_ASN1_signerInfos(o, node[5], tpi)
+    (@__MODULE__).check_ASN1_certificates(rf, node[4], gpi, tpi)
+    (@__MODULE__).check_ASN1_signerInfos(rf, node[5], gpi, tpi)
 
 end
 
 @check "content" begin
     
     check_contextspecific(node, 0x00)
-    (@__MODULE__).check_ASN1_signedData(o, node[1], tpi, parent_cer)
+    (@__MODULE__).check_ASN1_signedData(rf, node[1], gpi, tpi)
 end
 
 end # end module

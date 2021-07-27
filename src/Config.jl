@@ -40,6 +40,7 @@ recursive_merge(x::AbstractDict...) = merge(recursive_merge, x...)
 # in case of duplicate keys, keep the value from the last dict
 recursive_merge(x...) = x[end]
 
+#TODO do the directory checks here
 function generate_config()
     global CFG
     if !isempty(CFG)
@@ -56,6 +57,7 @@ function generate_config()
 end
 
 function __init__()
+    @debug "Config init" @__DIR__
     @debug "__init__'ing Config, calling generate_config()"
     generate_config()
 end

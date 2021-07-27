@@ -2,8 +2,8 @@ module Mft
 using JDR.ASN1: ASN1, check_tag, childcount, to_bigint, check_contextspecific, check_OID
 using JDR.Common: @oid, remark_ASN1Error!, remark_manifestIssue!, remark_validityIssue!
 using JDR.RPKI: MFT
-using JDR.RPKICommon: RPKINode, RPKIObject, RPKIFile, CER, TmpParseInfo, get_object
-using JDR.PKIX.CMS: check_ASN1_contentType, check_ASN1_content # from macros
+#using JDR.RPKICommon: RPKINode, RPKIObject, RPKIFile, CER, TmpParseInfo, get_object
+#using JDR.PKIX.CMS: check_ASN1_contentType, check_ASN1_content # from macros
 
 using Dates: DateTime, @dateformat_str
 using SHA: sha256
@@ -56,10 +56,10 @@ end
 @check "thisUpdate" begin
     check_tag(node, ASN1.GENTIME)
     try
-        o.object.this_update = (@__MODULE__).gentime_to_ts(node.tag.value)
+        rf.object.this_update = (@__MODULE__).gentime_to_ts(node.tag.value)
     catch e
         if e isa ArgumentError
-            remark_ASN1Error!(o, "Could not parase GENTIME in thisUpdate field")
+            remark_ASN1Error!(rf, "Could not parase GENTIME in thisUpdate field")
         else
             @error e
         end
@@ -68,10 +68,10 @@ end
 @check "nextUpdate" begin
     check_tag(node, ASN1.GENTIME)
     try
-        o.object.next_update = (@__MODULE__).gentime_to_ts(node.tag.value)
+        rf.object.next_update = (@__MODULE__).gentime_to_ts(node.tag.value)
     catch e
         if e isa ArgumentError
-            remark_ASN1Error!(o, "Could not parase GENTIME in nextUpdate field")
+            remark_ASN1Error!(rf, "Could not parase GENTIME in nextUpdate field")
         else
             @error e
         end
@@ -84,26 +84,33 @@ end
 
 @check "fileList" begin
     check_tag(node, ASN1.SEQUENCE)
+    cwd = dirname(rf.filename)
     for file_and_hash in node.children
         check_tag(file_and_hash, ASN1.SEQUENCE)
         check_tag(file_and_hash[1], ASN1.IA5STRING)
         check_tag(file_and_hash[2], ASN1.BITSTRING)
 
         filename = ASN1.value(file_and_hash[1].tag)
-        push!(o.object.files, filename)
+        push!(rf.object.files, filename)
 
-        full_fn = tpi.cwd*'/'*filename
-        if isfile(full_fn) # TODO redundancy with process_mft in RPKI.jl
+        full_fn = joinpath(cwd, filename)
+        if isfile(full_fn)
             open(full_fn) do fh
                 local_hash = sha256(fh)
                 if file_and_hash[2].tag.len != 33
-                    @warn "illegal file hash length in $(o.filename) for filename $(filename)"
+                    @warn "illegal file hash length in $(rf.filename) for filename $(filename)"
                     remark_ASN1Error!(file_and_hash[2], "Expecting length of 33")
                 elseif local_hash != file_and_hash[2].tag.value[end-31:end]
                     @warn "invalid hash for", full_fn
-                    remark_manifestIssue!(o, "Invalid hash for $(filename)")
+                    remark_manifestIssue!(rf, "Invalid hash for $(filename)")
                 end
             end
+        else
+            #TODO refactor 
+            @warn "[$(get_pubpoint(cer_node))] Missing file: $(f)"
+            Mft.add_missing_file(mft_obj.object, f)
+            add_missing_filename!(lookup, joinpath(mft_dir, f), mft_node)
+            remark_missingFile!(mft_obj, "Listed in manifest but missing on file system: $(f)")
         end
     end
 end
@@ -122,58 +129,58 @@ end
     # the 'version' is optional, defaults to 0
     offset = 0
     if length(node.children) == 6
-        (@__MODULE__).check_ASN1_version(o, node[1], tpi)
+        (@__MODULE__).check_ASN1_version(rf, node[1], gpi, tpi)
         offset += 1
 	end
-    (@__MODULE__).check_ASN1_manifestNumber(o, node[offset+1], tpi)
-    (@__MODULE__).check_ASN1_thisUpdate(o, node[offset+2], tpi)
-    (@__MODULE__).check_ASN1_nextUpdate(o, node[offset+3], tpi)
-    (@__MODULE__).check_ASN1_fileHashAlg(o, node[offset+4], tpi)
-    (@__MODULE__).check_ASN1_fileList(o, node[offset+5], tpi)
+    (@__MODULE__).check_ASN1_manifestNumber(rf, node[offset+1], gpi, tpi)
+    (@__MODULE__).check_ASN1_thisUpdate(rf, node[offset+2], gpi, tpi)
+    (@__MODULE__).check_ASN1_nextUpdate(rf, node[offset+3], gpi, tpi)
+    (@__MODULE__).check_ASN1_fileHashAlg(rf, node[offset+4], gpi, tpi)
+    (@__MODULE__).check_ASN1_fileList(rf, node[offset+5], gpi, tpi)
 end
 
-function RPKI.check_ASN1(o::RPKIObject{MFT}, tpi::TmpParseInfo, parent_cer::Union{Nothing, RPKIObject{CER}}=nothing) :: RPKIObject{MFT}
-    cmsobject = o.tree
-    # CMS, RFC5652:
-    #       ContentInfo ::= SEQUENCE {
-    #           contentType ContentType,
-    #           content [0] EXPLICIT ANY DEFINED BY contentType }
-    
-    check_tag(cmsobject, ASN1.SEQUENCE)
-    childcount(cmsobject, 2)
+#function RPKI.check_ASN1(o::RPKIObject{MFT}, tpi::TmpParseInfo, parent_cer::Union{Nothing, RPKIObject{CER}}=nothing) :: RPKIObject{MFT}
+#    cmsobject = o.tree
+#    # CMS, RFC5652:
+#    #       ContentInfo ::= SEQUENCE {
+#    #           contentType ContentType,
+#    #           content [0] EXPLICIT ANY DEFINED BY contentType }
+#    
+#    check_tag(cmsobject, ASN1.SEQUENCE)
+#    childcount(cmsobject, 2)
+#
+#    # from CMS.jl:
+#    check_ASN1_contentType(o, cmsobject[1], tpi)
+#    check_ASN1_content(o, cmsobject[2], tpi, parent_cer)
+#
+#    check_ASN1_manifest(o, tpi.eContent, tpi)
+#
+#    o
+#end
 
-    # from CMS.jl:
-    check_ASN1_contentType(o, cmsobject[1], tpi)
-    check_ASN1_content(o, cmsobject[2], tpi, parent_cer)
-
-    check_ASN1_manifest(o, tpi.eContent, tpi)
-
-    o
-end
-
-function RPKI.check_cert(o::RPKIObject{MFT}, tpi::TmpParseInfo, parent_cer::RPKINode)
-    # hash tpi.eeCert
-    @assert !isnothing(tpi.eeCert)
-    tbs_raw = @view o.tree.buf.data[tpi.eeCert.tag.offset_in_file:tpi.eeCert.tag.offset_in_file + tpi.eeCert.tag.len + 4 - 1]
-    my_hash = bytes2hex(sha256(tbs_raw))
-
-    # decrypt tpi.eeSig 
-    #v = powermod(to_bigint(@view tpi.eeSig.tag.value[2:end]), tpi.certStack[end].rsa_exp,tpi.certStack[end].rsa_modulus)
-    v = powermod(to_bigint(@view tpi.eeSig.tag.value[2:end]), get_object(parent_cer).rsa_exp, get_object(parent_cer).rsa_modulus)
-    v.size = 4
-    v_str = string(v, base=16, pad=64)
-    
-    # compare hashes
-    if v_str == my_hash
-        o.sig_valid = true
-    else
-        @error "invalid signature for" o.filename
-        remark_validityIssue!(o, "invalid signature")
-        o.sig_valid = false
-    end
-
-    # compare subject with SKI
-    # TODO
-end
+#function RPKI.check_cert(o::RPKIObject{MFT}, tpi::TmpParseInfo, parent_cer::RPKINode)
+#    # hash tpi.eeCert
+#    @assert !isnothing(tpi.eeCert)
+#    tbs_raw = @view o.tree.buf.data[tpi.eeCert.tag.offset_in_file:tpi.eeCert.tag.offset_in_file + tpi.eeCert.tag.len + 4 - 1]
+#    my_hash = bytes2hex(sha256(tbs_raw))
+#
+#    # decrypt tpi.eeSig 
+#    #v = powermod(to_bigint(@view tpi.eeSig.tag.value[2:end]), tpi.certStack[end].rsa_exp,tpi.certStack[end].rsa_modulus)
+#    v = powermod(to_bigint(@view tpi.eeSig.tag.value[2:end]), get_object(parent_cer).rsa_exp, get_object(parent_cer).rsa_modulus)
+#    v.size = 4
+#    v_str = string(v, base=16, pad=64)
+#    
+#    # compare hashes
+#    if v_str == my_hash
+#        o.sig_valid = true
+#    else
+#        @error "invalid signature for" o.filename
+#        remark_validityIssue!(o, "invalid signature")
+#        o.sig_valid = false
+#    end
+#
+#    # compare subject with SKI
+#    # TODO
+#end
 
 end

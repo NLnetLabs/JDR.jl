@@ -88,6 +88,7 @@ end
 
 import Base.convert
 convert(::Type{Tagnumber}, i::UInt8) = Tagnumber(Int(i))
+convert(::Type{Tagnumber}, i::Int) = Tagnumber(Int(i))
 
 istag(t::Tag, tn::Tagnumber) = t.number == tn
 class(t::Tag) = t.class_constructed >> 6 # bit 8-7

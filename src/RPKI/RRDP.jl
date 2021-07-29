@@ -1,7 +1,9 @@
 module RRDP
 
 using JDR: CFG
-using JDR.RPKICommon: RPKINode, get_object, Lookup
+using JDR.Common: NotifyUri
+using ..RPKI: RPKIFile
+#using JDR.RPKICommon: RPKINode, get_object, Lookup
 
 using Base64: base64decode
 using CodecZlib
@@ -66,20 +68,22 @@ Base.show(io::IO, r::RRDPUpdateStats) = foreach(f -> println(io, "\t$(f): $(getf
 
 @enum RRDPUpdateType snapshot delta
 mutable struct RRDPUpdate
-    cer::RPKINode
+    cer::RPKIFile
     type::RRDPUpdateType
     #::Lookup?
     stats::RRDPUpdateStats
     new_cers::Vector{AbstractString}
     new_roas::Vector{AbstractString}
+    updated_roas::Vector{AbstractString}
+    withdrawn_roas::Vector{AbstractString}
     errors::Vector{String}
 end
 
-function add(l::Lookup, rrdp_update::RRDPUpdate)
-    reponame = HTTP.URIs.URI(get_object(rrdp_update.cer).rrdp_notify).host
-    #@debug "adding rrdp_update for $(reponame) to lookup"
-    l.rrdp_updates[reponame] = rrdp_update
-end
+#function add(l::Lookup, rrdp_update::RRDPUpdate)
+#    reponame = HTTP.URIs.URI(get_object(rrdp_update.cer).rrdp_notify).host
+#    #@debug "adding rrdp_update for $(reponame) to lookup"
+#    l.rrdp_updates[reponame] = rrdp_update
+#end
 
 function increase_stats(stats::FiletypeStats, filename::AbstractString)
     if endswith(filename, r"\.cer"i)
@@ -97,7 +101,7 @@ end
 
 # works on both snapshot and delta XMLs
 function _process_publish_withdraws(rrdp_update::RRDPUpdate, doc::EzXML.Document)
-    reponame = HTTP.URIs.URI(get_object(rrdp_update.cer).rrdp_notify).host
+    reponame = HTTP.URIs.URI(rrdp_update.cer.object.rrdp_notify.u).host
     use_tmp_dir = rrdp_update.type == snapshot
     repodir = ""
     dont_mv = false
@@ -114,6 +118,9 @@ function _process_publish_withdraws(rrdp_update::RRDPUpdate, doc::EzXML.Document
         if nodename(p_or_w) == "publish"
             if isfile(filename)
                 rrdp_update.stats.updates += 1
+                if endswith(filename, r"\.roa"i)
+                    push!(rrdp_update.updated_roas, filename)
+                end
             else
                 rrdp_update.stats.new_publishes += 1
                 if endswith(filename, r"\.cer"i)
@@ -134,6 +141,9 @@ function _process_publish_withdraws(rrdp_update::RRDPUpdate, doc::EzXML.Document
             if !isfile(filename)
                 @warn "[$(reponame)] File $(filename) to be withdrawn, but not found on disk"
             else
+                if endswith(filename, r"\.roa"i)
+                    push!(rrdp_update.withdrawn_roas, filename)
+                end
                 rm(filename)
                 while length(readdir(dirname(filename))) == 0
                     @debug "$(dirname(filename)) empty, removing"
@@ -227,10 +237,10 @@ function validate_notification(rrdp_update::RRDPUpdate, doc::EzXML.Document)
 end
 
 #function fetch_process_notification(url::AbstractString)
-function fetch_process_notification(cer_node::RPKINode) :: RRDPUpdate
-    rrdp_update = RRDPUpdate(cer_node, snapshot, RRDPUpdateStats(), [], [], [])
-    url = get_object(cer_node).rrdp_notify
-    reponame = HTTP.URIs.URI(get_object(cer_node).rrdp_notify).host
+function fetch_process_notification(cer_rf::RPKIFile) :: RRDPUpdate
+    rrdp_update = RRDPUpdate(cer_rf, snapshot, RRDPUpdateStats(), [], [], [], [], [])
+    url = cer_rf.object.rrdp_notify.u
+    reponame = HTTP.URIs.URI(url).host
     @debug "[$(reponame)] Fetching $(url)"
 
     doc = try
@@ -314,13 +324,13 @@ function fetch_process_notification(cer_node::RPKINode) :: RRDPUpdate
     return rrdp_update
 end
 
-function fetch_ta_cer(url::AbstractString, output_fn::AbstractString)
-    @debug "fetch_ta_cer for $(url)"
+function fetch_ta_cer(url::NotifyUri, output_fn::AbstractString)
+    @debug "fetch_ta_cer for $(url.u)"
     try
         mkpath(dirname(output_fn))
-        write(output_fn, gunzip(HTTP.get(url; httpconf...).body))
+        write(output_fn, gunzip(HTTP.get(url.u; httpconf...).body))
     catch e
-        @error "Could not retrieve TA cer from $(url): ", e
+        @error "Could not retrieve TA cer from $(url.u): ", e
     end
 end
 

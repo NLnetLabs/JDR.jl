@@ -10,6 +10,7 @@ using JDR.ASN1.DER: DER
 
 # refactor:
 using ..RPKI: CER, MFT, ROA, add_resource!
+using JDR.Common: NotifyUri, RsyncUri
 using StaticArrays: SVector
 
 include("../ASN1/macro_check.jl")
@@ -52,7 +53,7 @@ const MANDATORY_EXTENSIONS = Vector{Pair{Vector{UInt8}, String}}([
             gpi.nicenames && (access_description[1].nicename = "caRepository")
             carepo_present = true
             if rf.object isa CER
-                rf.object.pubpoint = String(copy(access_description[2].tag.value))
+                rf.object.pubpoint = RsyncUri(String(copy(access_description[2].tag.value)))
             end
         end
         if access_description[1].tag.value == @oid "1.3.6.1.5.5.7.48.10"
@@ -65,7 +66,7 @@ const MANDATORY_EXTENSIONS = Vector{Pair{Vector{UInt8}, String}}([
         if access_description[1].tag.value == @oid "1.3.6.1.5.5.7.48.13"
             gpi.nicenames && (access_description[1].nicename = "rpkiNotify")
             if rf.object isa CER
-                rf.object.rrdp_notify = String(copy(access_description[2].tag.value))
+                rf.object.rrdp_notify = NotifyUri(String(copy(access_description[2].tag.value)))
             end
         end
     end

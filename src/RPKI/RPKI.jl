@@ -1,6 +1,7 @@
 module RPKI
 using TimerOutputs
 using JDR: CFG
+using JDR.Common: RPKIUri, NotifyUri, RsyncUri
 using JDR.Common: Remark, RemarkCounts_t, split_scheme_uri, count_remarks, AutSysNum, IPRange
 using JDR.Common: remark_missingFile!, remark_loopIssue!, remark_manifestIssue!, remark_validityIssue!
 #using JDR.RPKICommon: add_resource!, RPKIObject, RPKINode, Lookup, TmpParseInfo, add_filename!
@@ -12,11 +13,7 @@ using JDR.ASN1: Node, SEQUENCE, check_tag
 using Sockets: IPAddr
 
 export process_tas, process_ta, process_cer, link_resources!
-
-
-include("rsync.jl")
-#include("RRDP.jl") # TODO relies on old RPKICommon
-
+export RPKIFile
 
 
 
@@ -87,6 +84,11 @@ struct Lookup
     vrps_v4::IntervalMap{IPv4, RPKIFile}
     remarks::Vector{Tuple{Remark, RPKIFile}}
 
+    " Hostname pointing to one or more 'entry' points in the tree. "
+    pubpoints::Dict{AbstractString}{Vector{RPKIFile}}
+
+    #notify_urls::Dict{AbstractString}{Vector{RPKIFile}}
+
     # remarks
 
     #resources_v6 # done in vrps_?
@@ -109,9 +111,13 @@ function Lookup(rf::RPKIFile{<:RPKIObject}) :: Lookup
     vrps_v4 = IntervalMap{IPv4, RPKIFile}()
     remarks = Tuple{Remark, RPKIFile}[]
 
+    pubpoints = Dict{AbstractString}{Vector{RPKIFile}}()
+    #notify_domains = Dict{AbstractString}{Vector{RPKIFile}}()
+
+    #last_hostname = get_pubpoint(rf)
     for f in rf
         filenames[f.filename] = f
-        if f.object isa ROA #TODO ROA is not yet defined here, move this to bottom
+        if f.object isa ROA
             asid = f.object.asid
             if asid in keys(asns)
                 push!(asns[asid], f)
@@ -126,7 +132,46 @@ function Lookup(rf::RPKIFile{<:RPKIObject}) :: Lookup
             end
         end
     end
-    Lookup(filenames, asns, vrps_v6, vrps_v4, remarks)
+
+    # alternative attempt to now recurse via the tree structure itself
+    # instead of iterate(). This way the 'order' is maintained.
+    function _sub_points(rf::RPKIFile, pubpoints::Dict)
+        this_pp = get_pubpoint(rf)
+        last_pp = if !isnothing(rf.parent)
+            get_pubpoint(rf.parent)
+        else
+            "root"
+        end
+        if this_pp != last_pp
+            if haskey(pubpoints, this_pp)
+                push!(pubpoints[this_pp], rf)
+            else
+                pubpoints[this_pp] = [rf]
+            end
+        end
+        if !isnothing(rf.children)
+            if rf.children isa Vector
+                foreach(c -> _sub_points(c, pubpoints), rf.children)
+            elseif rf.children isa RPKIFile
+                _sub_points(rf.children, pubpoints)
+            end
+        end
+    end
+    _sub_points(rf, pubpoints)
+    
+    #if f.object isa CER
+    #        this_hostname = get_pubpoint(f)
+    #        if this_hostname != last_hostname
+    #            if haskey(pubpoints, this_hostname)
+    #                push!(pubpoints[this_hostname], f)
+    #            else
+    #                pubpoints[this_hostname] = [f]
+    #            end
+    #            last_hostname == this_hostname
+    #        end
+    #    end
+    #end
+    Lookup(filenames, asns, vrps_v6, vrps_v4, remarks, pubpoints)
 end
 function Base.show(io::IO, lookup::Lookup)
     print(io, "filenames: ", length(lookup.filenames))
@@ -159,6 +204,8 @@ struct ASIdentifiers
     ranges::Vector{OrdinalRange{AutSysNum}}
 end
 const LinkedResources{T<:IPAddr} = IntervalMap{T, Vector{RPKIFile}}
+
+
 """
 	CER <: RPKIObject
 
@@ -185,16 +232,16 @@ Base.@kwdef mutable struct CER <: RPKIObject
     serial::SerialNumber = 0
     notBefore::Union{Nothing, DateTime} = nothing
     notAfter::Union{Nothing, DateTime} = nothing
-    pubpoint::String = ""
-    manifest::String = ""
-    rrdp_notify::String = ""
+    pubpoint::Union{Nothing, RsyncUri} = nothing
+    manifest::Union{Nothing, String} = nothing
+    rrdp_notify::Union{Nothing, NotifyUri} = nothing
     selfsigned::Union{Nothing, Bool} = nothing
     validsig::Union{Nothing, Bool} = nothing
     rsa_modulus::BigInt = 0
     rsa_exp::Int = 0
 
-    issuer::String = ""
-    subject::String = ""
+    issuer::Union{Nothing, String} = nothing
+    subject::Union{Nothing, String} = nothing
 
     aki::Vector{UInt8} = []
     ski::Vector{UInt8} = []
@@ -221,6 +268,36 @@ function Base.show(io::IO, cer::CER)
     print(io, "  notAfter: ", cer.notAfter, '\n')
     printstyled(io, "  ASNs: \n")
     print(io, "    ", join(cer.ASNs, ","), "\n")
+end
+
+"""
+    get_pubpoint(node::RPKINode) :: String
+
+Get the domain name of the publication point for the file represented by this `RPKINode`.
+"""
+#TODO: make this use .rrdp_notify instead of .pubpoint, if available
+#or, make .pubpoint to prefer rpkinotify over the rsync uri?
+function get_pubpoint(rf::RPKIFile) :: AbstractString
+    #@debug "get_pubpoint for $(rf)"
+    if rf.object isa RootCER
+        return "root"
+    end
+    return if rf.object isa MFT 
+        @assert rf.parent.object isa CER
+        get_pubpoint(rf.parent)
+    else #if rf.object isa ROA || rf.object isa CRL
+        @assert rf.parent.object isa MFT
+        @assert rf.parent.parent.object isa CER
+        get_pubpoint(rf.parent.parent)
+    end
+end
+
+function get_pubpoint(rf::RPKIFile{CER}) :: AbstractString
+    if !isnothing(rf.object.rrdp_notify)
+        split_scheme_uri(rf.object.rrdp_notify)[1]
+    else
+        split_scheme_uri(rf.object.pubpoint)[1]
+    end
 end
 
 
@@ -323,8 +400,18 @@ ROA() = ROA(AutSysNum(0), VRPS(), # FIXME the AS0 here is ugly
 struct UnknownType <: RPKIObject end
 
 
+
+
+
+include("rsync.jl")
+include("RRDP.jl")
+
+
+
+
 #function load(t::Type{T}, fn::AbstractString, parent=Union{Nothing, RPKIFile}=nothing) :: RPKIFile{<:RPKIObject} where {T<:RPKIObject}
-function load(t::Type{T}, fn::AbstractString, parent=Union{Nothing, RPKIFile}=nothing) where {T<:RPKIObject}
+function load(t::Type{T}, fn::AbstractString, parent::Union{Nothing, RPKIFile}=nothing) where {T<:RPKIObject}
+    @debug 3
     if !isfile(fn)
         @error "File not found: [$(nameof(T))] $(fn)"
         @debug "parent is: $(parent)"
@@ -336,7 +423,8 @@ function load(t::Type{T}, fn::AbstractString, parent=Union{Nothing, RPKIFile}=no
         return RPKIFile(parent, nothing, obj, fn, asn1_tree)
     end
 end
-function load(fn::AbstractString, parent=Union{Nothing, RPKIFile}=nothing)
+function load(fn::AbstractString, parent::Union{Nothing, RPKIFile}=nothing)
+    @debug 2
     if endswith(fn, r"\.cer"i)
         load(CER, fn, parent)
     elseif endswith(fn, r"\.mft"i)
@@ -370,7 +458,7 @@ Base.@kwdef struct GlobalProcessInfo
     strip_tree::Bool = false
     oneshot::Bool = false
 
-    fetched_notifies::Dict{AbstractString}{Task} = Dict()
+    fetch_tasks::Dict{RPKIUri}{Task} = Dict()
     tasks::Vector{Task} = []
 end
 
@@ -413,7 +501,7 @@ function check_ASN1(rf::RPKIFile{CER}, gpi::GlobalProcessInfo)
     X509.check_ASN1_signatureValue(rf, rf.asn1_tree.children[3], gpi, tpi)
 end
 
-function fake_fetch(url::AbstractString)
+function fake_fetch(url::RPKIUri)
     try
         @info "fake_fetching $(url)"
         t = rand()*0.1
@@ -425,13 +513,13 @@ function fake_fetch(url::AbstractString)
 end
 
 struct DelayedProcess
-    notify_url::AbstractString
+    uri_to_fetch::RPKIUri
     rf::RPKIFile{CER}
 end
 
 function process(rf::RPKIFile{CER}, gpi::GlobalProcessInfo) :: Union{Nothing, DelayedProcess}
     processing_delayed = false
-    if !isempty(rf.object.manifest)
+    if !isnothing(rf.object.manifest)
         processing_delayed = true
     else
         check_ASN1(rf, gpi)
@@ -454,25 +542,34 @@ function process(rf::RPKIFile{CER}, gpi::GlobalProcessInfo) :: Union{Nothing, De
     #@debug "load for manifest $(rf.object.manifest)"
 
     # check if we hop to another CA
-    if !isnothing(rf.parent.parent)
-        (parent_ca, _) = split_scheme_uri(rf.parent.parent.object.pubpoint)
-        (this_ca, _) = split_scheme_uri(rf.object.pubpoint)
-        if parent_ca != this_ca
+    traverse_ca = rf.parent.object isa RootCER || get_pubpoint(rf.parent.parent) != get_pubpoint(rf)
+    #if !isnothing(rf.parent.parent)
+        #(parent_ca, _) = split_scheme_uri(rf.parent.parent.object.pubpoint)
+        #(this_ca, _) = split_scheme_uri(rf.object.pubpoint)
+        #parent_ca = get_pubpoint(rf.parent.parent)
+        #this_ca = get_pubpoint(rf)
+        #if parent_ca != this_ca && gpi.fetch_data
+        if traverse_ca && gpi.fetch_data
+            uri_to_fetch = if !isnothing(rf.object.rrdp_notify)
+                rf.object.rrdp_notify
+            else
+                rf.object.pubpoint
+            end::RPKIUri
             lock(gpi.lock)
             try
-                if !(rf.object.rrdp_notify in keys(gpi.fetched_notifies) && istaskdone(gpi.fetched_notifies[rf.object.rrdp_notify]))
-                    #@debug "new pubpoint: $(this_ca), notify: $(rf.object.rrdp_notify)"
+                if !(haskey(gpi.fetch_tasks, uri_to_fetch) && istaskdone(gpi.fetch_tasks[uri_to_fetch]))
                     @assert !processing_delayed
-                    #debugme && @debug "returning DelayedProcess for $(rf.filename) with url $(rf.object.rrdp_notify)"
-                    return DelayedProcess(rf.object.rrdp_notify, rf)
-                #else
-                #    @assert processing_delayed
+                    return DelayedProcess(uri_to_fetch, rf)
                 end
+                #if !(rf.object.rrdp_notify in keys(gpi.fetch_tasks) && istaskdone(gpi.fetch_tasks[rf.object.rrdp_notify]))
+                #    @assert !processing_delayed
+                #    return DelayedProcess(rf.object.rrdp_notify, rf)
+                #end
             finally
                 unlock(gpi.lock)
             end
         end
-    end
+    #end
 
     mft_fn = joinpath(gpi.data_dir, @view rf.object.manifest[9:end])
     mft = load(MFT, mft_fn, rf)
@@ -574,6 +671,12 @@ function process(rf::RPKIFile{UnknownType}, ::GlobalProcessInfo)
     # no children
 end
 
+function oneshot(filename::AbstractString)
+    rf = load(filename)
+    process(rf, GlobalProcessInfo())
+    rf
+end
+
 
 function process_all(rf::RPKIFile, gpi=GlobalProcessInfo()) :: RPKIFile
     #@debug "process_all for $(rf.filename), parent: $(rf.parent)"
@@ -593,31 +696,46 @@ function process_all(rf::RPKIFile, gpi=GlobalProcessInfo()) :: RPKIFile
             #@debug "got a new DelayedProcess for $(res.notify_url)"
             lock(gpi.lock)
             try
-                if !(res.notify_url in keys(gpi.fetched_notifies))
-                    fetch_t = @async fake_fetch(res.notify_url)
-                    gpi.fetched_notifies[res.notify_url] = fetch_t
+                #if !(res.uri_to_fetch in keys(gpi.fetch_tasks))
+                if !haskey(gpi.fetch_tasks, res.uri_to_fetch)
+                    @debug "asyncing for $(res.uri_to_fetch)"
+                    #fetch_t = @async fake_fetch(res.uri_to_fetch)
+                    #TODO: distinguish between RRDP and rsync
+                    #moreover, fallback to rsync here in case .rrdp_notify #isnothing?
+                    fetch_t = if gpi.transport == rrdp
+                        if !isnothing(c.object.rrdp_notify)
+                            @async RRDP.fetch_process_notification(c)
+                        else
+                            @warn "Need to fetch for $(c) but no RRDP available"
+                            @async ()
+                        end
+                    elseif gpi.transport == rsync
+                        @error "TODO implement rsync fetch here"
+                        throw("Implement rsync fetch in process_all")
+                    end
+                    gpi.fetch_tasks[res.uri_to_fetch] = fetch_t
                 end
                 new_process_all_t = @async begin
-                    wait(gpi.fetched_notifies[res.notify_url])
-                    #@debug "Spawned thread, wait done for $(res.notify_url)"
+                    wait(gpi.fetch_tasks[res.uri_to_fetch])
+                    #@debug "Spawned thread, wait done for $(res.uri_to_fetch)"
                     process_all(res.rf, gpi)
                 end
                 push!(gpi.tasks, new_process_all_t)
 
-                #if res.notify_url in keys(gpi.fetched_notifies)
+                #if res.uri_to_fetch in keys(gpi.fetch_tasks)
                 #    #new_process_all_t = Threads.@spawn begin
                 #    new_process_all_t = @async begin
-                #        wait(gpi.fetched_notifies[res.notify_url])
-                #        #@debug "Spawned thread, wait done for $(res.notify_url)"
+                #        wait(gpi.fetch_tasks[res.uri_to_fetch])
+                #        #@debug "Spawned thread, wait done for $(res.uri_to_fetch)"
                 #        process_all(res.rf, gpi)
                 #    end
                 #    push!(gpi.tasks, new_process_all_t)
                 #    #@debug "gpi.tasks: $(length(gpi.tasks))"
                 #else
-                #    #@debug "not in notify_urls : $(res.notify_url)"
-                #    #@debug "keys: $(keys(gpi.fetched_notifies))"
-                #    fetch_t = @async fake_fetch(res.notify_url)
-                #    gpi.fetched_notifies[res.notify_url] = fetch_t
+                #    #@debug "not in uri_to_fetchs : $(res.uri_to_fetch)"
+                #    #@debug "keys: $(keys(gpi.fetch_tasks))"
+                #    fetch_t = @async fake_fetch(res.uri_to_fetch)
+                #    gpi.fetch_tasks[res.uri_to_fetch] = fetch_t
                 #end
             finally
                 unlock(gpi.lock)
@@ -640,19 +758,60 @@ function process_all(rf::RPKIFile, gpi=GlobalProcessInfo()) :: RPKIFile
     rf
 end
 
-function process_tas()
+function process_tas(tals=CFG["rpki"]["tals"];gpi_kw...)
+    if isempty(tals)
+        @warn "No TALs configured, please create/edit JDR.toml and run
+
+            JDR.Config.generate_config()
+
+        "
+        return nothing
+    end
+
     root = RPKIFile()
-    gpi = GlobalProcessInfo(;strip_tree = true)
-    #tasks = Task[]
-    tas = [
-           "rrdp_repo/rpki.afrinic.net/repository/AfriNIC.cer",
-           "rrdp_repo/rpki.apnic.net/repository/apnic-rpki-root-iana-origin.cer",
-           "rrdp_repo/rpki.arin.net/repository/arin-rpki-ta.cer",
-           "rrdp_repo/repository.lacnic.net/rpki/lacnic/rta-lacnic-rpki.cer",
-           "rrdp_repo/rpki.ripe.net/ta/ripe-ncc-ta.cer",
-           ]
-    for ta_fn in tas
+    gpi = GlobalProcessInfo(strip_tree = true; gpi_kw...)
+
+    # first, parse all TALs and collect ta_cer_fns
+    # if fetch_data, fetch all TA cers
+    #ta_cer_uris = RPKIUri[]
+    ta_cer_fns = AbstractString[]
+
+    @sync for (talname, tal_fn) in tals
+        tal = parse_tal(joinpath(CFG["rpki"]["tal_dir"], tal_fn))
+        ta_cer_uri = if gpi.transport == rsync
+            tal.rsync
+        elseif gpi.transport == rrdp
+            tal.rrdp
+        else
+            @error "Unknown transport $(gpi.transport) while processing TAL $(talname)"
+            continue
+        end
+        ta_cer_fn = joinpath(gpi.data_dir, "tmp", @view ta_cer_uri.u[9:end])
+        @debug ta_cer_fn
+        push!(ta_cer_fns, ta_cer_fn)
+        if gpi.fetch_data
+            @async RRDP.fetch_ta_cer(ta_cer_uri, ta_cer_fn)
+        end
+    end
+    @debug ta_cer_fns
+        
+
+    #return nothing
+
+    # now process
+    #ta_cer_fns = [
+    #       #"rrdp_repo/rpki.afrinic.net/repository/AfriNIC.cer",
+    #       #"rrdp_repo/rpki.apnic.net/repository/apnic-rpki-root-iana-origin.cer",
+    #       #"rrdp_repo/rpki.arin.net/repository/arin-rpki-ta.cer",
+    #       #"rrdp_repo/repository.lacnic.net/rpki/lacnic/rta-lacnic-rpki.cer",
+    #       "rrdp_repo/rpki.ripe.net/ta/ripe-ncc-ta.cer",
+    #       ]
+    for ta_fn in ta_cer_fns
         ta_rf = load(RPKI.CER, ta_fn, root)
+        if isnothing(ta_rf)
+            @warn "something wrong with $(ta_fn), skipping"
+            continue
+        end
         push!(root.children, ta_rf)
         t = Threads.@spawn process_all(ta_rf, gpi)
         lock(gpi.lock)
@@ -673,13 +832,22 @@ function process_tas()
         try
             done = all(istaskdone, gpi.tasks)
             #FIXME this has no timeout like timedwait
-            i % 100 == 0 && @info "waiting for $(count(!istaskdone, gpi.tasks))/$(length(gpi.tasks))"
+            if i % 10 == 0 
+                @info "waiting for $(count(!istaskdone, gpi.tasks))/$(length(gpi.tasks))"
+                if count(!istaskdone, gpi.tasks) <= 5
+                    @debug "waiting for fetches:"
+                    for ft in filter(e->!istaskdone(e.second), gpi.fetch_tasks)
+                        @debug ft.first.u
+                    end
+                end
+            end
+
         finally
             unlock(gpi.lock)
         end
-        sleep(0.01)
+        sleep(0.1)
         i += 1
-        i %= 100
+        i %= 10
     end
 
     @debug "gpi.tasks done: $(count(istaskdone, gpi.tasks))"
@@ -690,12 +858,14 @@ function process_tas()
     #@debug results
 
     @debug "one more time, gpi.tasks: $(length(gpi.tasks))"
-    @debug "gpi.fetched_notifies ($(length(keys(gpi.fetched_notifies)))): $(keys(gpi.fetched_notifies))"
+    #@debug "gpi.fetch_tasks ($(length(keys(gpi.fetch_tasks)))): $(keys(gpi.fetch_tasks))"
 
-    root#, results
+    
+    root, gpi
 end
 
 
+#=
 function depr_process_ta(ta_cer_fn::AbstractString, root=RPKI.RPKIFile(); kw...)
     gpi = GlobalProcessInfo()
 	#root = RPKI.RPKIFile() # creates a RootCer #TODO pass to this method as arg?
@@ -775,7 +945,9 @@ function depr_process_ta(ta_cer_fn::AbstractString, root=RPKI.RPKIFile(); kw...)
 	#global lookup
 	#@time lookup = RPKI.Lookup(cer_rf)
 end
+=#
 
+#=
 function tmp_runall()
     gpi = GlobalProcessInfo()
     root_rf = RPKI.RPKIFile()
@@ -867,6 +1039,7 @@ function tmp_runall()
     @info "Done!"
     root_rf
 end
+=#
 
 ##############################
 # end of refactor

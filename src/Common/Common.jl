@@ -13,6 +13,8 @@ export @oid, oid_to_str
 # from IPRange.jl
 export IPRange, prefixlen
 
+export NotifyUri, RsyncUri
+
 function split_scheme_uri(uri::String) :: Tuple{SubString, SubString}
     path_idx = 0
     for i in 9:length(uri)
@@ -22,6 +24,20 @@ function split_scheme_uri(uri::String) :: Tuple{SubString, SubString}
         end
     end
     (SubString(uri, 9:path_idx-1), SubString(uri, path_idx+1))
+end
+
+abstract type RPKIUri end
+struct NotifyUri <: RPKIUri
+u::AbstractString
+end
+struct RsyncUri <: RPKIUri
+u::AbstractString
+end
+Base.hash(u::T, h::UInt) where {T<:RPKIUri} = hash(u.u, h)
+Base.isequal(u1::T, u2::T) where {T<:RPKIUri} = u1.u == u2.u
+
+function split_scheme_uri(uri::T) :: Tuple{SubString, SubString} where {T<:RPKIUri} 
+    split_scheme_uri(uri.u)
 end
 
 

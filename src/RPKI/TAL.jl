@@ -3,13 +3,15 @@ module Tal
 using JDR.ASN1: to_bigint
 using JDR.ASN1.DER: DER
 
+using JDR.Common: NotifyUri, RsyncUri
+
 using Base64
 
 export TAL, parse_tal
 
 struct TAL
-    rsync::Union{Nothing, AbstractString}
-    rrdp::Union{Nothing, AbstractString}
+    rsync::Union{Nothing, RsyncUri}
+    rrdp::Union{Nothing, NotifyUri}
     key::BigInt
 end
 
@@ -26,9 +28,9 @@ function parse_tal(fn::AbstractString)
     rsync = rrdp = nothing
     while !isempty(line)
         if @view(line[1:8]) == "https://"
-            rrdp = line
+            rrdp = NotifyUri(line)
         elseif @view(line[1:8]) == "rsync://"
-            rsync = line
+            rsync = RsyncUri(line)
         else
             @warn "Unknown URI format $(line)"
         end

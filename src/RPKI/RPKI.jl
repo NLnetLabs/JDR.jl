@@ -600,8 +600,6 @@ function check_sig(rf::RPKIFile{CER})#, tpi::TmpParseInfo, parent_cer::Union{Not
     #   - take a 'parent CER' and process all the (grand)children 
     #   however with the current asn1_tree.buf.data approach that does not
     #   reduce the number of file open syscalls or whatever..
-    #
-    # TODO implement a get_parent_cer ? perhaps for all RPKIFile{T's}
 
     #parent_cer = rf.parent.parent.object::CER
     parent_cer = get_parent_cer(rf)
@@ -1088,7 +1086,42 @@ function process_tas(tals=CFG["rpki"]["tals"];gpi_kw...)
     end
     @debug "gpi.tasks: $(length(gpi.tasks))"
 
-    #@info timedwait(() -> all(istaskdone, gpi.tasks), 60)
+    outtimer = @async begin
+        try
+            @info "pre timedwait"
+            status = timedwait(() ->
+                               all(istaskdone, gpi.tasks) &&
+                               all(t->istaskdone(t.second), gpi.fetch_tasks)
+                              , 300; pollint=5)
+            @info "post timedwait"
+            
+            @warn 1 status
+            if status == :timed_out
+                for (url, task) in filter(t->!istaskdone(t.second), gpi.fetch_tasks)
+                    @warn "Interrupting fetch for $(url)"
+                    println("Interrupting fetch for $(url)")
+                    schedule(task, InterruptException(); error=true)
+                    #wait(task)
+                end
+                for t in filter(!istaskdone, gpi.tasks)
+                    @warn "Interrupting task $(t)"
+                    println("Interrupting task $(t)")
+                    schedule(t, InterruptException(); error=true)
+                    #wait(t)
+                end
+            else
+                @info "------------------------------------------------------------"
+                @info " All (fetch) tasks completed before timeout"
+                @info "------------------------------------------------------------"
+            end
+        catch e
+            @error e
+        end
+    end
+
+    @info "pre wait(outtimer)"
+    wait(outtimer)
+    @info "post wait(outtimer)"
     
     done = false
     i = 0
@@ -1096,14 +1129,12 @@ function process_tas(tals=CFG["rpki"]["tals"];gpi_kw...)
         lock(gpi.lock)
         try
             done = all(istaskdone, gpi.tasks)
-            #FIXME this has no timeout like timedwait
             if i % 10 == 0 
-                @info "waiting for $(count(!istaskdone, gpi.tasks))/$(length(gpi.tasks))"
-                if count(!istaskdone, gpi.tasks) <= 5
-                    @debug "waiting for fetches:"
-                    for ft in filter(e->!istaskdone(e.second), gpi.fetch_tasks)
-                        @debug ft.first.u
-                    end
+                #@info "waiting for $(count(!istaskdone, gpi.tasks))/$(length(gpi.tasks))"
+                if count(!istaskdone, values(gpi.fetch_tasks)) <= 5
+                    print("\r [$(now())] waiting for $(count(!istaskdone, gpi.tasks))/$(length(gpi.tasks)) tasks, and fetches: ", 
+                            map(e -> e.first.u, collect(filter(e->!istaskdone(e.second), gpi.fetch_tasks)))
+                           )
                 end
             end
 
@@ -1117,7 +1148,15 @@ function process_tas(tals=CFG["rpki"]["tals"];gpi_kw...)
 
     @debug "gpi.tasks done: $(count(istaskdone, gpi.tasks))"
     @debug "pre foreach wait gpi.tasks"
-    foreach(wait, gpi.tasks)
+    # call wait() to get any lingering outputs/errors
+    for t in gpi.tasks
+        try
+            wait(t)
+        catch e
+            @warn typeof(e)
+        end
+    end
+    #foreach(wait, gpi.tasks)
     @debug "post foreach wait"
     #results = map((t) -> t.result, gpi.tasks)
     #@debug results

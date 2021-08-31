@@ -187,6 +187,20 @@ function Base.show(io::IO, lookup::Lookup)
     print(io, "\n")
     print(io, "VRPs v6/v4: ", length(lookup.vrps_v6), " / ", length(lookup.vrps_v4))
 end
+"""
+    search(l::Lookup, filename::AbstractString) 
+Search for RPKINode's related to `filename`
+"""
+function search(l::Lookup, filename::AbstractString) :: Dict{String}{RPKIFile}
+    filter(fn->occursin(filename, first(fn)), l.filenames)
+end
+"""
+    search(l::Lookup, asn::AutSysNum)
+Search for RPKINode's related to a [`AutSysNum`](@ref)
+"""
+function search(l::Lookup, asn::AutSysNum) :: Vector{RPKIFile}
+    get(l.asns, asn, RPKIFile[])
+end
 
 struct RootCER <: RPKIObject
     resources_v6::IntervalTree{IPv6, IntervalValue{IPv6, Vector{RPKIFile}}}

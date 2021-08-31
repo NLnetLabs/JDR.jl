@@ -114,9 +114,7 @@ function Lookup(rf::RPKIFile{<:RPKIObject}) :: Lookup
     remarks = Tuple{Remark, RPKIFile}[]
 
     pubpoints = Dict{AbstractString}{Vector{RPKIFile}}()
-    #notify_domains = Dict{AbstractString}{Vector{RPKIFile}}()
 
-    #last_hostname = get_pubpoint(rf)
     for f in rf
         filenames[f.filename] = f
         if f.object isa ROA
@@ -166,18 +164,6 @@ function Lookup(rf::RPKIFile{<:RPKIObject}) :: Lookup
     end
     _sub_points(rf, pubpoints)
     
-    #if f.object isa CER
-    #        this_hostname = get_pubpoint(f)
-    #        if this_hostname != last_hostname
-    #            if haskey(pubpoints, this_hostname)
-    #                push!(pubpoints[this_hostname], f)
-    #            else
-    #                pubpoints[this_hostname] = [f]
-    #            end
-    #            last_hostname == this_hostname
-    #        end
-    #    end
-    #end
     Lookup(filenames, asns, vrps_v6, vrps_v4, remarks, pubpoints)
 end
 function Base.show(io::IO, lookup::Lookup)
@@ -505,6 +491,12 @@ include("../PKIX/PKIX.jl")
 using JDR.ASN1: childcount
 #using .PKIX.X509
 function check_ASN1(rf::RPKIFile{CER}, gpi::GlobalProcessInfo)
+    # The certificate should consist of three parts: (RFC5280)
+	# Certificate  ::=  SEQUENCE  {
+	#      tbsCertificate       TBSCertificate,
+	#      signatureAlgorithm   AlgorithmIdentifier,
+	#      signature            BIT STRING  }
+    
     childcount(rf.asn1_tree, 3) # this one marks the SEQUENCE as checked!
     #@debug typeof(rf)
     
@@ -514,17 +506,6 @@ function check_ASN1(rf::RPKIFile{CER}, gpi::GlobalProcessInfo)
     #TODO:
     X509.check_ASN1_signatureAlgorithm(rf, rf.asn1_tree.children[2], gpi, tpi)
     X509.check_ASN1_signatureValue(rf, rf.asn1_tree.children[3], gpi, tpi)
-end
-
-function fake_fetch(url::RPKIUri)
-    try
-        @info "fake_fetching $(url)"
-        t = rand()*0.1
-        sleep(t)
-        @info "fake_fetching $(url) done after $(t)"
-    catch e
-        @error e url
-    end
 end
 
 struct DelayedProcess
@@ -560,10 +541,6 @@ function process(rf::RPKIFile{CER}, gpi::GlobalProcessInfo) :: Union{Nothing, De
                 @assert !processing_delayed
                 return DelayedProcess(uri_to_fetch, rf)
             end
-            #if !(rf.object.rrdp_notify in keys(gpi.fetch_tasks) && istaskdone(gpi.fetch_tasks[rf.object.rrdp_notify]))
-            #    @assert !processing_delayed
-            #    return DelayedProcess(rf.object.rrdp_notify, rf)
-            #end
         finally
             unlock(gpi.lock)
         end
@@ -601,7 +578,6 @@ function check_sig(rf::RPKIFile{CER})#, tpi::TmpParseInfo, parent_cer::Union{Not
     #   however with the current asn1_tree.buf.data approach that does not
     #   reduce the number of file open syscalls or whatever..
 
-    #parent_cer = rf.parent.parent.object::CER
     parent_cer = get_parent_cer(rf)
     if !rf.object.selfsigned && parent_cer.subject != rf.object.issuer
         @error "subject != issuer for child cert $(rf.filename)"
@@ -629,7 +605,7 @@ function check_sig(rf::RPKIFile{CER})#, tpi::TmpParseInfo, parent_cer::Union{Not
     return nothing
 end
 
-function check_resources(rf::RPKIFile{CER})#, tpi::TmpParseInfo, parent_cer::Union{Nothing, RPKINode}=nothing)
+function check_resources(rf::RPKIFile{CER})
     # First, check coverage of ASNs in the parent chain
     #
     rf.object.resources_valid = true
@@ -733,15 +709,13 @@ end
 
 function process(rf::RPKIFile{MFT}, gpi::GlobalProcessInfo)
     tpi = check_ASN1(rf, gpi)
-    # TODO skip check_sig when oneshotting
     if !gpi.oneshot
         check_sig(rf, tpi)
     else
         @warn "oneshotting $(basename(rf.filename)), not checking EE signature"
     end
+
     # for each of listed files, load() CER/CRL/ROA
-    
-    #children = map(fn -> load(fn, rf), rf.object.files)
     rf.children = RPKIFile[]
     for f in rf.object.files
         # every file in .files exists, checked in Mft.jl
@@ -750,8 +724,6 @@ function process(rf::RPKIFile{MFT}, gpi::GlobalProcessInfo)
         push!(rf.children, load(fn, rf))
     end
 
-    # push to children (Vector)
-    #rf.children = children
     gpi.strip_tree && (rf.asn1_tree = nothing)
     rf
 end
@@ -956,27 +928,17 @@ include("RRDP.jl")
 
 
 function process_all(rf::RPKIFile, gpi=GlobalProcessInfo()) :: RPKIFile
-    #@debug "process_all for $(rf.filename), parent: $(rf.parent)"
-    # TODO check if rf is already processed?
-    #RPKI.process(rf, gpi)
-    #todo = RPKIFile[rf]
     todo_c = Channel{RPKIFile}(50000)
     put!(todo_c, rf)
-    #for c in todo
     total = 0
     while(isready(todo_c))
         total += 1
-        #@debug "in todo for $(c)"
         c = take!(todo_c)
         res = RPKI.process(c, gpi)
         if res isa DelayedProcess
-            #@debug "got a new DelayedProcess for $(res.notify_url)"
             lock(gpi.lock)
             try
-                #if !(res.uri_to_fetch in keys(gpi.fetch_tasks))
                 if !haskey(gpi.fetch_tasks, res.uri_to_fetch)
-                    #TODO: distinguish between RRDP and rsync
-                    #moreover, fallback to rsync here in case .rrdp_notify #isnothing?
                     fetch_t = if gpi.transport == rrdp
                         if !isnothing(c.object.rrdp_notify)
                             @async try
@@ -996,7 +958,6 @@ function process_all(rf::RPKIFile, gpi=GlobalProcessInfo()) :: RPKIFile
                 end
                 new_process_all_t = @async begin
                     wait(gpi.fetch_tasks[res.uri_to_fetch])
-                    #@debug "Spawned thread, wait done for $(res.uri_to_fetch)"
                     process_all(res.rf, gpi)
                 end
                 push!(gpi.tasks, new_process_all_t)
@@ -1008,17 +969,14 @@ function process_all(rf::RPKIFile, gpi=GlobalProcessInfo()) :: RPKIFile
             if !isnothing(c.children)
                 if c.children isa Vector
                     for _c in c.children
-                        #push!(todo, _c)
                         put!(todo_c, _c)
                     end
                 else
-                    #push!(todo, c.children)
                     put!(todo_c, c.children)
                 end
             end
         end
     end
-    #@debug "process_all done ($(total) processed) for $(rf.filename)"
     rf
 end
 
@@ -1037,7 +995,6 @@ function process_tas(tals=CFG["rpki"]["tals"];gpi_kw...)
 
     # first, parse all TALs and collect ta_cer_fns
     # if fetch_data, fetch all TA cers
-    #ta_cer_uris = RPKIUri[]
     ta_cer_fns = AbstractString[]
 
     @sync for (talname, tal_fn) in tals
@@ -1058,17 +1015,7 @@ function process_tas(tals=CFG["rpki"]["tals"];gpi_kw...)
     end
     @debug ta_cer_fns
         
-
-    #return nothing
-
     # now process
-    #ta_cer_fns = [
-    #       #"rrdp_repo/rpki.afrinic.net/repository/AfriNIC.cer",
-    #       #"rrdp_repo/rpki.apnic.net/repository/apnic-rpki-root-iana-origin.cer",
-    #       #"rrdp_repo/rpki.arin.net/repository/arin-rpki-ta.cer",
-    #       #"rrdp_repo/repository.lacnic.net/rpki/lacnic/rta-lacnic-rpki.cer",
-    #       "rrdp_repo/rpki.ripe.net/ta/ripe-ncc-ta.cer",
-    #       ]
     for ta_fn in ta_cer_fns
         ta_rf = load(RPKI.CER, ta_fn, root)
         if isnothing(ta_rf)
@@ -1169,182 +1116,6 @@ function process_tas(tals=CFG["rpki"]["tals"];gpi_kw...)
 end
 
 
-#=
-function depr_process_ta(ta_cer_fn::AbstractString, root=RPKI.RPKIFile(); kw...)
-    gpi = GlobalProcessInfo()
-	#root = RPKI.RPKIFile() # creates a RootCer #TODO pass to this method as arg?
-	cer_rf = RPKI.load(ta_cer_fn, root)
-	RPKI.process(cer_rf, gpi)
-
-	mft_rf = cer_rf.children
-	@assert mft_rf.object isa RPKI.MFT
-	RPKI.process(mft_rf, gpi)
-
-	# now loop/recurse
-	@assert mft_rf.children isa Vector
-
-	tasks = Channel{RPKI.RPKIFile{<:RPKI.RPKIObject}}(50000)
-	for c in mft_rf.children
-		put!(tasks, c)
-	end
-	total = Threads.Atomic{Int}(2)
-
-# TODO do_work() into a proper function?
-	do_work(t_id) = begin
-		@debug t_id "spawned do_work()"
-		try
-            c = nothing
-            #while timedwait(() -> begin c = take!(tasks); true end, 5) == :ok
-			while timedwait(() -> isready(tasks), 2) == :ok
-				@debug t_id "in isready"
-                if timedwait(() -> begin c = take!(tasks); true end, 1) == :timed_out
-                    @debug "inner timed_out"
-                    break
-                end
-                @debug t_id "post timedwait take!"
-				#c = take!(tasks)
-				Threads.atomic_add!(total, 1)
-				RPKI.process(c, gpi)
-                @debug t_id "post .process"
-				if !isnothing(c.children)
-					if c.children isa Vector
-						for _c in c.children
-							put!(tasks, _c)
-						end
-					else
-						put!(tasks, c.children)
-					end
-				end
-                @debug t_id "end of while"
-			end
-			@debug t_id "tasks notready"
-		catch e
-			@warn t_id e
-            display(stacktrace(catch_backtrace()))
-			throw(e)
-		end
-        @info t_id "task done"
-	end
-	worker_handles = []
-	@debug "spawning tasks on $(Threads.nthreads()) threads"
-	for i in 1:Threads.nthreads()
-		_h = Threads.@spawn do_work(i)
-		@assert !isnothing(_h)
-		push!(worker_handles, _h)
-	end
-	@debug "waiting on $(length(worker_handles)) worker_handles"
-	i = 0
-	ind_symbols = ['|', '/', '-', '\\', '|', '/', '-', '\\']
-	while !all(istaskdone, worker_handles)
-		ind = ind_symbols[(i %= length(ind_symbols)) + 1]
-		print("\r$(ind) $(count(istaskdone, worker_handles))/$(length(worker_handles)) done, $(count(istaskfailed, worker_handles)) failed, waiting")
-		sleep(0.05)
-		i += 1
-	end
-	@info "Done, processed $(total[]) files"
-	@debug "pre foreach wait"
-	foreach(wait, worker_handles) # to get errors/output
-	@debug "post foreach wait"
-	#@info "Making lookup"
-	#global lookup
-	#@time lookup = RPKI.Lookup(cer_rf)
-end
-=#
-
-#=
-function tmp_runall()
-    gpi = GlobalProcessInfo()
-    root_rf = RPKI.RPKIFile()
-    tas = split("""
-           rrdp_repo/rpki.afrinic.net/repository/AfriNIC.cer
-           """
-           #rrdp_repo/rpki.apnic.net/repository/apnic-rpki-root-iana-origin.cer
-           #rrdp_repo/rpki.arin.net/repository/arin-rpki-ta.cer
-           #rrdp_repo/repository.lacnic.net/rpki/lacnic/rta-lacnic-rpki.cer
-           #rrdp_repo/rpki.ripe.net/ta/ripe-ncc-ta.cer
-           #"""
-           )
-    #for ta_fn in tas
-    #    @debug "calling process_ta for $(ta_fn)"
-    #    @time process_ta(ta_fn)
-    #end
-    tasks = Vector{Task}()
-    results = Channel(10)
-
-    for ta_fn in tas
-        talname = "TODO" # comes from config eventually
-        #@debug "for talname: $(talname)"
-        #=
-        tal = parse_tal(joinpath(CFG["rpki"]["tal_dir"], ta_fn))
-        cer_uri = if gpi.transport == rsync
-            tal.rsync
-        elseif gpi.transport == rrdp
-            if isnothing(tal.rrdp)
-                @warn "No RRDP URI for tal $(talname), skipping"
-                continue
-            end
-            tal.rrdp
-        end
-
-        (hostname, cer_fn) = split_scheme_uri(cer_uri) 
-        ta_cer_fn = joinpath(gpi.data_dir, "tmp", hostname, cer_fn)
-        if !isfile(ta_cer_fn)
-            if gpi.fetch_data
-                if gpi.transport == rrdp
-                    RRDP.fetch_ta_cer(cer_uri, ta_cer_fn)
-                else
-                    Rsync.fetch_ta_cer(cer_uri, ta_cer_fn)
-                end
-            else
-                @warn "TA certificate for $(talname) not locally available and not fetching
-                in this run. Consider passing `fetch_data=true`."
-                continue
-            end
-        end
-        #TODO move ta_cer to non-tmp dir!
-        =#
-        work() = try 
-            @info "Processing $(talname)"
-            process_ta(ta_fn, root_rf)
-            @info "Done processing $(talname)"
-        catch e
-            @error ta_fn e
-            if e isa InterruptException
-                put!(results, ErrorException("Processing $(talname) timed out"))
-            else
-                put!(results, ErrorException("Failed to process $(talname), $(e)"))
-            end
-        end
-        task = Task(work)
-        push!(tasks, task)
-        schedule(task)
-
-    end
-
-    status = timedwait(() -> all(istaskdone, tasks), 180)
-    if status == :timed_out
-        @warn "One or more tasks timed out"
-        for t_to in filter(t->!istaskdone(t), tasks)
-            schedule(t_to, InterruptException(); error=true)
-        end
-    end
-    #processed = 0
-    #while isready(results)
-    #    res = take!(results)
-    #    if res isa ErrorException 
-    #        @warn res.msg
-    #    else
-    #        (rir_root, lkup) = res
-    #        add(rpki_root, rir_root)
-    #        processed += 1
-    #        @info "TAL $(processed)/$(length(tals)) merged: $(rir_root)"
-    #    end
-    #end
-    @info "Done!"
-    root_rf
-end
-=#
-
 ##############################
 # end of refactor
 ##############################
@@ -1359,98 +1130,7 @@ end
 
 Validate ASN1 structure of an [`RPKIObject`](@ref). Method definitions in [CER.jl](@ref) etc.
 """
-function check_ASN1 end
-function check_cert end
-function check_resources end
 
-include("CER.jl")
-include("MFT.jl")
-include("ROA.jl")
-include("CRL.jl")
-
-function add(p::RPKINode, c::RPKINode)#, o::RPKIObject)
-    c.parent = p
-    p.remark_counts_children += c.remark_counts_me + c.remark_counts_children
-    if isnothing(p.children)
-        p.children = [c]
-    else
-        push!(p.children, c)
-        #if length(Set(p.children)) < length(p.children)
-        #    @warn "duplicates in RPKINode children"
-        #    throw("stop")
-        #end
-    end
-end
-function add(p::RPKINode, c::Vector{RPKINode})
-    for child in c
-        add(p, child)
-    end
-end
-
-function add_sibling(a::RPKINode, b::RPKINode)
-    if isnothing(a.siblings)
-        a.siblings = RPKINode[b]
-    else
-        push!(a.siblings, b)
-    end
-    if isnothing(b.siblings)
-        b.siblings = RPKINode[a]
-    else
-        push!(b.siblings, a)
-    end
-end
-
-function check(::RPKIObject{T}) where {T}
-    @warn "unknown RPKIObject type $(T)"
-end
-
-
-function add_roa!(lookup::Lookup, roanode::RPKINode)
-    # TODO do we also want to add CERs here?
-    @assert roanode.obj isa RPKIObject{ROA}
-    roa = roanode.obj.object
-    asn = AutSysNum(roa.asid)
-    if asn in keys(lookup.ASNs)
-        push!(lookup.ASNs[asn], roanode) 
-    else
-        lookup.ASNs[asn] = [roanode]
-    end
-end
-
-function process_roa(roa_fn::String, lookup::Lookup, tpi::TmpParseInfo, parent_cer::Union{Nothing, RPKINode}=nothing) :: RPKINode
-    roa_obj::RPKIObject{ROA} = check_ASN1(RPKIObject{ROA}(roa_fn), tpi, parent_cer.obj)
-    roa_node = RPKINode(roa_obj)
-    add_filename!(lookup, roa_fn, roa_node)
-
-    # add EE resources to Lookup
-    for r in roa_obj.object.resources_v4
-        add_resource(lookup, r.first, r.last, roa_node)
-    end
-    for r in roa_obj.object.resources_v6
-        add_resource(lookup, r.first, r.last, roa_node)
-    end
-
-    # add VRPs to Lookup
-    for r in roa_obj.object.vrp_tree.resources_v4
-        add_resource(lookup, r.first, r.last, roa_node)
-    end
-    for r in roa_obj.object.vrp_tree.resources_v6
-        add_resource(lookup, r.first, r.last, roa_node)
-    end
-    
-
-    roa_node.remark_counts_me = count_remarks(roa_obj)
-
-    @assert !isnothing(tpi.eeCert)
-    check_cert(roa_obj, tpi, parent_cer)
-    check_resources(roa_obj, tpi, parent_cer)
-
-    # optionally strip the tree to save memory
-    if tpi.stripTree
-        roa_obj.tree = nothing
-    end
-    roa_node
-end
 
 struct LoopError <: Exception 
     file1::String
@@ -1458,152 +1138,6 @@ struct LoopError <: Exception
 end
 LoopError(file1::String) = LoopError(file1, "")
 Base.showerror(io::IO, e::LoopError) = print(io, "loop between ", e.file1, " and ", e.file2)
-
-function process_crl(crl_fn::String, lookup::Lookup, tpi::TmpParseInfo, parent_cer::Union{Nothing, RPKINode}=nothing) ::RPKINode
-    crl_obj::RPKIObject{CRL} = check_ASN1(RPKIObject{CRL}(crl_fn), tpi, parent_cer.obj)
-    check_cert(crl_obj, tpi, parent_cer)
-    crl_node = RPKINode(crl_obj)
-    add_filename!(lookup, crl_fn, crl_node)
-    crl_node.remark_counts_me = count_remarks(crl_obj)
-    if tpi.stripTree
-        crl_obj.tree = nothing
-    end
-    crl_node
-end
-
-function process_mft(mft_fn::String, lookup::Lookup, tpi::TmpParseInfo, cer_node::RPKINode) :: RPKINode
-    mft_dir = dirname(mft_fn)
-    tpi.cwd = mft_dir
-    mft_obj::RPKIObject{MFT} = try 
-        check_ASN1(RPKIObject{MFT}(mft_fn), tpi, cer_node.obj)
-    catch e 
-        showerror(stderr, e, catch_backtrace())
-        @error "MFT: error with $(mft_fn)"
-        return RPKINode()
-    end
-	crl_count = 0
-
-    check_cert(mft_obj, tpi, cer_node)
-
-    mft_node = RPKINode(mft_obj)
-    add(cer_node, mft_node)
-    # we add the remarks_counts for the mft_obj after we actually processed the
-    # fileList on the manifest, as more remarks might be added there
-    if tpi.stripTree
-        mft_obj.tree = nothing 
-    end
-
-    cer_tasks = Vector{Task}()
-    cer_results = Channel()
-
-    sub_cers_todo = 0
-
-    for f in mft_obj.object.files
-        if !isfile(joinpath(mft_dir, f))
-            @warn "[$(get_pubpoint(cer_node))] Missing file: $(f)"
-            Mft.add_missing_file(mft_obj.object, f)
-            add_missing_filename!(lookup, joinpath(mft_dir, f), mft_node)
-            remark_missingFile!(mft_obj, "Listed in manifest but missing on file system: $(f)")
-            continue
-        end
-        if endswith(f, r"\.cer"i)
-            # TODO accomodate for BGPsec router certificates
-            subcer_fn = joinpath(mft_dir, f)
-            try
-                # TODO
-                # can .cer and .roa files be in the same dir / on the same level
-                # of a manifest? in other words, can we be sure that if we reach
-                # this part of the `if ext ==`, there will be no other files to
-                # check?
-
-                #if subcer_fn in keys(lookup.filenames)
-                #    @warn "$(subcer_fn) already seen, loop?"
-                #    throw("possible loop in $(subcer_fn)" )
-                #end
-                #@debug "process_cer from _mft for $(basename(subcer_fn))"
-                
-                #FIXME far too expensive..
-                #tpi_copy = deepcopy(tpi)
-                #@async put!(cer_tasks, process_cer(subcer_fn, lookup, tpi_copy))
-                #work() =  put!(cer_results, process_cer(subcer_fn, lookup, tpi_copy))
-                #t = Task(work)
-                #push!(cer_tasks, t)
-                #schedule(t)
-
-                sub_cer_node = process_cer(subcer_fn, lookup, tpi, mft_node)
-                add(mft_node, sub_cer_node)
-                
-            catch e
-                if e isa LoopError
-                    #@warn "LoopError, trying to continue"
-                    #@warn "but pushing $(basename(subcer_fn))"
-
-                    if isnothing(mft_obj.object.loops)
-                        mft_obj.object.loops = [basename(subcer_fn)]
-                    else
-                        push!(mft_obj.object.loops, basename(subcer_fn))
-                    end
-                    remark_loopIssue!(mft_obj, "Loop detected with $(basename(subcer_fn))")
-                    #@warn "so now it is $(m.object.loops)"
-                else
-                    #throw("MFT->.cer: error with $(subcer_fn): \n $(e)")
-                    rethrow(e)
-                    #showerror(stderr, e, catch_backtrace())
-                end
-            end
-        elseif endswith(f, r"\.roa"i)
-            roa_fn = joinpath(mft_dir, f)
-            try
-                roa_node = process_roa(roa_fn, lookup, tpi, cer_node)
-                add(mft_node, roa_node)
-                add_roa!(lookup, roa_node)
-            catch e
-                #showerror(stderr, e, catch_backtrace())
-                #throw("MFT->.roa: error with $(roa_fn): \n $(e)")
-                rethrow(e)
-            end
-        elseif endswith(f, r"\.crl"i)
-            crl_fn = joinpath(mft_dir, f)
-            crl_count += 1
-            if crl_count > 1
-                @error "more than one CRL on $(mft_fn)"
-                remark_manifestIssue!(mft_obj, "More than one CRL on this manifest")
-            end
-            try
-                crl_node = process_crl(crl_fn, lookup, tpi, cer_node)
-                add(mft_node, crl_node)
-                add_sibling(cer_node, crl_node)
-            catch e
-                rethrow(e)
-            end
-        end
-
-    end
-
-    #=
-    # processing the @async'ed sub_cers
-    @debug "pre while, sub_cers_todo: $(sub_cers_todo)"
-    no_of_subcers = 0
-    #while !all(istaskdone, cer_tasks)
-    while (sub_cers_todo > no_of_subcers)
-        #@debug "in while, not all subcertasks done"
-        #while isready(cer_results)
-            sub_cer_node = take!(cer_results)
-            @debug "adding sub_cer $(sub_cer_node) to mft $(mft_node)"
-            add(mft_node, sub_cer_node)
-            no_of_subcers += 1
-        #end
-    end
-    @debug "sub_cers done, $(no_of_subcers) processed for $(mft_node)"
-    =#
-
-
-
-    # returning:
-    mft_node.remark_counts_me = count_remarks(mft_obj) 
-    add_filename!(lookup, mft_fn, mft_node)
-    mft_node
-end
 
 function link_resources!(cer::RPKINode)
     if isnothing(cer.children)
@@ -1642,136 +1176,6 @@ function link_resources!(cer::RPKINode)
     end
 end
 
-function process_cer(cer_fn::String, lookup::Lookup, tpi::TmpParseInfo, parent_mft::Union{Nothing, RPKINode}=nothing) :: RPKINode
-    # now, for each .cer, get the CA Repo and 'sync' again
-    if cer_fn in keys(lookup.filenames)
-        @warn "$(basename(cer_fn)) already seen, loop?"
-        throw(LoopError(cer_fn))
-    else
-        # placeholder: we need to put something in because when a loop appears
-        # in the RPKI repo, this call will never finish so adding it at the end
-        # of this function will never happen.
-        add_filename!(lookup, cer_fn, RPKINode())
-    end
-
-    parent_cer = if isnothing(parent_mft)
-        nothing
-    else
-        parent_mft.parent
-    end
-    cer_obj::RPKIObject{CER} = check_ASN1(RPKIObject{CER}(cer_fn), tpi, parent_cer)
-
-    if !isnothing(tpi.tal)
-        if cer_obj.object.rsa_modulus != tpi.tal.key
-            remark_validityIssue!(cer_obj, "key does not match TAL")
-            @error "Certificate key does not match key in TAL: $(cer_fn)"
-        end
-        tpi.tal = nothing
-    end
-
-    cer_node = RPKINode(cer_obj)
-    if !isnothing(parent_mft)
-        #@debug "add: $(parent_mft.parent.obj.filename) , $(cer_node.obj.filename)"
-        add(parent_mft, cer_node)
-    end
-
-    #@debug "pre check_resources: typeof parent_mft: $(typeof(parent_mft))"
-    #@debug cer_node.obj.object isa CER && parent_cer.obj.object isa CER
-
-    #push!(tpi.certStack, cer_obj.object)
-    check_cert(cer_obj, tpi, parent_cer)
-    check_resources(cer_obj, tpi, parent_cer)
-
-    mft_host, mft_path = split_scheme_uri(cer_obj.object.manifest)
-    mft_fn = joinpath(tpi.data_dir, mft_host, mft_path)
-
-    if cer_obj.sig_valid 
-        push!(lookup.valid_certs, cer_node)
-    else
-        push!(lookup.invalid_certs, cer_node)
-    end
-
-    for r in cer_obj.object.resources_v4
-        add_resource(lookup, r.first, r.last, cer_node)
-    end
-    for r in cer_obj.object.resources_v6
-        add_resource(lookup, r.first, r.last, cer_node)
-    end
-
-    (ca_host, ca_path) = if tpi.transport == rsync
-        split_scheme_uri(cer_obj.object.pubpoint)
-    elseif tpi.transport == rrdp
-        if !isempty(cer_obj.object.rrdp_notify)
-            split_scheme_uri(cer_obj.object.rrdp_notify)
-        else
-            @warn "No RRDP SIA for $(cer_fn), rsync SIA is $(cer_obj.object.pubpoint)"
-            #(nothing, nothing)
-            #pop!(tpi.certStack)
-            return cer_node
-        end
-    end
-
-    
-    rsync_module = joinpath(ca_host, splitpath(ca_path)[1])
-    #depth = length(tpi.certStack)
-    depth = 1
-    if tpi.transport == rrdp && !(ca_host in keys(lookup.pubpoints)) ||
-        tpi.transport == rsync && !(rsync_module in keys(lookup.rsync_modules))
-        lookup.pubpoints[ca_host] = depth => Set(cer_node)
-        if tpi.fetch_data
-            if tpi.transport == rsync
-                @debug "rsync, $(rsync_module) not seen before"
-                Rsync.fetch_all(ca_host, ca_path)
-                lookup.rsync_modules[rsync_module] = cer_fn
-            elseif tpi.transport == rrdp
-                rrdp_update = RRDP.fetch_process_notification(cer_node)
-                RRDP.add(lookup, rrdp_update)
-            end
-        end
-    else
-        (d, s) = lookup.pubpoints[ca_host]
-        if depth < d
-            @debug "existing pubpoint $(ca_host) at lower degree $(depth) instead of $(d)"
-            lookup.pubpoints[ca_host] = depth => Set(cer_node)
-        elseif depth == d
-            #@debug "existing pubpoint $(ca_host) at similar depth $(depth)"
-            #(_, set) = lookup.pubpoints[ca_host] 
-            push!(s, cer_node)
-        end
-    end
-
-    if tpi.stripTree
-        cer_obj.tree = nothing
-    end
-
-    #TODO: should we still process through the directory, even though there was
-    #no manifest?
-    if !isfile(mft_fn)
-        @error "[$(get_pubpoint(cer_node))] manifest $(basename(mft_fn)) not found"
-        add_missing_filename!(lookup, mft_fn, cer_node)
-        remark_missingFile!(cer_obj, "Manifest file $(basename(mft_fn)) not in repo")
-    else
-
-        try
-            mft = process_mft(mft_fn, lookup, tpi, cer_node)
-            #add(cer_node, mft)
-        catch e
-            if e isa LoopError
-                @warn "Loop! between $(basename(e.file1)) and $(basename(e.file2))"
-            else
-                rethrow(e)
-            end
-        end
-    end
-
-    # we already counted the remarks from .tree, now add those from the object:
-    cer_node.remark_counts_me = count_remarks(cer_obj)
-
-    add_filename!(lookup, cer_fn, cer_node)
-    #pop!(tpi.certStack)
-    cer_node
-end
-
 
 """
 	process_ta(ta_cer_fn::String; kw...)
@@ -1791,41 +1195,6 @@ Optional keyword arguments:
 
 Returns `Tuple{`[`RPKINode`](@ref)`,`[`Lookup`](@ref)`}`
 """
-function process_ta(ta_cer_fn::String; tal=nothing, lookup=Lookup(), tpi_args...) :: Tuple{RPKINode, Lookup}
-    @debug "process_ta for $(basename(ta_cer_fn))"
-    if haskey(tpi_args, :data_dir)
-        @debug "using custom data_dir $(data_dir)"
-    end
-    @assert isfile(ta_cer_fn) "Can not open file $(ta_cer_fn)"
-
-    tpi = TmpParseInfo(;lookup, tal, tpi_args...)
-
-    if !isdir(tpi.data_dir)
-        if !tpi.fetch_data 
-            @error "Can not find directory $(tpi.data_dir) and not creating/fetching anything"
-            throw("invalid configuration")
-        end
-    end
-
-
-    # get rsync url from tal
-    #
-    rir_root = RPKINode()
-    try
-        rir_root = process_cer(ta_cer_fn, lookup, tpi)
-    catch e
-        @error "error while processing $(ta_cer_fn)"
-        @error e
-        display(stacktrace(catch_backtrace()))
-        rethrow(e)
-    end
-
-    # 'fetch' cer from TAL ?
-    # check TA signature (new)
-    # process first cer, using data_dir
-    @debug "process_ta done, returning tuple"
-    return rir_root, lookup
-end
 
 """
     process_tas([tal_urls::Dict]; kw...)
@@ -1850,124 +1219,6 @@ Optional keyword arguments:
 Returns `Tuple{`[`RPKINode`](@ref)`,`[`Lookup`](@ref)`}`
 
 """
-function process_tas(tals=CFG["rpki"]["tals"]; tpi_args...) :: Union{Nothing, Tuple{RPKINode, Lookup}}
-    if isempty(tals)
-        @warn "No TALs configured, please create/edit JDR.toml and run
-
-            JDR.Config.generate_config()
-
-        "
-        return nothing
-    end
-
-    _tpi = TmpParseInfo(; tpi_args...)
-
-    if _tpi.fetch_data
-        if !isdir(_tpi.data_dir)
-            @info "Configured data directory $(_tpi.data_dir) does not exist, will try to create it"
-            try
-                mkpath(_tpi.data_dir)
-            catch e
-                @warn "Failed to create $(_tpi.data_dir): ", e
-            end
-        else
-            # we fetch full snapshots for RRDP, so we start with a clean slate every fetch
-            # for rsync we want to keep the old dir around to reduce transfer delays
-            #if _tpi.transport == rrdp
-            #    @info "Configured RRDP data directory exists, moving it to .prev"
-            #    try
-            #        dir = _tpi.data_dir
-            #        if isdirpath(dir)
-            #            # contains trailing slash, chop it off
-            #            dir = dirname(dir)
-            #        end
-
-            #        mv(dir, dir*".prev"; force=true)
-            #    catch e
-            #        @warn "Failed to move $(dir) to $(dir).prev : ", e
-            #    end
-            #end
-        end
-    end
-
-    lookup = Lookup()
-    rpki_root = RPKINode()
-    rpki_root.obj = RPKIObject{RootCER}()
-
-    tasks = Vector{Task}()
-    results = Channel(10)
-
-    for (talname, tal_fn) in tals
-        @debug "for talname: $(talname)"
-        tal = parse_tal(joinpath(CFG["rpki"]["tal_dir"], tal_fn))
-        cer_uri = if _tpi.transport == rsync
-            tal.rsync
-        elseif _tpi.transport == rrdp
-            if isnothing(tal.rrdp)
-                @warn "No RRDP URI for tal $(talname), skipping"
-                continue
-            end
-            tal.rrdp
-        end
-
-        (hostname, cer_fn) = split_scheme_uri(cer_uri) 
-        ta_cer_fn = joinpath(_tpi.data_dir, "tmp", hostname, cer_fn)
-        if !isfile(ta_cer_fn)
-            if _tpi.fetch_data
-                if _tpi.transport == rrdp
-                    RRDP.fetch_ta_cer(cer_uri, ta_cer_fn)
-                else
-                    Rsync.fetch_ta_cer(cer_uri, ta_cer_fn)
-                end
-            else
-                @warn "TA certificate for $(talname) not locally available and not fetching
-                in this run. Consider passing `fetch_data=true`."
-                continue
-            end
-        end
-        #TODO move ta_cer to non-tmp dir!
-
-        work() = try 
-            @info "Processing $(talname)"
-            put!(results, process_ta(ta_cer_fn; lookup, tal, tpi_args...))
-            @info "Done processing $(talname)"
-        catch e
-            @error ta_cer_fn e
-            if e isa InterruptException
-                put!(results, ErrorException("Processing $(talname) timed out"))
-            else
-                put!(results, ErrorException("Failed to process $(talname), $(e)"))
-            end
-        end
-        task = Task(work)
-        push!(tasks, task)
-        schedule(task)
-
-    end
-
-    status = timedwait(() -> all(istaskdone, tasks), 180)
-    if status == :timed_out
-        @warn "One or more tasks timed out"
-        for t_to in filter(t->!istaskdone(t), tasks)
-            schedule(t_to, InterruptException(); error=true)
-        end
-    end
-    processed = 0
-    while isready(results)
-        res = take!(results)
-        if res isa ErrorException 
-            @warn res.msg
-        else
-            (rir_root, lkup) = res
-            add(rpki_root, rir_root)
-            processed += 1
-            @info "TAL $(processed)/$(length(tals)) merged: $(rir_root)"
-        end
-    end
-    @info "Done, $(processed)/$(length(tals)) merged successfully"
-
-    rpki_root, lookup
-end
 
 function collect_remarks_from_asn1!(o::RPKIObject{T}, node::Node) where T
     if !isnothing(node.remarks)

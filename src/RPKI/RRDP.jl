@@ -1,12 +1,13 @@
 module RRDP
 
 using JDR: CFG
-using JDR.Common: NotifyUri
-using ..RPKI: RPKIFile
+using JDR.Common: AutSysNum, NotifyUri
+using ..RPKI: RPKIFile, ROA, oneshot, get_pubpoint
 #using JDR.RPKICommon: RPKINode, get_object, Lookup
 
 using Base64: base64decode
 using CodecZlib
+using Dates: DateTime, now, UTC
 using EzXML
 using HTTP
 using SHA
@@ -66,17 +67,43 @@ end
 RRDPUpdateStats() = RRDPUpdateStats(0, 0, 0, 0, 0, 0, 0, FiletypeStats(), FiletypeStats())
 Base.show(io::IO, r::RRDPUpdateStats) = foreach(f -> println(io, "\t$(f): $(getfield(r,f))"), fieldnames(typeof(r)))
 
+struct RoaDiff
+    appeared_v6::Vector
+    appeared_v4::Vector
+    disappeared_v6::Vector
+    disappeared_v4::Vector
+    old_asid::Union{Nothing, AutSysNum}
+    new_asid::Union{Nothing, AutSysNum}
+    old_filename::Union{Nothing, AbstractString}
+    new_filename::Union{Nothing, AbstractString}
+end
+
 @enum RRDPUpdateType snapshot delta
 mutable struct RRDPUpdate
     cer::RPKIFile
     type::RRDPUpdateType
+    tstart::DateTime
+    tend::DateTime
     #::Lookup?
     stats::RRDPUpdateStats
     new_cers::Vector{AbstractString}
     new_roas::Vector{AbstractString}
     updated_roas::Vector{AbstractString}
+    roa_diffs::Vector{RoaDiff}
     withdrawn_roas::Vector{AbstractString}
     errors::Vector{String}
+end
+function Base.show(io::IO, u::RRDPUpdate) 
+    print(io, "[", get_pubpoint(u.cer), "] (", u.tend - u.tstart, ") ")
+    if u.type == delta
+        print(io, u.stats.deltas_applied, " deltas ")
+    else
+        print(io, "snapshot ")
+    end
+    if !isempty(u.errors)
+        print(io, "with errors")
+    end
+    #foreach(f -> println(io, "\t$(f): $(getfield(r,f))"), fieldnames(typeof(r)))
 end
 
 #function add(l::Lookup, rrdp_update::RRDPUpdate)
@@ -99,6 +126,81 @@ function increase_stats(stats::FiletypeStats, filename::AbstractString)
     end
 end
 
+function diff(old::Union{Nothing, RPKIFile{ROA}}, new::Union{Nothing, RPKIFile{ROA}}) :: RoaDiff
+    @assert !(isnothing(old) && isnothing(new))
+
+    appeared_v6 = []
+    appeared_v4 = []
+    disappeared_v6 = []
+    disappeared_v4 = []
+    old_asid = nothing
+    new_asid = nothing
+    old_filename = new_filename = nothing
+
+    if isnothing(old)
+        # return all from new as appeared
+        appeared_v6 = collect(new.object.vrp_tree.resources_v6)
+        appeared_v4 = collect(new.object.vrp_tree.resources_v4)
+        new_asid = new.object.asid
+        new_filename = new.filename
+    elseif isnothing(new)
+        # return all from old as disappeared
+        disappeared_v6 = collect(old.object.vrp_tree.resources_v6)
+        disappeared_v4 = collect(old.object.vrp_tree.resources_v4)
+        old_asid = old.object.asid
+        old_filename = old.filename
+    else
+        # actuall diff
+        # check asid: if not the same, full set of old is disappeared, full
+        old_asid = old.object.asid
+        new_asid = new.object.asid
+        old_filename = old.filename
+        new_filename = new.filename
+        if old.object.asid != new.object.asid
+            @debug "different asids: $(old.object.asid) vs $(new.object.asid)"
+            appeared_v6 = collect(new.object.vrp_tree.resources_v6)
+            appeared_v4 = collect(new.object.vrp_tree.resources_v4)
+            disappeared_v6 = collect(old.object.vrp_tree.resources_v6)
+            disappeared_v4 = collect(old.object.vrp_tree.resources_v4)
+        else
+            @warn "ROA diff, same asid $(new.object.asid) for $(new_filename)\nsha256 of new roa: $(bytes2hex(sha256(read(new_filename))))"
+            # tmp analsysis
+            ts = now().instant.periods.value >> 8
+            cp(new_filename, joinpath("debug", basename(new_filename)*".$(ts).new.roa"))
+            # v6:
+            old_set = collect(old.object.vrp_tree.resources_v6)
+            new_set = collect(new.object.vrp_tree.resources_v6)
+            disappeared_v6 = setdiff(old_set, new_set)
+            appeared_v6 = setdiff(new_set, old_set)
+
+            # v4:
+            old_set = collect(old.object.vrp_tree.resources_v4)
+            new_set = collect(new.object.vrp_tree.resources_v4)
+            disappeared_v4 = setdiff(old_set, new_set)
+            appeared_v4 = setdiff(new_set, old_set)
+
+            @warn new_filename disappeared_v6 appeared_v6 disappeared_v4 appeared_v4
+
+            #TODO actuall diff
+            #throw("TODO implement actuall roa vrp set diff")
+        end
+        # set of new is appeared
+        # calculate disappeared from old not in new
+        # appeared from new not in old
+        # return both
+    end
+
+    RoaDiff(appeared_v6,
+            appeared_v4,
+            disappeared_v6,
+            disappeared_v4,
+            old_asid,
+            new_asid,
+            old_filename,
+            new_filename
+           )
+end
+
 # works on both snapshot and delta XMLs
 function _process_publish_withdraws(rrdp_update::RRDPUpdate, doc::EzXML.Document)
     reponame = HTTP.URIs.URI(rrdp_update.cer.object.rrdp_notify.u).host
@@ -114,46 +216,110 @@ function _process_publish_withdraws(rrdp_update::RRDPUpdate, doc::EzXML.Document
             dont_mv = true
         end
 
+        filename_old = uri_to_path(p_or_w["uri"], false)
         filename = uri_to_path(p_or_w["uri"], use_tmp_dir)
+        calc_roa_diff = false
+        old_roa = new_roa = nothing
         if nodename(p_or_w) == "publish"
-            if isfile(filename)
-                rrdp_update.stats.updates += 1
-                if endswith(filename, r"\.roa"i)
-                    push!(rrdp_update.updated_roas, filename)
-                end
-            else
-                rrdp_update.stats.new_publishes += 1
+            #TODO:
+            #make a clearer distinction between snapshot fetch and delta-based #update
+            #if snapshot, do not calculate old_roa, and do not push rrdp_update.update_roas
+            #we can still calc the diffs afterwards, not show them in jdr-web, but keep them around
+            #for longer term storage (for historical analytics etc)
+
+            if rrdp_update.type == snapshot
+                # snapshot update, do not care about existing old files
+                # we will calculate the diff comparing to old_roa=nothing
                 if endswith(filename, r"\.cer"i)
                     push!(rrdp_update.new_cers, filename)
                 elseif endswith(filename, r"\.roa"i)
+                    #calc_roa_diff = true # FIXME 'too expensive' in the current code
                     push!(rrdp_update.new_roas, filename)
                 end
+            else
+                # delta update. if this file exists, consider it an update, and calculate the diff
+                # accordingly
+                if isfile(filename_old)
+                    # file exists, so this is an update
+                    rrdp_update.stats.updates += 1
+
+                    if endswith(filename, r"\.roa"i)
+                        # tmp analysis
+                        @debug "copying $filename_old to ./debug/\nsha256 of existing roa: $(bytes2hex(sha256(read(filename_old))))"
+                        ts = now().instant.periods.value >> 8
+                        cp(filename_old, joinpath("debug", basename(filename_old)*".$(ts).old.roa"))
+                        # eotmp
+                    
+                        push!(rrdp_update.updated_roas, filename_old)
+                        calc_roa_diff = true
+                        old_roa = oneshot(filename_old)
+                    end
+                else
+                    # file does not exist yet, new publish
+                    rrdp_update.stats.new_publishes += 1
+                    if endswith(filename, r"\.cer"i)
+                        push!(rrdp_update.new_cers, filename)
+                    elseif endswith(filename, r"\.roa"i)
+                        calc_roa_diff = true
+                        push!(rrdp_update.new_roas, filename)
+                    end
+                end
             end
+
+            #---
+            #@assert !use_tmp_dir || (use_tmp_dir && !isfile(filename_old))
+            #if isfile(filename_old)
+            #    rrdp_update.stats.updates += 1
+            #    if endswith(filename, r"\.roa"i)
+            #        push!(rrdp_update.updated_roas, filename_old)
+            #        calc_roa_diff = true
+            #        old_roa = oneshot(filename_old)
+            #    end
+            #else
+            #    rrdp_update.stats.new_publishes += 1
+            #    if endswith(filename, r"\.cer"i)
+            #        push!(rrdp_update.new_cers, filename)
+            #    elseif endswith(filename, r"\.roa"i)
+            #        calc_roa_diff = true
+            #        #new_roa = oneshot(filename) # does not exist here yet!
+            #        push!(rrdp_update.new_roas, filename)
+            #    end
+            #end
             increase_stats(rrdp_update.stats.publishes_per_type, filename)
 
             mkpath(dirname(filename))
             write(filename, base64decode(nodecontent(p_or_w)))
+            if calc_roa_diff
+                new_roa = oneshot(filename)
+            end
         elseif nodename(p_or_w) == "withdraw"
             @assert rrdp_update.type == delta
             rrdp_update.stats.withdraws += 1
-            increase_stats(rrdp_update.stats.withdraws_per_type, filename)
+            increase_stats(rrdp_update.stats.withdraws_per_type, filename_old)
 
-            if !isfile(filename)
-                @warn "[$(reponame)] File $(filename) to be withdrawn, but not found on disk"
+            if !isfile(filename_old)
+                @warn "[$(reponame)] File $(filename_old) to be withdrawn, but not found on disk"
             else
-                if endswith(filename, r"\.roa"i)
-                    push!(rrdp_update.withdrawn_roas, filename)
+                if endswith(filename_old, r"\.roa"i)
+                    old_roa = oneshot(filename_old)
+                    @assert isnothing(new_roa)
+                    push!(rrdp_update.withdrawn_roas, filename_old)
                 end
-                rm(filename)
-                while length(readdir(dirname(filename))) == 0
-                    @debug "$(dirname(filename)) empty, removing"
-                    rm(dirname(filename))
-                    filename = dirname(filename)
+                rm(filename_old)
+                while length(readdir(dirname(filename_old))) == 0
+                    @debug "$(dirname(filename_old)) empty, removing"
+                    rm(dirname(filename_old))
+                    filename_old = dirname(filename_old)
                 end
             end
         else
             @error "[$(reponame)] not publish nor withdraw, invalid xml?"
         end
+        if !(isnothing(old_roa) && isnothing(new_roa)) 
+            roa_diff = diff(old_roa, new_roa)
+            push!(rrdp_update.roa_diffs, roa_diff)
+        end
+
     end
 
     if rrdp_update.type == snapshot
@@ -238,7 +404,7 @@ end
 
 #function fetch_process_notification(url::AbstractString)
 function fetch_process_notification(cer_rf::RPKIFile) :: RRDPUpdate
-    rrdp_update = RRDPUpdate(cer_rf, snapshot, RRDPUpdateStats(), [], [], [], [], [])
+    rrdp_update = RRDPUpdate(cer_rf, snapshot, now(UTC), now(UTC), RRDPUpdateStats(), [], [], [], [], [], [])
     url = cer_rf.object.rrdp_notify.u
     reponame = HTTP.URIs.URI(url).host
     @debug "[$(reponame)] Fetching $(url)"
@@ -285,6 +451,7 @@ function fetch_process_notification(cer_rf::RPKIFile) :: RRDPUpdate
         success = fetch_process_snapshot(rrdp_update, firstelement(doc.root))
     elseif serial_them == serial_us
         @info "[$(reponame)] serial_them == serial_us == $(serial_them), session_id matches, already up to date"
+        rrdp_update.type = delta
         success = true
     elseif serial_them > serial_us
         need = (serial_us+1:serial_them)
@@ -321,6 +488,7 @@ function fetch_process_notification(cer_rf::RPKIFile) :: RRDPUpdate
         end
     end
 
+    rrdp_update.tend = now(UTC)
     return rrdp_update
 end
 

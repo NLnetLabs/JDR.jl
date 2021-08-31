@@ -21,17 +21,19 @@ export RPKIFile
 # start of refactor
 ##############################
 
-using Dates: DateTime
+using Dates: DateTime, now
 using IntervalTrees: IntervalTree, IntervalMap, Interval, IntervalValue
 using Sockets: IPv6, IPv4
+using SHA: sha256
 using StaticArrays: SVector
 
-using JDR.ASN1: Node
+using JDR.ASN1: Node, to_bigint
 using JDR.ASN1.DER: parse_file_recursive
-using JDR.Common: AsIdsOrRanges
+using JDR.Common: AsIdsOrRanges, covered, check_coverage
+using JDR.Common: remark_resourceIssue!
 include("TAL.jl")
 using .Tal: TAL, parse_tal
-export parse_tal
+export parse_tal, search
 
 @enum Transport rsync rrdp
 export rsync, rrdp
@@ -51,6 +53,8 @@ mutable struct RPKIFile{T<:RPKIObject}
 	filename::AbstractString #TODO check, is AbstractString bad here?
     " ASN1 tree"
     asn1_tree::Union{Nothing, Node}
+    " Remarks "
+    remarks::Union{Nothing, Vector{Remark}}
 	#siblings?
 	#remarks? or on object
 	#remarks_ASN1 (was remarks_tree)
@@ -88,8 +92,6 @@ struct Lookup
     pubpoints::Dict{AbstractString}{Vector{RPKIFile}}
 
     #notify_urls::Dict{AbstractString}{Vector{RPKIFile}}
-
-    # remarks
 
     #resources_v6 # done in vrps_?
     #resources_v4 # done in vrps_?
@@ -129,6 +131,11 @@ function Lookup(rf::RPKIFile{<:RPKIObject}) :: Lookup
             end
             for v in f.object.vrp_tree.resources_v4
                 push!(vrps_v4, IntervalValue{IPv4, RPKIFile}(v.first, v.last, f))
+            end
+        end
+        if !isnothing(f.remarks)
+            for r in f.remarks
+                push!(remarks, (r, f))
             end
         end
     end
@@ -187,9 +194,8 @@ struct RootCER <: RPKIObject
 end
 RootCER() = RootCER(IntervalTree{IPv6, IntervalValue{IPv6, Vector{RPKIFile}}}(), IntervalTree{IPv4, IntervalValue{IPv4, Vector{RPKIFile}}}())
 
-RPKIFile() = RPKIFile(nothing, RPKIFile[], RootCER(), "", nothing)
-RPKIFile(parent::RPKIFile, children, obj::T, fn::String, asn1::Node) where {T<:RPKIFile} = RPKIFile(parent, children, obj, fn, asn1)
-#RPKIFile(parent::RPKIFile, children::Vector{RPKIFile}, obj::T, fn::String) where {T<:RPKIFile} = RPKIFile(parent, children, obj, fn)
+RPKIFile() = RPKIFile(nothing, RPKIFile[], RootCER(), "", nothing, nothing)
+RPKIFile(parent, children, obj::T, fn::String, asn1::Node) where {T<:RPKIObject} = RPKIFile(parent, children, obj, fn, asn1, nothing)
 
 
 """ Simple wrapper for `serial::Integer` """
@@ -402,19 +408,12 @@ struct UnknownType <: RPKIObject end
 
 
 
-
-include("rsync.jl")
-include("RRDP.jl")
-
-
-
-
 #function load(t::Type{T}, fn::AbstractString, parent=Union{Nothing, RPKIFile}=nothing) :: RPKIFile{<:RPKIObject} where {T<:RPKIObject}
 function load(t::Type{T}, fn::AbstractString, parent::Union{Nothing, RPKIFile}=nothing) where {T<:RPKIObject}
-    @debug 3
     if !isfile(fn)
         @error "File not found: [$(nameof(T))] $(fn)"
-        @debug "parent is: $(parent)"
+        #@debug "parent is: $(parent)"
+        #throw("stop")
         return nothing
         #return RPKIFile(parent, nothing, UnknownType(), fn, nothing)
     else
@@ -424,7 +423,6 @@ function load(t::Type{T}, fn::AbstractString, parent::Union{Nothing, RPKIFile}=n
     end
 end
 function load(fn::AbstractString, parent::Union{Nothing, RPKIFile}=nothing)
-    @debug 2
     if endswith(fn, r"\.cer"i)
         load(CER, fn, parent)
     elseif endswith(fn, r"\.mft"i)
@@ -523,64 +521,183 @@ function process(rf::RPKIFile{CER}, gpi::GlobalProcessInfo) :: Union{Nothing, De
         processing_delayed = true
     else
         check_ASN1(rf, gpi)
+        if !gpi.oneshot
+            check_sig(rf)
+            check_resources(rf)
+        end
     end
-
-    #if rf.filename == "rrdp_repo/rpki.ripe.net/repository/DEFAULT/RYesy9trwR8qCh_LPX2r4iePXek.cer"
-    #    debugme = true
-    #    @debug Threads.threadid() processing_delayed "processing RIPE one"
-    #elseif rf.filename == "rrdp_repo/rpki.arin.net/repository/arin-rpki-ta/5e4a23ea-e80a-403e-b08c-2171da2157d3/f60c9f32-a87c-4339-a2f3-6299a3b02e29/1c804bcc-72df-429f-a7d4-aedec2326572/cbe5446eb35e68e341eb7d92888bcc552b9c3c50b2c814c3e9.cer"
-    #    debugme = true
-    #    @debug Threads.threadid() processing_delayed "processing ARIN one"
-    #end
 
     @assert !isempty(rf.object.manifest)
 
-    #check_ASN1(rf, gpi)
-    
-    # fetch y/n?
-    # load() MFT based on rf.object.manifest
-    #@debug "load for manifest $(rf.object.manifest)"
-
     # check if we hop to another CA
     traverse_ca = rf.parent.object isa RootCER || get_pubpoint(rf.parent.parent) != get_pubpoint(rf)
-    #if !isnothing(rf.parent.parent)
-        #(parent_ca, _) = split_scheme_uri(rf.parent.parent.object.pubpoint)
-        #(this_ca, _) = split_scheme_uri(rf.object.pubpoint)
-        #parent_ca = get_pubpoint(rf.parent.parent)
-        #this_ca = get_pubpoint(rf)
-        #if parent_ca != this_ca && gpi.fetch_data
-        if traverse_ca && gpi.fetch_data
-            uri_to_fetch = if !isnothing(rf.object.rrdp_notify)
-                rf.object.rrdp_notify
-            else
-                rf.object.pubpoint
-            end::RPKIUri
-            lock(gpi.lock)
-            try
-                if !(haskey(gpi.fetch_tasks, uri_to_fetch) && istaskdone(gpi.fetch_tasks[uri_to_fetch]))
-                    @assert !processing_delayed
-                    return DelayedProcess(uri_to_fetch, rf)
-                end
-                #if !(rf.object.rrdp_notify in keys(gpi.fetch_tasks) && istaskdone(gpi.fetch_tasks[rf.object.rrdp_notify]))
-                #    @assert !processing_delayed
-                #    return DelayedProcess(rf.object.rrdp_notify, rf)
-                #end
-            finally
-                unlock(gpi.lock)
+    if traverse_ca && gpi.fetch_data
+        uri_to_fetch = if !isnothing(rf.object.rrdp_notify)
+            rf.object.rrdp_notify
+        else
+            rf.object.pubpoint
+        end::RPKIUri
+        lock(gpi.lock)
+        try
+            if !(haskey(gpi.fetch_tasks, uri_to_fetch) && istaskdone(gpi.fetch_tasks[uri_to_fetch]))
+                @assert !processing_delayed
+                return DelayedProcess(uri_to_fetch, rf)
             end
+            #if !(rf.object.rrdp_notify in keys(gpi.fetch_tasks) && istaskdone(gpi.fetch_tasks[rf.object.rrdp_notify]))
+            #    @assert !processing_delayed
+            #    return DelayedProcess(rf.object.rrdp_notify, rf)
+            #end
+        finally
+            unlock(gpi.lock)
         end
-    #end
+    end
 
     mft_fn = joinpath(gpi.data_dir, @view rf.object.manifest[9:end])
-    mft = load(MFT, mft_fn, rf)
-    rf.children = mft
+    if isfile(mft_fn)
+        mft = load(MFT, mft_fn, rf)
+        rf.children = mft
+    else
+        @warn "Manifest not on filesystem: $(mft_fn)"
+        remark_missingFile!(rf, "Manifest not on filesystem: $(mft_fn)")
+    end
     gpi.strip_tree && (rf.asn1_tree = nothing)
     return nothing
 end
 
+function get_parent_cer(rf::RPKIFile{CER}) :: Union{Nothing, CER}
+    if !isnothing(rf.parent) && !isnothing(rf.parent.parent)
+        rf.parent.parent.object
+    else
+        nothing
+    end
+end
+function get_parent_cer(rf::RPKIFile{ROA}) :: Union{Nothing, CER}
+    if !isnothing(rf.parent) && !isnothing(rf.parent.parent)
+        rf.parent.parent.object
+    else
+        nothing
+    end
+end
+function check_sig(rf::RPKIFile{CER})#, tpi::TmpParseInfo, parent_cer::Union{Nothing, RPKINode}=nothing)# :: RPKIObject{CER}
+    # TODO: make this work the other way around?
+    #   - take a 'parent CER' and process all the (grand)children 
+    #   however with the current asn1_tree.buf.data approach that does not
+    #   reduce the number of file open syscalls or whatever..
+    #
+    # TODO implement a get_parent_cer ? perhaps for all RPKIFile{T's}
+
+    #parent_cer = rf.parent.parent.object::CER
+    parent_cer = get_parent_cer(rf)
+    if !rf.object.selfsigned && parent_cer.subject != rf.object.issuer
+        @error "subject != issuer for child cert $(rf.filename)"
+        remark_validityIssue!(rf, "subject != issuer for child cert")
+    end
+    sig = rf.asn1_tree.children[3]::Node
+    signature = to_bigint(@view sig.tag.value[2:end])::BigInt
+    @assert !isnothing(rf.object.selfsigned)
+    v = if rf.object.selfsigned
+        powermod(signature, rf.object.rsa_exp, rf.object.rsa_modulus)
+    else
+        powermod(signature, parent_cer.rsa_exp, parent_cer.rsa_modulus)
+    end::BigInt
+    v.size = 4
+    v_str = string(v, base=16, pad=64)
+
+    tbs_raw = @view rf.asn1_tree.buf.data[rf.asn1_tree[1].tag.offset_in_file:rf.asn1_tree[2].tag.offset_in_file-1]
+    my_hash = bytes2hex(sha256(tbs_raw))
+
+    # this only described whether the signature is valid or not! no resource
+    # checks done at this point
+    if v_str != my_hash
+        remark_validityIssue!(rf, "Invalid signature")
+    end
+    return nothing
+end
+
+function check_resources(rf::RPKIFile{CER})#, tpi::TmpParseInfo, parent_cer::Union{Nothing, RPKINode}=nothing)
+    # First, check coverage of ASNs in the parent chain
+    #
+    rf.object.resources_valid = true
+    parent_cer = rf.parent.parent
+    if !rf.object.selfsigned
+        if !covered(rf.object.ASNs , parent_cer.object.ASNs)
+            _covered = false
+            # not covered, so check for inherited ASNs in parent certificates
+            while ((parent_cer = parent_cer.parent.parent) !== nothing) # FIXME check for RootCER
+
+                if !parent_cer.object.inherit_ASNs
+                    if !covered(rf.object.ASNs, parent_cer.object.ASNs)
+                        @warn "illegal ASNs for $(rf.filename)"
+                        remark_validityIssue!(o, "illegal ASNs")
+                        rf.object.resources_valid = false
+                    end
+                    _covered = true
+                    break
+                end
+            end
+            if !_covered
+                # The only way to reach this is if any of the RIR certs has no
+                # ASNs (which is already wrong) and also no inheritance
+                @error "ASN inheritance chain illegal for $(rf.filename)"
+            end
+        end
+    end
+
+    # now for the prefixes
+    # TODO what do we do if the object is self signed?
+    if !rf.object.selfsigned
+        p_cer_v6 = p_cer_v4 = rf.parent.parent
+        if isempty(rf.object.resources_v6) 
+            if isnothing(rf.object.inherit_v6_prefixes)
+                #@warn "v6 prefixes empty, but inherit bool is not set.."
+                #@error "empty v6 prefixes undefined inheritance? $(rf.filename)"
+            elseif !(rf.object.inherit_v6_prefixes)
+                @error "empty v6 prefixes and no inheritance? $(rf.filename)"
+                remark_resourceIssue!(o, "No IPv6 prefixes and no inherit flag set")
+            end
+        else
+            while (p_cer_v6.object.inherit_v6_prefixes)
+                p_cer_v6 = p_cer_v6.parent.parent
+            end
+        end
+
+        if isempty(rf.object.resources_v4) 
+            if isnothing(rf.object.inherit_v4_prefixes)
+                #@warn "v4 prefixes empty, but inherit bool is not set.."
+                #@error "empty v4 prefixes undefined inheritance? $(rf.filename)"
+            elseif !(rf.object.inherit_v4_prefixes)
+                @error "empty v4 prefixes and no inheritance? $(rf.filename)"
+                remark_resourceIssue!(o, "No IPv4 prefixes and no inherit flag set")
+            end
+        else
+            while (p_cer_v4.object.inherit_v4_prefixes)
+                p_cer_v4 = p_cer_v4.parent.parent
+            end
+        end
+
+        
+        # IPv6:
+		check_coverage(p_cer_v6.object.resources_v6, rf.object.resources_v6) do invalid
+            @warn "illegal IP resource $(IPRange(invalid.first, invalid.last)) on $(rf.filename)"
+            remark_resourceIssue!(rf, "Illegal IPv6 resource $(IPRange(invalid.first, invalid.last))")
+            rf.object.resources_valid = false
+        end
+
+        # IPv4:
+        check_coverage(p_cer_v4.object.resources_v4, rf.object.resources_v4) do invalid
+            @warn "illegal IP resource $(IPRange(invalid.first, invalid.last)) on $(rf.filename)"
+            remark_resourceIssue!(rf, "Illegal IPv4 resource $(IPRange(invalid.first, invalid.last))")
+            rf.object.resources_valid = false
+        end
+    end
+
+end
+
+
+
 include("../PKIX/CMS.jl")
 include("MFT.jl")
-function check_ASN1(rf::RPKIFile{MFT}, gpi::GlobalProcessInfo)
+function check_ASN1(rf::RPKIFile{MFT}, gpi::GlobalProcessInfo) :: TmpParseInfo
     tpi = TmpParseInfo()
     cmsobject = rf.asn1_tree
     # CMS, RFC5652:
@@ -596,26 +713,53 @@ function check_ASN1(rf::RPKIFile{MFT}, gpi::GlobalProcessInfo)
     CMS.check_ASN1_content(rf, cmsobject[2], gpi, tpi)
 
     Mft.check_ASN1_manifest(rf, tpi.eContent, gpi, tpi)
+    tpi
 end
 
 function process(rf::RPKIFile{MFT}, gpi::GlobalProcessInfo)
-    check_ASN1(rf, gpi)
+    tpi = check_ASN1(rf, gpi)
+    # TODO skip check_sig when oneshotting
+    if !gpi.oneshot
+        check_sig(rf, tpi)
+    else
+        @warn "oneshotting $(basename(rf.filename)), not checking EE signature"
+    end
     # for each of listed files, load() CER/CRL/ROA
     
     #children = map(fn -> load(fn, rf), rf.object.files)
-    children = RPKIFile[]
+    rf.children = RPKIFile[]
     for f in rf.object.files
+        # every file in .files exists, checked in Mft.jl
         mft_path = dirname(rf.filename)
         fn = joinpath(mft_path, f)
-        push!(children, load(fn, rf))
+        push!(rf.children, load(fn, rf))
     end
 
-
     # push to children (Vector)
-    rf.children = children
+    #rf.children = children
     gpi.strip_tree && (rf.asn1_tree = nothing)
     rf
 end
+
+function check_sig(rf::RPKIFile{MFT}, tpi::TmpParseInfo)
+    # hash tpi.eeCert
+    @assert !isnothing(tpi.ee_cert)
+    tbs_raw = @view rf.asn1_tree.buf.data[tpi.ee_cert.tag.offset_in_file:tpi.ee_cert.tag.offset_in_file + tpi.ee_cert.tag.len + 4 - 1]
+    my_hash = bytes2hex(sha256(tbs_raw))
+
+    # decrypt tpi.ee_sig 
+    v = powermod(to_bigint(@view tpi.ee_sig.tag.value[2:end]), rf.parent.object.rsa_exp, rf.parent.object.rsa_modulus)
+    v.size = 4
+    v_str = string(v, base=16, pad=64)
+    
+    # compare hashes
+    if v_str != my_hash
+        @error "invalid EE signature for" rf.filename
+        remark_validityIssue!(rf, "invalid signature on EE certificate")
+    end
+end
+
+
 
 include("CRL.jl")
 function check_ASN1(rf::RPKIFile{CRL}, gpi::GlobalProcessInfo)
@@ -633,8 +777,27 @@ function check_ASN1(rf::RPKIFile{CRL}, gpi::GlobalProcessInfo)
     X509.check_ASN1_signatureValue(rf, rf.asn1_tree.children[3], gpi, tpi)
 end
 
+function check_sig(rf::RPKIFile{CRL})#, tpi::TmpParseInfo, parent_cer::RPKINode) :: RPKI.RPKIObject{CRL}
+    sig = rf.asn1_tree.children[3]
+    signature = to_bigint(@view sig.tag.value[2:end])
+    v = powermod(signature, rf.parent.parent.object.rsa_exp, rf.parent.parent.object.rsa_modulus)
+    v.size = 4
+    v_str = string(v, base=16, pad=64)
+
+    tbs_raw = @view rf.asn1_tree.buf.data[rf.asn1_tree[1].tag.offset_in_file:rf.asn1_tree[2].tag.offset_in_file-1]
+    my_hash = bytes2hex(sha256(tbs_raw))
+
+    # compare hashes
+    if v_str != my_hash
+        remark_validityIssue!(rf, "Invalid signature")
+    end
+end
+
 function process(rf::RPKIFile{CRL}, gpi::GlobalProcessInfo)
     check_ASN1(rf, gpi)
+    if !gpi.oneshot
+        check_sig(rf)
+    end
     # no children
     #
     gpi.strip_tree && (rf.asn1_tree = nothing)
@@ -643,7 +806,7 @@ end
 include("ROA.jl")
 add_resource!(roa::ROA, ipr::IPRange{IPv6}) = push!(roa.resources_v6, Interval(ipr))
 add_resource!(roa::ROA, ipr::IPRange{IPv4}) = push!(roa.resources_v4, Interval(ipr))
-function check_ASN1(rf::RPKIFile{ROA}, gpi::GlobalProcessInfo)
+function check_ASN1(rf::RPKIFile{ROA}, gpi::GlobalProcessInfo) :: TmpParseInfo
     cmsobject = rf.asn1_tree
     # CMS, RFC5652:
     #       ContentInfo ::= SEQUENCE {
@@ -659,9 +822,98 @@ function check_ASN1(rf::RPKIFile{ROA}, gpi::GlobalProcessInfo)
     CMS.check_ASN1_content(rf, cmsobject[2], gpi, tpi)
 
     Roa.check_ASN1_routeOriginAttestation(rf, tpi.eContent, gpi, tpi)
+    tpi
 end
+
+function check_sig(rf::RPKIFile{ROA}, tpi::TmpParseInfo)
+    # hash tpi.eeCert
+    @assert !isnothing(tpi.ee_cert)
+    tbs_raw = @view rf.asn1_tree.buf.data[tpi.ee_cert.tag.offset_in_file:tpi.ee_cert.tag.offset_in_file + tpi.ee_cert.tag.len + 4 - 1]
+    my_hash = bytes2hex(sha256(tbs_raw))
+
+    # decrypt tpi.eeSig 
+    v = powermod(to_bigint(@view tpi.ee_sig.tag.value[2:end]), rf.parent.parent.object.rsa_exp, rf.parent.parent.object.rsa_modulus)
+    v.size = 4
+    v_str = string(v, base=16, pad=64)
+    
+    # compare hashes
+    if v_str != my_hash
+        @error "Invalid EE signature for" rf.filename
+        remark_validityIssue!(rf, "Invalid signature on EE certificate")
+    end
+end
+
+
+function check_resources(rf::RPKIFile{ROA})#, tpi::TmpParseInfo, parent_cer::RPKINode)
+    # TODO: check out intersect(t1::IntervalTree, t2::IntervalTree) and find any
+    # underclaims?
+    rf.object.resources_valid = true
+
+    # first, check the resources on the EE are properly covered by the resources
+    # in the parent CER
+    # TODO: check: can the parent cer have inherit set instead of listing actual
+    # resources?
+
+    #v6:
+    if !isempty(rf.object.resources_v6)
+        overlap_v6 = collect(intersect(get_parent_cer(rf).resources_v6, rf.object.resources_v6))
+        if length(overlap_v6) == 0
+            @warn "IPv6 resource on EE in $(rf.filename) not covered by parent certificate $(get_parent_cer(rf).subject)"
+            remark_resourceIssue!(rf, "IPv6 resource on EE not covered by parent certificate")
+            rf.object.resources_valid = false
+        else
+            for (p, ee) in overlap_v6
+                if !(p.first <= ee.first <= ee.last <= p.last)
+                    @warn "IPv6 resource on EE in $(rf.filename) not properly covered by parent certificate"
+                    remark_resourceIssue!(rf, "Illegal IP resource $(ee)")
+                    rf.object.resources_valid = false
+                end
+            end
+        end
+    end
+
+    #v4:
+    if !isempty(rf.object.resources_v4)
+        overlap_v4 = collect(intersect(get_parent_cer(rf).resources_v4, rf.object.resources_v4))
+        if length(overlap_v4) == 0
+            @warn "IPv4 resource on EE in $(rf.filename) not covered by parent certificate $(get_parent_cer(rf).subject)"
+            remark_resourceIssue!(rf, "IPv4 resource on EE not covered by parent certificate")
+            rf.object.resources_valid = false
+        else
+            for (p, ee) in overlap_v4
+                if !(p.first <= ee.first <= ee.last <= p.last)
+                    @warn "IPv4 resource on EE in $(rf.filename) not properly covered by parent certificate"
+                    remark_resourceIssue!(rf, "Illegal IP resource $(ee)")
+                    rf.object.resources_valid = false
+                end
+            end
+        end
+    end
+
+    # now that we know the validity of the resources on the EE, verify that the
+    # VRPs are covered by the resources on the EE
+
+    # IPv6:
+    check_coverage(rf.object.resources_v6, rf.object.vrp_tree.resources_v6) do invalid
+        @warn "illegal IPv6 VRP $(IPRange(invalid.first, invalid.last)) not covered by EE on $(rf.filename)"
+        remark_resourceIssue!(rf, "Illegal IPv6 VRP $(IPRange(invalid.first, invalid.last))")
+        rf.object.resources_valid = false
+    end
+
+    # IPv4:
+    check_coverage(rf.object.resources_v4, rf.object.vrp_tree.resources_v4) do invalid
+        @warn "illegal IPv4 VRP $(IPRange(invalid.first, invalid.last)) not covered by EE on $(rf.filename)"
+        remark_resourceIssue!(rf, "Illegal IPv4 VRP $(IPRange(invalid.first, invalid.last))")
+        rf.object.resources_valid = false
+    end
+end
+
 function process(rf::RPKIFile{ROA}, gpi::GlobalProcessInfo)
-    check_ASN1(rf, gpi)
+    tpi = check_ASN1(rf, gpi)
+    if !gpi.oneshot
+        check_sig(rf, tpi)
+        check_resources(rf)
+    end
     # no children
     gpi.strip_tree && (rf.asn1_tree = nothing)
 end
@@ -671,11 +923,21 @@ function process(rf::RPKIFile{UnknownType}, ::GlobalProcessInfo)
     # no children
 end
 
-function oneshot(filename::AbstractString)
+function oneshot(filename::AbstractString; gpi_kw...)
+    if !isfile(filename)
+        @error "oneshot: $(filename) does not exist"
+        display(stacktrace(catch_backtrace()))
+        throw("oneshot: $(filename) does not exist")
+    end
     rf = load(filename)
-    process(rf, GlobalProcessInfo())
+    gpi = GlobalProcessInfo(; strip_tree = false, nicenames = false, gpi_kw..., oneshot = true)
+    process(rf, gpi)
     rf
 end
+
+
+include("rsync.jl")
+include("RRDP.jl")
 
 
 function process_all(rf::RPKIFile, gpi=GlobalProcessInfo()) :: RPKIFile

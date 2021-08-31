@@ -81,9 +81,9 @@ struct Tag
     number::Tagnumber
     len::Int32
     len_indef::Bool
-    headerlen::Int8
+    headerlen::Int
     value::Union{Nothing, Vector{UInt8}}
-    offset_in_file::Integer
+    offset_in_file::Int
 end
 
 import Base.convert
@@ -164,7 +164,7 @@ function append!(p::Node, c::Node) :: Node
     if isnothing(p.children)
         p.children = [c]
     else
-        push!(p.children, c)
+        push!(p.children::Vector{Node}, c)
     end
     p
 end

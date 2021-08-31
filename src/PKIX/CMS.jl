@@ -126,9 +126,7 @@ end
     X509.check_ASN1_tbsCertificate(rf, node[1,1], gpi, tpi)
     X509.check_ASN1_signatureAlgorithm(rf, node[1,2], gpi, tpi)
     X509.check_ASN1_signatureValue(rf, node[1,3], gpi, tpi)
-    tpi.eeSig = node[1,3]
-    ##@debug length(tpi.eeSig.tag.value[2:end])
-    #tpi.eeSig = SVector{256}(node[1,3].tag.value[2:end])
+    tpi.ee_sig = node[1,3]
 end
 
 @check "sid" begin

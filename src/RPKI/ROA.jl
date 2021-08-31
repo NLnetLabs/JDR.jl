@@ -111,7 +111,7 @@ end
 @check "ipAddrBlocks" begin
     check_tag(node, ASN1.SEQUENCE)
 
-    if length(node.children) == 0
+    if isnothing(node.children) || isempty(node.children::Vector{ASN1.Node})
         remark_ASN1Error!(node, "there should be at least one ROAIPAddressFamily here")
     end
     for roa_afi in node.children

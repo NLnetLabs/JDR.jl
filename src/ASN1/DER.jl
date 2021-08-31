@@ -2,6 +2,7 @@ module DER
 
 using JDR.Common: remark_encodingIssue!
 using ..ASN
+using ..ASN1: Node
 
 # Possible/common mistakes or violations:
 # - a primitive BITSTRING actually containing other tags (thus being constructed)
@@ -44,7 +45,7 @@ Base.showerror(io::IO, e::NotImplementedYetError) = print(io, "Not Yet Implement
 
 
 
-function next!(buf::Buf, offset::Int=1) :: Tag
+function next!(buf::Buf, offset::Integer=1)# :: Tag
     _ptr_start = buf.iob.ptr
     offset_in_file = buf.iob.ptr + offset - 1
     first_byte = lookahead(buf)

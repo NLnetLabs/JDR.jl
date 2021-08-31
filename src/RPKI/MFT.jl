@@ -1,7 +1,7 @@
 module Mft
 using JDR.ASN1: ASN1, check_tag, childcount, to_bigint, check_contextspecific, check_OID
-using JDR.Common: @oid, remark_ASN1Error!, remark_manifestIssue!, remark_validityIssue!
-using JDR.RPKI: MFT
+using JDR.Common: @oid, remark_ASN1Error!, remark_manifestIssue!, remark_validityIssue!, remark_missingFile!
+using JDR.RPKI: MFT, get_pubpoint
 #using JDR.RPKICommon: RPKINode, RPKIObject, RPKIFile, CER, TmpParseInfo, get_object
 #using JDR.PKIX.CMS: check_ASN1_contentType, check_ASN1_content # from macros
 
@@ -91,10 +91,10 @@ end
         check_tag(file_and_hash[2], ASN1.BITSTRING)
 
         filename = ASN1.value(file_and_hash[1].tag)
-        push!(rf.object.files, filename)
 
         full_fn = joinpath(cwd, filename)
         if isfile(full_fn)
+            push!(rf.object.files, filename)
             open(full_fn) do fh
                 local_hash = sha256(fh)
                 if file_and_hash[2].tag.len != 33
@@ -106,11 +106,13 @@ end
                 end
             end
         else
-            #TODO refactor 
-            @warn "[$(get_pubpoint(cer_node))] Missing file: $(f)"
-            Mft.add_missing_file(mft_obj.object, f)
-            add_missing_filename!(lookup, joinpath(mft_dir, f), mft_node)
-            remark_missingFile!(mft_obj, "Listed in manifest but missing on file system: $(f)")
+            @warn "[$(get_pubpoint(rf.parent))] Missing file: $(full_fn)"
+            if isnothing(rf.object.missing_files)
+                rf.object.missing_files = String[filename]
+            else
+                push!(rf.object.missing_files, filename)
+            end
+            remark_missingFile!(rf, "Listed in manifest but missing on file system: $(filename)")
         end
     end
 end

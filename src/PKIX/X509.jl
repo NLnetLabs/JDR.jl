@@ -9,7 +9,7 @@ using JDR.ASN1.DER: DER
 
 
 # refactor:
-using ..RPKI: CER, MFT, ROA, add_resource!
+using ..RPKI: RPKIObject, CER, MFT, ROA, add_resource!
 using JDR.Common: NotifyUri, RsyncUri
 using StaticArrays: SVector
 
@@ -352,8 +352,6 @@ end
                                       $(bytes2hex(parent_ski))")
                                       #$(bytes2hex(tpi.certStack[end].ski))")
                 end
-            else
-                @debug "empty certStack/parent_cer, is this a check_ASN1 out of process_tas?"
             end
         end
     end
@@ -687,9 +685,9 @@ end
     (@__MODULE__).check_ASN1_extensions(rf, node[8], gpi, tpi)
 
     if rf.object isa ROA 
-        tpi.eeCert = node
+        tpi.ee_cert = node
     elseif rf.object isa MFT
-        tpi.eeCert = node
+        tpi.ee_cert = node
     elseif rf.object isa CER
         #tpi.caCert = node
     else

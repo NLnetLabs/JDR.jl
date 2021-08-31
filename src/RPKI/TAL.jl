@@ -1,6 +1,6 @@
 module Tal
 
-using JDR.ASN1: to_bigint
+using JDR.ASN1: Node, to_bigint
 using JDR.ASN1.DER: DER
 
 using JDR.Common: NotifyUri, RsyncUri
@@ -46,9 +46,9 @@ function parse_tal(fn::AbstractString)
     # should be 0 
     @assert asn1[2].tag.value[1] == 0x0
     encaps_buf = DER.Buf(asn1[2].tag.value[2:end])
-    DER.parse_append!(encaps_buf, asn1[2])
+    DER.parse_append!(encaps_buf, asn1[2]::Node)
 
-    return TAL(rsync, rrdp, to_bigint(@view asn1[2,1,1].tag.value[2:end]))
+    return TAL(rsync, rrdp, to_bigint(@view asn1[2,1,1].tag.value[2:end])::BigInt)
 end
 
 end

@@ -977,13 +977,15 @@ function process_all(rf::RPKIFile, gpi=GlobalProcessInfo()) :: RPKIFile
             try
                 #if !(res.uri_to_fetch in keys(gpi.fetch_tasks))
                 if !haskey(gpi.fetch_tasks, res.uri_to_fetch)
-                    @debug "asyncing for $(res.uri_to_fetch)"
-                    #fetch_t = @async fake_fetch(res.uri_to_fetch)
                     #TODO: distinguish between RRDP and rsync
                     #moreover, fallback to rsync here in case .rrdp_notify #isnothing?
                     fetch_t = if gpi.transport == rrdp
                         if !isnothing(c.object.rrdp_notify)
-                            @async RRDP.fetch_process_notification(c)
+                            @async try
+                                RRDP.fetch_process_notification(c)
+                            catch e
+                                @warn e c.object.rrdp_notify
+                            end
                         else
                             @warn "Need to fetch for $(c) but no RRDP available"
                             @async ()
@@ -1050,8 +1052,7 @@ function process_tas(tals=CFG["rpki"]["tals"];gpi_kw...)
             @error "Unknown transport $(gpi.transport) while processing TAL $(talname)"
             continue
         end
-        ta_cer_fn = joinpath(gpi.data_dir, "tmp", @view ta_cer_uri.u[9:end])
-        @debug ta_cer_fn
+        ta_cer_fn = joinpath(gpi.data_dir, @view ta_cer_uri.u[9:end])
         push!(ta_cer_fns, ta_cer_fn)
         if gpi.fetch_data
             @async RRDP.fetch_ta_cer(ta_cer_uri, ta_cer_fn)

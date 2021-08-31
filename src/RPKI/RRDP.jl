@@ -390,7 +390,12 @@ function fetch_process_snapshot(rrdp_update::RRDPUpdate, snapshot_node::EzXML.No
         rrdp_update.stats.bytes_transferred += bytes_transferred
         rrdp_update.stats.requests_needed += response.request.txcount
     catch e
-        @warn url e
+        if e isa HTTP.ExceptionRequest.StatusError
+            @warn url e.status e.target
+        else
+            @warn url e
+            #display(stacktrace(catch_backtrace()))
+        end
         push!(rrdp_update.errors, string(typeof(e)))
         return false
     end
@@ -414,7 +419,12 @@ function fetch_process_notification(cer_rf::RPKIFile) :: RRDPUpdate
         @debug "[$(reponame)] Fetch notification.xml done, got $(length(possibly_zipped)) bytes"
         gunzip(possibly_zipped) |> parsexml
     catch e
-        @warn reponame url e
+        if e isa HTTP.ExceptionRequest.StatusError
+            @warn url e.status e.target
+        else
+            @warn url e
+            #display(stacktrace(catch_backtrace()))
+        end
         rrdp_update.errors = [string(typeof(e))]
         return rrdp_update
     end

@@ -13,8 +13,7 @@ using JDR.ASN1: Node, SEQUENCE, check_tag
 using Sockets: IPAddr
 
 export process_tas, process_ta, process_cer, link_resources!
-export RPKIFile
-
+export RPKIFile, RPKIObject, RootCER, CER, MFT, CRL, ROA
 
 
 ##############################
@@ -34,6 +33,8 @@ using JDR.Common: remark_resourceIssue!
 include("TAL.jl")
 using .Tal: TAL, parse_tal
 export parse_tal, search
+
+export get_pubpoint
 
 @enum Transport rsync rrdp
 export rsync, rrdp
@@ -141,9 +142,9 @@ function Lookup(rf::RPKIFile{<:RPKIObject}) :: Lookup
     # alternative attempt to now recurse via the tree structure itself
     # instead of iterate(). This way the 'order' is maintained.
     function _sub_points(rf::RPKIFile, pubpoints::Dict)
-        this_pp = get_pubpoint(rf)
+        this_pp = get_pubpoint(rf; rsync=true)
         last_pp = if !isnothing(rf.parent)
-            get_pubpoint(rf.parent)
+            get_pubpoint(rf.parent; rsync=true)
         else
             "root"
         end
@@ -283,23 +284,23 @@ Get the domain name of the publication point for the file represented by this `R
 """
 #TODO: make this use .rrdp_notify instead of .pubpoint, if available
 #or, make .pubpoint to prefer rpkinotify over the rsync uri?
-function get_pubpoint(rf::RPKIFile) :: AbstractString
+function get_pubpoint(rf::RPKIFile; kw...) :: AbstractString
     #@debug "get_pubpoint for $(rf)"
     if rf.object isa RootCER
         return "root"
     end
     return if rf.object isa MFT 
         @assert rf.parent.object isa CER
-        get_pubpoint(rf.parent)
+        get_pubpoint(rf.parent; kw...)
     else #if rf.object isa ROA || rf.object isa CRL
         @assert rf.parent.object isa MFT
         @assert rf.parent.parent.object isa CER
-        get_pubpoint(rf.parent.parent)
+        get_pubpoint(rf.parent.parent; kw...)
     end
 end
 
-function get_pubpoint(rf::RPKIFile{CER}) :: AbstractString
-    if !isnothing(rf.object.rrdp_notify)
+function get_pubpoint(rf::RPKIFile{CER}; rsync=false) :: AbstractString
+    if !isnothing(rf.object.rrdp_notify) && !rsync
         split_scheme_uri(rf.object.rrdp_notify)[1]
     else
         split_scheme_uri(rf.object.pubpoint)[1]
@@ -406,16 +407,10 @@ ROA() = ROA(AutSysNum(0), VRPS(), # FIXME the AS0 here is ugly
 struct UnknownType <: RPKIObject end
 
 
-
-
-#function load(t::Type{T}, fn::AbstractString, parent=Union{Nothing, RPKIFile}=nothing) :: RPKIFile{<:RPKIObject} where {T<:RPKIObject}
 function load(t::Type{T}, fn::AbstractString, parent::Union{Nothing, RPKIFile}=nothing) where {T<:RPKIObject}
     if !isfile(fn)
         @error "File not found: [$(nameof(T))] $(fn)"
-        #@debug "parent is: $(parent)"
-        #throw("stop")
         return nothing
-        #return RPKIFile(parent, nothing, UnknownType(), fn, nothing)
     else
         asn1_tree = parse_file_recursive(fn)
         obj = t()
@@ -467,8 +462,6 @@ Base.@kwdef mutable struct TmpParseInfo
     signedAttrs::Union{Nothing,Node} = nothing  #TODO currently not used
     saHash::Union{Nothing, SVector{32, UInt8}} = nothing
 
-    #caCert::Union{Nothing,Node} = nothing
-
     ee_cert::Union{Nothing,Node} = nothing
     ee_sig::Union{Nothing,Node} = nothing
 
@@ -478,7 +471,6 @@ Base.@kwdef mutable struct TmpParseInfo
     # TODO make these point to Node's as well?
     ee_aki::Union{Nothing, SVector{20, UInt8}} = nothing
     ee_ski::Union{Nothing, SVector{20, UInt8}} = nothing
-
 
     # for ROA:
     afi::UInt32 = 0x0
@@ -498,7 +490,6 @@ function check_ASN1(rf::RPKIFile{CER}, gpi::GlobalProcessInfo)
 	#      signature            BIT STRING  }
     
     childcount(rf.asn1_tree, 3) # this one marks the SEQUENCE as checked!
-    #@debug typeof(rf)
     
     tpi = TmpParseInfo() 
     tbsCertificate = rf.asn1_tree.children[1]
@@ -528,7 +519,7 @@ function process(rf::RPKIFile{CER}, gpi::GlobalProcessInfo) :: Union{Nothing, De
     @assert !isempty(rf.object.manifest)
 
     # check if we hop to another CA
-    traverse_ca = rf.parent.object isa RootCER || get_pubpoint(rf.parent.parent) != get_pubpoint(rf)
+    traverse_ca = !gpi.oneshot && (rf.parent.object isa RootCER || get_pubpoint(rf.parent.parent) != get_pubpoint(rf))
     if traverse_ca && gpi.fetch_data
         uri_to_fetch = if !isnothing(rf.object.rrdp_notify)
             rf.object.rrdp_notify
@@ -572,7 +563,7 @@ function get_parent_cer(rf::RPKIFile{ROA}) :: Union{Nothing, CER}
         nothing
     end
 end
-function check_sig(rf::RPKIFile{CER})#, tpi::TmpParseInfo, parent_cer::Union{Nothing, RPKINode}=nothing)# :: RPKIObject{CER}
+function check_sig(rf::RPKIFile{CER})
     # TODO: make this work the other way around?
     #   - take a 'parent CER' and process all the (grand)children 
     #   however with the current asn1_tree.buf.data approach that does not
@@ -764,7 +755,7 @@ function check_ASN1(rf::RPKIFile{CRL}, gpi::GlobalProcessInfo)
     X509.check_ASN1_signatureValue(rf, rf.asn1_tree.children[3], gpi, tpi)
 end
 
-function check_sig(rf::RPKIFile{CRL})#, tpi::TmpParseInfo, parent_cer::RPKINode) :: RPKI.RPKIObject{CRL}
+function check_sig(rf::RPKIFile{CRL})
     sig = rf.asn1_tree.children[3]
     signature = to_bigint(@view sig.tag.value[2:end])
     v = powermod(signature, rf.parent.parent.object.rsa_exp, rf.parent.parent.object.rsa_modulus)
@@ -831,7 +822,7 @@ function check_sig(rf::RPKIFile{ROA}, tpi::TmpParseInfo)
 end
 
 
-function check_resources(rf::RPKIFile{ROA})#, tpi::TmpParseInfo, parent_cer::RPKINode)
+function check_resources(rf::RPKIFile{ROA})
     # TODO: check out intersect(t1::IntervalTree, t2::IntervalTree) and find any
     # underclaims?
     rf.object.resources_valid = true

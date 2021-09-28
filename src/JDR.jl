@@ -11,7 +11,7 @@ include("ASN1/ASN1.jl")
 include("RPKI/RPKI.jl")
 #include("PKIX/PKIX.jl")
 #include("RPKI/RPKI.jl")
-#include("BGP/BGP.jl")
+include("BGP/BGP.jl")
 #
 #include("interface.jl")
 #

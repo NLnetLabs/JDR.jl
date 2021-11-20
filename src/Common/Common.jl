@@ -7,7 +7,7 @@ export AutSysNum, AutSysNumRange, AsIdsOrRanges, covered
 
 export split_scheme_uri, split_rrdp_path
 export Remark, RemarkLevel, RemarkType, RemarkCounts, RemarkCounts_t, count_remarks
-export remark_encodingIssue!, remark_ASN1Error!, remark_ASN1Issue!, remark_manifestIssue!, remark_missingFile!, remark_validityIssue!, remark_resourceIssue!, remark_loopIssue!
+export remark_genericError!, remark_encodingIssue!, remark_ASN1Error!, remark_ASN1Issue!, remark_manifestIssue!, remark_missingFile!, remark_validityIssue!, remark_resourceIssue!, remark_loopIssue!
 export @oid, oid_to_str
 
 # from IPRange.jl
@@ -46,7 +46,7 @@ end
 ##############################
 
 @enum RemarkLevel DBG INFO WARN ERR
-@enum RemarkType EncodingIssue ASN1Issue ManifestIssue MissingFile ValidityIssue ResourceIssue LoopIssue
+@enum RemarkType GenericIssue EncodingIssue ASN1Issue ManifestIssue MissingFile ValidityIssue ResourceIssue LoopIssue
 
 struct Remark
     lvl::RemarkLevel
@@ -73,6 +73,7 @@ end
 remark_encodingIssue!(o::Any, msg::String) = remark!(o, WARN, EncodingIssue, msg)
 remark_ASN1Issue!(o::Any, msg::String) = remark!(o, WARN, ASN1Issue, msg)
 # ERR level helpers:
+remark_genericError!(o::Any, msg::String) = remark!(o, ERR, GenericIssue, msg)
 remark_ASN1Error!(o::Any, msg::String) = remark!(o, ERR, ASN1Issue, msg)
 remark_manifestIssue!(o::Any, msg::String) = remark!(o, ERR, ManifestIssue, msg)
 remark_missingFile!(o::Any, msg::String) = remark!(o, ERR, MissingFile, msg)

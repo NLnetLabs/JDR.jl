@@ -3,7 +3,7 @@ using TimerOutputs
 using JDR: CFG
 using JDR.Common: RPKIUri, NotifyUri, RsyncUri
 using JDR.Common: Remark, RemarkCounts_t, split_scheme_uri, count_remarks, AutSysNum, IPRange
-using JDR.Common: remark_missingFile!, remark_loopIssue!, remark_manifestIssue!, remark_validityIssue!
+using JDR.Common: remark_genericError!, remark_missingFile!, remark_loopIssue!, remark_manifestIssue!, remark_validityIssue!
 #using JDR.RPKICommon: add_resource!, RPKIObject, RPKINode, Lookup, TmpParseInfo, add_filename!
 #using JDR.RPKICommon: CER, add_resource, MFT, CRL, ROA, add_missing_filename!, RootCER, get_pubpoint
 #using JDR.RPKICommon: get_object, rsync, rrdp, parse_tal
@@ -922,50 +922,58 @@ function process_all(rf::RPKIFile, gpi=GlobalProcessInfo()) :: RPKIFile
     todo_c = Channel{RPKIFile}(50000)
     put!(todo_c, rf)
     total = 0
+    #res = 0
     while(isready(todo_c))
         total += 1
         c = take!(todo_c)
-        res = RPKI.process(c, gpi)
-        if res isa DelayedProcess
-            lock(gpi.lock)
-            try
-                if !haskey(gpi.fetch_tasks, res.uri_to_fetch)
-                    fetch_t = if gpi.transport == rrdp
-                        if !isnothing(c.object.rrdp_notify)
-                            @async try
-                                RRDP.fetch_process_notification(c)
-                            catch e
-                                @warn e c.object.rrdp_notify
+        try
+            res = RPKI.process(c, gpi)
+            if res isa DelayedProcess
+                lock(gpi.lock)
+                try
+                    if !haskey(gpi.fetch_tasks, res.uri_to_fetch)
+                        fetch_t = if gpi.transport == rrdp
+                            if !isnothing(c.object.rrdp_notify)
+                                @async try
+                                    RRDP.fetch_process_notification(c)
+                                catch e
+                                    @warn e c.object.rrdp_notify
+                                end
+                            else
+                                @warn "Need to fetch for $(c) but no RRDP available"
+                                @async ()
                             end
-                        else
-                            @warn "Need to fetch for $(c) but no RRDP available"
-                            @async ()
+                        elseif gpi.transport == rsync
+                            @error "TODO implement rsync fetch here"
+                            throw("Implement rsync fetch in process_all")
                         end
-                    elseif gpi.transport == rsync
-                        @error "TODO implement rsync fetch here"
-                        throw("Implement rsync fetch in process_all")
+                        isnothing(res) && @error "#1 res isnothing"
+                        gpi.fetch_tasks[res.uri_to_fetch] = fetch_t
                     end
-                    gpi.fetch_tasks[res.uri_to_fetch] = fetch_t
-                end
-                new_process_all_t = @async begin
-                    wait(gpi.fetch_tasks[res.uri_to_fetch])
-                    process_all(res.rf, gpi)
-                end
-                push!(gpi.tasks, new_process_all_t)
+                    new_process_all_t = @async begin
+                        wait(gpi.fetch_tasks[res.uri_to_fetch])
+                        process_all(res.rf, gpi)
+                    end
+                    push!(gpi.tasks, new_process_all_t)
 
-            finally
-                unlock(gpi.lock)
-            end
-        elseif !isnothing(c.children)
-            if !isnothing(c.children)
-                if c.children isa Vector
-                    for _c in c.children
-                        put!(todo_c, _c)
+                finally
+                    unlock(gpi.lock)
+                end
+            elseif !isnothing(c.children)
+                if !isnothing(c.children)
+                    if c.children isa Vector
+                        for _c in c.children
+                            put!(todo_c, _c)
+                        end
+                    else
+                        put!(todo_c, c.children)
                     end
-                else
-                    put!(todo_c, c.children)
                 end
             end
+        catch e
+            @error "exception $(typeof(e)) in process_all for $(c.filename)"
+            remark_genericError!(c, "$(typeof(e)) while processing")
+            continue
         end
     end
     rf

@@ -22,6 +22,12 @@ const MANDATORY_EXTENSIONS = Vector{Pair{Vector{UInt8}, String}}([
                                                     @oid("2.5.29.32") =>  "certificatePolicies",
                                                    ])
 
+const MANDATORY_EXTENSIONS_ROUTERCER = Vector{Pair{Vector{UInt8}, String}}([
+                                                    @oid("2.5.29.14") => "subjectKeyIdentifier",
+                                                    @oid("2.5.29.15") =>  "keyUsage",
+                                                    @oid("2.5.29.32") =>  "certificatePolicies",
+                                                   ])
+
 
 @check "subjectInfoAccess" begin
     check_tag(node, ASN1.OCTETSTRING)
@@ -360,6 +366,11 @@ end
     end
 end
 
+@check "extKeyUsage" begin
+    @warn "TODO impl extKeyUsage"
+    @assert rf.object.routercer
+end
+
 function check_ASN1_extension(oid::Vector{UInt8}, rf::RPKIFile{T}, node::ASN1.Node, gpi::GlobalProcessInfo, tpi::TmpParseInfo) where T
     if oid == @oid("1.3.6.1.5.5.7.1.11")
         check_ASN1_subjectInfoAccess(rf, node, gpi, tpi)
@@ -381,6 +392,8 @@ function check_ASN1_extension(oid::Vector{UInt8}, rf::RPKIFile{T}, node::ASN1.No
         check_ASN1_authorityInfoAccess(rf, node, gpi, tpi)
     elseif oid == @oid("2.5.29.35")
         check_ASN1_authorityKeyIdentifier(rf, node, gpi, tpi)
+    elseif oid == @oid("2.5.29.37")
+        check_ASN1_extKeyUsage(rf, node, gpi, tpi)
     else
         @warn "Unknown oid $(oid_to_str(oid)) passed to X509::check_extension" maxlog=10
         remark_ASN1Issue!(node, "Unknown extension")
@@ -500,41 +513,58 @@ end
 
 @check "algorithm" begin
     check_tag(node, ASN1.SEQUENCE)
+
     # FIXME: RFC6485 is not quite clear on which OID we should expect here..
-    check_OID(node[1], @oid "1.2.840.113549.1.1.1")
-    check_tag(node[2], ASN1.NULL)
-    if gpi.nicenames
-        node[1].nicevalue = oid_to_str(node[1].tag.value)
+    is_router_cert = false
+    for (idx, a) in enumerate(node.children)
+        if a.tag.value == @oid "1.2.840.113549.1.1.1"
+            check_OID(a, @oid "1.2.840.113549.1.1.1")
+            check_tag(node[idx+1], ASN1.NULL)
+            break
+        else
+            #@warn "router cert?"
+            rf.object.routercer = true
+        end
     end
 end
 
 @check "subjectPublicKey" begin
     check_tag(node, ASN1.BITSTRING)
 
+    # XXX
+    # what we do with this bitstring depends on what type of key we are dealing
+    # with, i.e., we need to check the OID in the SEQUENCE that is the sibling
+    # of this BITSTRING
+    # perhaps pass that via the tpi?
+
     # Now we go for a second pass:
     # skip the first byte as it will be 0, 
     # indicating the number if unused bits in the last byte
     
-    encaps_buf = DER.Buf(node.tag.value[2:end])
-    DER.parse_append!(encaps_buf, node)
+    if !(rf.object isa CER && rf.object.routercer)
+        encaps_buf = DER.Buf(node.tag.value[2:end])
+        DER.parse_append!(encaps_buf, node)
 
-    check_tag(node[1], ASN1.SEQUENCE)
-    check_tag(node[1,1], ASN1.INTEGER)
-   
-    encaps_modulus  = node[1, 1]
-    encaps_exponent = node[1, 2]
-    # RFC6485:the exponent MUST be 65537
-    check_value(encaps_exponent, ASN1.INTEGER, 65_537)
+        check_tag(node[1], ASN1.SEQUENCE)
+        check_tag(node[1,1], ASN1.INTEGER)
+       
+        encaps_modulus  = node[1, 1]
+        encaps_exponent = node[1, 2]
+        # RFC6485:the exponent MUST be 65537
+        check_value(encaps_exponent, ASN1.INTEGER, 65_537)
 
-    # 256 bytes + the first byte indicating unused bits == 257
-    @assert encaps_modulus.tag.len == 257
-    if rf.object isa CER
-        rf.object.rsa_modulus   = to_bigint(@view encaps_modulus.tag.value[2:end])
-        rf.object.rsa_exp       = ASN1.value(encaps_exponent.tag)
-    end
-    if rf.object isa ROA || rf.object isa MFT
-        tpi.ee_rsaExponent = encaps_exponent
-        tpi.ee_rsaModulus = encaps_modulus
+        # 256 bytes + the first byte indicating unused bits == 257
+        @assert encaps_modulus.tag.len == 257
+        if rf.object isa CER
+            rf.object.rsa_modulus   = to_bigint(@view encaps_modulus.tag.value[2:end])
+            rf.object.rsa_exp       = ASN1.value(encaps_exponent.tag)
+        end
+        if rf.object isa ROA || rf.object isa MFT
+            tpi.ee_rsaExponent = encaps_exponent
+            tpi.ee_rsaModulus = encaps_modulus
+        end
+    else
+        @warn "TODO implement handling for subjectPublicKey on Router Certificates, $(rf.filename)"
     end
 end
 
@@ -646,7 +676,11 @@ const MANDATORY_EXTENSIONS_EE = Vector{Vector{UInt8}}([
     # yet, we mark it in the check_ASN1_ functions/macros
 
     #check_extensions(node, mandatory_extensions)
-    check_extensions(node, (@__MODULE__).MANDATORY_EXTENSIONS)
+    if !(rf.object isa CER && rf.object.routercer)
+        check_extensions(node, (@__MODULE__).MANDATORY_EXTENSIONS)
+    else
+        check_extensions(node,  (@__MODULE__).MANDATORY_EXTENSIONS_ROUTERCER)
+    end
     all_extensions = get_extensions(node)
 
     # Resource certificate MUST have either or both of the IP and ASN Resources

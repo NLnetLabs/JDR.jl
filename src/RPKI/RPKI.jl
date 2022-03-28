@@ -236,6 +236,7 @@ Set after validation:
 
 """
 Base.@kwdef mutable struct CER <: RPKIObject
+    routercer::Bool = false
     serial::SerialNumber = 0
     notBefore::Union{Nothing, DateTime} = nothing
     notAfter::Union{Nothing, DateTime} = nothing
@@ -302,8 +303,10 @@ end
 function get_pubpoint(rf::RPKIFile{CER}; rsync=false) :: AbstractString
     if !isnothing(rf.object.rrdp_notify) && !rsync
         split_scheme_uri(rf.object.rrdp_notify)[1]
-    else
+    elseif !isnothing(rf.object.pubpoint)
         split_scheme_uri(rf.object.pubpoint)[1]
+    else
+        "decoding_failed"
     end
 end
 
@@ -514,6 +517,11 @@ function process(rf::RPKIFile{CER}, gpi::GlobalProcessInfo) :: Union{Nothing, De
             check_sig(rf)
             check_resources(rf)
         end
+    end
+
+    if rf.object.routercer
+        @warn "returning because routercer"
+        return
     end
 
     @assert !isempty(rf.object.manifest)

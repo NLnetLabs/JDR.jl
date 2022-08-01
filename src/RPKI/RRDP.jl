@@ -31,14 +31,6 @@ httpconf = (connect_timeout = 5,
             headers = ["Accept-Encoding" => "gzip,deflate"]
            )
 
-function gunzip(raw::Vector{UInt8}) :: Vector{UInt8}
-    if HTTP.iscompressed(raw)
-        transcode(GzipDecompressor, raw)
-    else
-        raw
-    end
-end
-
 mutable struct FiletypeStats
     cer::Int
     mft::Int
@@ -60,11 +52,11 @@ mutable struct RRDPUpdateStats
     withdraws::Int
     bytes_transferred::Int
     bytes_delta::Int
-    requests_needed::Int
+    #requests_needed::Int
     publishes_per_type::FiletypeStats
     withdraws_per_type::FiletypeStats
 end
-RRDPUpdateStats() = RRDPUpdateStats(0, 0, 0, 0, 0, 0, 0, FiletypeStats(), FiletypeStats())
+RRDPUpdateStats() = RRDPUpdateStats(0, 0, 0, 0, 0, 0, FiletypeStats(), FiletypeStats())
 Base.show(io::IO, r::RRDPUpdateStats) = foreach(f -> println(io, "\t$(f): $(getfield(r,f))"), fieldnames(typeof(r)))
 
 struct RoaDiff
@@ -350,7 +342,7 @@ function fetch_process_delta(rrdp_update::RRDPUpdate, delta_node::EzXML.Node, se
     url = delta_node["uri"] 
     try
         response = HTTP.get(url; httpconf...)
-        raw = gunzip(response.body)
+        raw = response.body
         if bytes2hex(sha256(raw)) != lowercase(delta_node["hash"])
             @warn "Invalid hash for $(url)"
         end
@@ -363,7 +355,7 @@ function fetch_process_delta(rrdp_update::RRDPUpdate, delta_node::EzXML.Node, se
         _process_publish_withdraws(rrdp_update, doc)
         rrdp_update.stats.deltas_applied += 1
         rrdp_update.stats.bytes_transferred += bytes_transferred
-        rrdp_update.stats.requests_needed += response.request.txcount
+        #rrdp_update.stats.requests_needed += response.request.txcount
     catch e
         @warn url e
         push!(rrdp_update.errors, string(typeof(e)))
@@ -379,7 +371,7 @@ function fetch_process_snapshot(rrdp_update::RRDPUpdate, snapshot_node::EzXML.No
     try
         @debug "fetching snapshot from $(url)"
         response = HTTP.get(url; httpconf...)
-        raw = gunzip(response.body)
+        raw = response.body
         if bytes2hex(sha256(raw)) != lowercase(snapshot_node["hash"])
             @warn "Invalid hash for $(url)"
             # TODO remark on node
@@ -388,7 +380,7 @@ function fetch_process_snapshot(rrdp_update::RRDPUpdate, snapshot_node::EzXML.No
         doc = parsexml(raw)
         _process_publish_withdraws(rrdp_update, doc)
         rrdp_update.stats.bytes_transferred += bytes_transferred
-        rrdp_update.stats.requests_needed += response.request.txcount
+        #rrdp_update.stats.requests_needed += response.request.txcount
     catch e
         if e isa HTTP.ExceptionRequest.StatusError
             @warn url e.status e.target
@@ -417,7 +409,7 @@ function fetch_process_notification(cer_rf::RPKIFile) :: RRDPUpdate
     doc = try
         possibly_zipped = HTTP.get(url; httpconf...).body
         @debug "[$(reponame)] Fetch notification.xml done, got $(length(possibly_zipped)) bytes"
-        gunzip(possibly_zipped) |> parsexml
+        possibly_zipped |> parsexml
     catch e
         if e isa HTTP.ExceptionRequest.StatusError
             @warn url e.status e.target
@@ -506,7 +498,7 @@ function fetch_ta_cer(url::NotifyUri, output_fn::AbstractString)
     @debug "fetch_ta_cer for $(url.u)"
     try
         mkpath(dirname(output_fn))
-        write(output_fn, gunzip(HTTP.get(url.u; httpconf...).body))
+        write(output_fn, HTTP.get(url.u; httpconf...).body)
     catch e
         @error "Could not retrieve TA cer from $(url.u): ", e
     end

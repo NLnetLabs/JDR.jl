@@ -981,6 +981,7 @@ function process_all(rf::RPKIFile, gpi=GlobalProcessInfo()) :: RPKIFile
         catch e
             @error "exception $(typeof(e)) in process_all for $(c.filename)"
             remark_genericError!(c, "$(typeof(e)) while processing")
+            unlock(gpi.lock)
             continue
         end
     end
